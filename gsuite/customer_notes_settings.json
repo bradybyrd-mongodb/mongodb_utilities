@@ -1,0 +1,27 @@
+{
+    "uri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+    "database" : "directory_svc",
+    "collection" : "paths",
+    "username" : "main_admin",
+    "password" : "<private>",
+    "version" : "1.0",
+    "process_count" : 1,
+    "batch_size" : 10,
+    "base_counter" : 1000,
+    "num_records" : 100,
+    "base_document" : {
+        "path_raw" : "/home/bbyrd/my_doc.txt",
+        "is_object" : true,
+        "num_objects" : 0,
+        "size_kb" : 44508,
+        "permissions" : "644",
+        "owner" : "bbyrd:people",
+        "modified_at" : "2020-09-24",
+        "created_at" : "2020-08-12",
+        "paths" : [
+            "/home",
+            "/home/bbyrd"
+        ]
+    },
+
+}
