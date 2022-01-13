@@ -1,16 +1,16 @@
 {
     "uri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
-    "database" : "directory_svc",
-    "collection" : "paths",
+    "database" : "bb_sales",
+    "collection" : "customer_notes",
     "username" : "main_admin",
-    "password" : "<private>",
+    "password" : "*******",
     "version" : "1.0",
     "process_count" : 1,
     "batch_size" : 10,
     "base_counter" : 1000,
     "num_records" : 100,
     "base_document" : {
-        "path_raw" : "/home/bbyrd/my_doc.txt",
+        "path" : "/Users/brady.byrd/Documents/mongodb/Customers",
         "is_object" : true,
         "num_objects" : 0,
         "size_kb" : 44508,
@@ -22,6 +22,6 @@
             "/home",
             "/home/bbyrd"
         ]
-    },
+    }
 
 }
