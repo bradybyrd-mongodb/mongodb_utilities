@@ -231,7 +231,7 @@ def bulk_operate(conn, bulker, type="bulk"):
             parts = ns.split(".")
             db = parts[0]
             coll = parts[1]
-            if len(bulker[ns]>0):
+            if len(bulker[ns]) > 0:
                result = conn[db][coll].bulk_write(bulker[ns])
                #bb.logit("#-- Bulk Update Result --#")
                #pprint.pprint(result)
