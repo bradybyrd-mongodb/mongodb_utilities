@@ -108,7 +108,7 @@ def watchCluster(streamCon, destCon, settings):
            print_time = time()
            bulk_changes = {}
            log_changes = []
-           bulk_cnt = 100
+           bulk_cnt = settings["bulkCount"]
            while stream.alive:
                u = stream.try_next()
                resume_token = stream.resume_token
