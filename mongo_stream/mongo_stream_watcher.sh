@@ -12,7 +12,7 @@
 
 script="mongo_stream.py";
 # Notification Address
-mailTo="chandra.singh@point72.com"
+mailTo="brady.byrd@mongodb.com" #"chandra.singh@point72.com"
 sender="mongo_stream_monitor@point72.com"
 #  Command to start script
 cmd="python3 $script";

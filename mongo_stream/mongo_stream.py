@@ -16,9 +16,10 @@ Sample Output:
 
 from io import BufferedIOBase
 from pymongo import MongoClient
-from pymongo import InsertOne, DeleteOne, ReplaceOne, UpdateOne
+from pymongo import UpdateOne, InsertOne, DeleteOne, UpdateOne, ReplaceOne
 import os
 import sys
+import traceback
 import pprint
 import argparse
 import json
@@ -90,7 +91,6 @@ def watchCluster(streamCon, destCon, settings):
            destCon[loggingDB][tokenCollection].insert_one({"_id": tokenId, 'value': None})
        else:
            resumeToken = rt['value']
-
        # start the watch process - note the 'updateLookup' option here
        # which returns the full document to the watch consumer (this program)
        with streamCon.watch(pipeline, full_document='updateLookup', resume_after=resumeToken, batch_size=settings["batchSize"]) as stream:
@@ -119,6 +119,7 @@ def watchCluster(streamCon, destCon, settings):
                        if u['operationType'] in ['update', 'replace']:
                            # Upsert doc dest
                            if u['fullDocument'] is not None:
+                               #bulk_changes[ns].append({"op" : "replace", "query" : {'_id': u['fullDocument']['_id']}, "doc" : u['fullDocument']})
                                bulk_changes[ns].append(ReplaceOne({'_id': u['fullDocument']['_id']}, u['fullDocument'], upsert=True))
                                #destCon[db][coll].replace_one({'_id': u['fullDocument']['_id']}, u['fullDocument'], upsert=True)
                            else:
@@ -126,6 +127,7 @@ def watchCluster(streamCon, destCon, settings):
                        elif u['operationType'] in ['insert']:
                            if u['fullDocument'] is not None:
                                bulk_changes[ns].append(InsertOne(u['fullDocument']))
+                               #bulk_changes[ns].append({"op" : "insert", "doc" : u['fullDocument']})
                                #destCon[db][coll].insert_one(u['fullDocument'])
                            else:
                                u['fullDocument'] = "ERROR Missing document"
@@ -139,6 +141,7 @@ def watchCluster(streamCon, destCon, settings):
                            # remove from doc dest
                            #destCon[db][coll].delete_one(u['documentKey'])
                            bulk_changes[ns].append(DeleteOne(u['documentKey']))
+                           #bulk_changes[ns].append({"op" : "delete", "id" : u['documentKey']})
 
                        if settings["enableLogging"] == "Yes":
                            log_changes.append({"timestamp" : datetime.now(), "op" : u['operationType'], "collection" : coll, "document" : u['fullDocument']})
@@ -172,17 +175,20 @@ def watchCluster(streamCon, destCon, settings):
        exc_type, exc_obj, exc_tb = sys.exc_info()
        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
        print(f'ERROR: {exc_type} in {fname} on line {exc_tb.tb_lineno}')
+       traceback.print_exc()
        print(err)
        if u is not None:
            print("--offending oplog--")
            print(u)
 
 def bulk_operate(conn, bulker, type="bulk"):
+    if len(bulker) == 0:
+        return
     result = ""
     if type == "log":
         db = settings["loggingDB"]
         coll = settings["logCollection"]
-        result = conn[db][coll].bulk_write(bulker)
+        result = conn[db][coll].insert_many(bulker)
         bb.logit("#-- Bulk Update Result --#")
         pprint.pprint(result)
     else:
