@@ -12,6 +12,7 @@
     "socketTimeoutMS" : 500,
     "logCollection" : "logs",
     "bulkCount" : 100,
+    "batchSize" : 500,
     "version" : "1.0",
     "exclusionList" : "test.mytest,test.mytest2"
 }

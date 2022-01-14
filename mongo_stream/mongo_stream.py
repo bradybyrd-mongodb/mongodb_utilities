@@ -27,50 +27,50 @@ from time import time
 from datetime import datetime
 
 class Util:
-   def __init__(self, details = {}):
-       self.hfile = False
-       self.logfile = False
-       self.logfilename = "mongo_stream_log.txt"
+    def __init__(self, details = {}):
+        self.hfile = False
+        self.logfile = False
+        self.logfilename = "mongo_stream_log.txt"
 
-   def logit(self, message, log_type = "INFO", display_only = True):
-       cur_date = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-       stamp = f"{cur_date}|{log_type}> "
-       if type(message) == dict or type(message) == list:
-           message = str(message)
-       if log_type == "raw":
-           message = "Raw output, check file"
-       for line in message.splitlines():
-           print(f"{stamp}{line}")
-       self.file_log(message)
+    def logit(self, message, log_type = "INFO", display_only = True):
+        cur_date = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        stamp = f"{cur_date}|{log_type}> "
+        if type(message) == dict or type(message) == list:
+            message = str(message)
+        if log_type == "raw":
+            message = "Raw output, check file"
+        for line in message.splitlines():
+            print(f"{stamp}{line}")
+        self.file_log(message)
 
-   def message_box(self, msg, mtype = "sep"):
-       tot = 100
-       start = ""
-       res = ""
-       msg = msg[0:84] if len(msg) > 85 else msg
-       ilen = tot - len(msg)
-       if (mtype == "sep"):
-           start = f'#{"-" * int(ilen/2)} {msg}'
-           res = f'{start} {"-" * (tot - len(start) + 1)}#'
-       else:
-           res = f'#{"-" * tot}#\n'
-           start = f'#{" " * int(ilen/2)} {msg} '
-           res += f'{start}{" " * (tot - len(start) + 1)}#\n'
-           res += f'#{"-" * tot}#\n'
-       self.logit(res)
-       return res
+    def message_box(self, msg, mtype = "sep"):
+        tot = 100
+        start = ""
+        res = ""
+        msg = msg[0:84] if len(msg) > 85 else msg
+        ilen = tot - len(msg)
+        if (mtype == "sep"):
+            start = f'#{"-" * int(ilen/2)} {msg}'
+            res = f'{start} {"-" * (tot - len(start) + 1)}#'
+        else:
+            res = f'#{"-" * tot}#\n'
+            start = f'#{" " * int(ilen/2)} {msg} '
+            res += f'{start}{" " * (tot - len(start) + 1)}#\n'
+            res += f'#{"-" * tot}#\n'
+        self.logit(res)
+        return res
 
-   def read_json(self, json_file, is_path = True):
-       result = {}
-       if is_path:
-           with open(json_file) as jsonfile:
-               result = json.load(jsonfile)
-       else:
-           result = json.loads(json_file)
-       return result
+    def read_json(self, json_file, is_path = True):
+        result = {}
+        if is_path:
+            with open(json_file) as jsonfile:
+                result = json.load(jsonfile)
+        else:
+            result = json.loads(json_file)
+        return result
 
     def file_log(self, content, action = "none"):
-        cur_date = datetime.datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        cur_date = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         stamp = f"{cur_date}|I> "
         with open(self.logfilename, 'a') as lgr:
             lgr.write(f'{stamp}{content}\n')
@@ -106,12 +106,17 @@ def watchCluster(streamCon, destCon, settings):
            cnt = 1
            last_ts = 0
            print_time = time()
+           start_time = datetime.now()
            bulk_changes = {}
            log_changes = []
            bulk_cnt = settings["bulkCount"]
            while stream.alive:
                u = stream.try_next()
                resume_token = stream.resume_token
+               time_diff = (datetime.now() - start_time)
+               execution_time = time_diff.total_seconds()
+               bb.logit(f'TotalLoop: {execution_time} seconds')
+               start_time = datetime.now()
 
                if u is not None:
                    if cnt == 0 or (time() - print_time >= 1):
@@ -164,6 +169,11 @@ def watchCluster(streamCon, destCon, settings):
                        bulk_operate(destCon, log_changes, "log")
                        log_changes = []
                        bb.logit(f'Applying {cnt} batch of changes')
+                   end_time = datetime.now()
+                   time_diff = (end_time - start_time)
+                   execution_time = time_diff.total_seconds()
+                   bb.logit(f'Local save: {execution_time} seconds')
+
 
                else:
                    if cnt > 0:
