@@ -106,6 +106,7 @@ def watchCluster(streamCon, destCon, settings):
            cnt = 1
            last_ts = 0
            print_time = time()
+           bulk_time = time()
            start_time = datetime.now()
            bulk_changes = {}
            log_changes = []
@@ -163,13 +164,14 @@ def watchCluster(streamCon, destCon, settings):
 
                        # just to show the changestream object - comment out for less noise
                        # print(f'Modifying: {coll}, op: {u["operationType"]}, Id: {u["fullDocument"]["_id"]}')
-                   if cnt > bulk_cnt:
+                   if cnt > bulk_cnt or (cnt>0 and time()-bulk_time>=10):
                        cnt = 0
                        bulk_operate(destCon, bulk_changes)
                        bulk_changes = {}
                        bulk_operate(destCon, log_changes, "log")
                        log_changes = []
                        bb.logit(f'Applying {cnt} batch of changes')
+                       bulk_time = time()
                    end_time = datetime.now()
                    time_diff = (end_time - start_time)
                    execution_time = time_diff.total_seconds()
@@ -185,6 +187,7 @@ def watchCluster(streamCon, destCon, settings):
                        bulk_operate(destCon, log_changes, "log")
                        log_changes = []
                        bb.message_box("All changes applied waiting for the next block of changes")
+                       bulk_time = time()
 
                # Update resume token
                destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
