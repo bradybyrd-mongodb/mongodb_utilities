@@ -175,7 +175,7 @@ def watchCluster(streamCon, destCon, settings):
                        # Update resume token
                        destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
                        if (time() - print_time >= 10):
-                          bb.message_box(f"Replication lag is {millis} milliseconds")
+                          bb.logit(f"Replication lag is {millis} milliseconds")
                           print_time = time()
 
                    end_time = datetime.now()
@@ -193,18 +193,18 @@ def watchCluster(streamCon, destCon, settings):
                           bulk_changes = {}
                           bulk_operate(destCon, log_changes, "log")
                           log_changes = []
-                          bb.message_box("All changes applied waiting for the next block of changes")
+                          bb.logit("All changes applied waiting for the next block of changes")
                           bulk_time = time()
                           # Update resume token
                           destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
                           if (time() - print_time >= 10):
-                              bb.message_box(f"Replication lag is {millis} milliseconds")
+                              bb.logit(f"Replication lag is {millis} milliseconds")
                               print_time = time()
                    else:
                        # Update resume token
                        destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
                        if (time() - print_time >= 10):
-                          bb.message_box(f"Replication lag is {millis} milliseconds")
+                          bb.logit(f"Replication lag is {millis} milliseconds")
                           print_time = time()
    except Exception as err:
        exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -234,7 +234,8 @@ def bulk_operate(conn, bulker, type="bulk"):
             if len(bulker[ns]) > 0:
                result = conn[db][coll].bulk_write(bulker[ns])
                #bb.logit("#-- Bulk Update Result --#")
-               #pprint.pprint(result)
+               bb.logit(f'{ns} - {len(bulker[ns])} changes')
+               bb.file_log(pprint.pformat(result))
 
 
 
