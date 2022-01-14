@@ -116,7 +116,7 @@ def watchCluster(streamCon, destCon, settings):
                resume_token = stream.resume_token
                time_diff = (datetime.now() - start_time)
                execution_time = time_diff.total_seconds()
-               bb.logit(f'TotalLoop: {execution_time} seconds')
+               #bb.logit(f'TotalLoop: {execution_time} seconds')
                start_time = datetime.now()
 
                if u is not None:
@@ -141,7 +141,7 @@ def watchCluster(streamCon, destCon, settings):
                                u['fullDocument'] = "ERROR Missing document"
                        elif u['operationType'] in ['insert']:
                            if u['fullDocument'] is not None:
-                               bulk_changes[ns].append(InsertOne(u['fullDocument']))
+                               bulk_changes[ns].append(ReplaceOne({'_id': u['fullDocument']['_id']},u['fullDocument'], upsert=True))
                                #bulk_changes[ns].append({"op" : "insert", "doc" : u['fullDocument']})
                                #destCon[db][coll].insert_one(u['fullDocument'])
                            else:
@@ -164,14 +164,14 @@ def watchCluster(streamCon, destCon, settings):
 
                        # just to show the changestream object - comment out for less noise
                        # print(f'Modifying: {coll}, op: {u["operationType"]}, Id: {u["fullDocument"]["_id"]}')
-                   if cnt > bulk_cnt or (cnt>0 and (time()-bulk_time>=10)):
-                       cnt = 0
+                   if cnt >= bulk_cnt or (cnt>0 and (time()-bulk_time>=10)):
                        bulk_operate(destCon, bulk_changes)
                        bulk_changes = {}
                        bulk_operate(destCon, log_changes, "log")
                        log_changes = []
                        bb.logit(f'Applying {cnt} batch of changes')
                        bulk_time = time()
+                       cnt = 0
                        # Update resume token
                        destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
                        if (time() - print_time >= 10):
@@ -181,7 +181,7 @@ def watchCluster(streamCon, destCon, settings):
                    end_time = datetime.now()
                    time_diff = (end_time - start_time)
                    execution_time = time_diff.total_seconds()
-                   bb.logit(f'Local save: {execution_time} seconds')
+                   #bb.logit(f'Local save: {execution_time} seconds')
 
 
                else:
@@ -224,16 +224,16 @@ def bulk_operate(conn, bulker, type="bulk"):
         db = settings["loggingDB"]
         coll = settings["logCollection"]
         result = conn[db][coll].insert_many(bulker)
-        bb.logit("#-- Bulk Update Result --#")
-        pprint.pprint(result)
+        #bb.logit("#-- Bulk Update Result --#")
+        #pprint.pprint(result)
     else:
         for ns in bulker:
             parts = ns.split(".")
             db = parts[0]
             coll = parts[1]
             result = conn[db][coll].bulk_write(bulker[ns])
-            bb.logit("#-- Bulk Update Result --#")
-            pprint.pprint(result)
+            #bb.logit("#-- Bulk Update Result --#")
+            #pprint.pprint(result)
 
 
 
