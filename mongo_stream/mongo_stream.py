@@ -29,6 +29,8 @@ from datetime import datetime
 class Util:
    def __init__(self, details = {}):
        self.hfile = False
+       self.logfile = False
+       self.logfilename = "mongo_stream_log.txt"
 
    def logit(self, message, log_type = "INFO", display_only = True):
        cur_date = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
@@ -39,6 +41,7 @@ class Util:
            message = "Raw output, check file"
        for line in message.splitlines():
            print(f"{stamp}{line}")
+       self.file_log(message)
 
    def message_box(self, msg, mtype = "sep"):
        tot = 100
@@ -65,6 +68,12 @@ class Util:
        else:
            result = json.loads(json_file)
        return result
+
+    def file_log(self, content, action = "none"):
+        cur_date = datetime.datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        stamp = f"{cur_date}|I> "
+        with open(self.logfilename, 'a') as lgr:
+            lgr.write(f'{stamp}{content}\n')
 
 def watchCluster(streamCon, destCon, settings):
    # we can specify operation types as well as other conditions here

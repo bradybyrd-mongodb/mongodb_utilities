@@ -8,13 +8,6 @@
     "tokenCollection" : "tokens",
     "enableLogging" : "Yes",
     "logCollection" : "logs",
-    "connectTimeoutMS" : 500,
-    "serverSelectionTimeoutMS" : 1000,
-    "socketTimeoutMS" : 500,
     "version" : "1.0",
-    "process_count" : 8,
-    "batchSize" : 100,
-    "base_counter" : 1000000,
-    "num_records" : 100,
     "exclusionList" : "test.mytest,test.mytest2"
 }
