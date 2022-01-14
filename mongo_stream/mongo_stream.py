@@ -172,6 +172,12 @@ def watchCluster(streamCon, destCon, settings):
                        log_changes = []
                        bb.logit(f'Applying {cnt} batch of changes')
                        bulk_time = time()
+                       # Update resume token
+                       destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
+                       if (time() - print_time >= 10):
+                          bb.message_box(f"Replication lag is {millis} milliseconds")
+                          print_time = time()
+
                    end_time = datetime.now()
                    time_diff = (end_time - start_time)
                    execution_time = time_diff.total_seconds()
@@ -180,20 +186,26 @@ def watchCluster(streamCon, destCon, settings):
 
                else:
                    if cnt > 0:
-                       millis = 0
-                       cnt = 0
-                       bulk_operate(destCon, bulk_changes)
-                       bulk_changes = {}
-                       bulk_operate(destCon, log_changes, "log")
-                       log_changes = []
-                       bb.message_box("All changes applied waiting for the next block of changes")
-                       bulk_time = time()
-
-               # Update resume token
-               destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
-               if (time() - print_time >= 10):
-                   bb.message_box(f"Replication lag is {millis} milliseconds")
-                   print_time = time()
+                       if (time()-bulk_time>=10):
+                          millis = 0
+                          cnt = 0
+                          bulk_operate(destCon, bulk_changes)
+                          bulk_changes = {}
+                          bulk_operate(destCon, log_changes, "log")
+                          log_changes = []
+                          bb.message_box("All changes applied waiting for the next block of changes")
+                          bulk_time = time()
+                          # Update resume token
+                          destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
+                          if (time() - print_time >= 10):
+                              bb.message_box(f"Replication lag is {millis} milliseconds")
+                              print_time = time()
+                   else:
+                       # Update resume token
+                       destCon[loggingDB][tokenCollection].update_one({"_id": tokenId}, {'$set': {'value': resume_token}})
+                       if (time() - print_time >= 10):
+                          bb.message_box(f"Replication lag is {millis} milliseconds")
+                          print_time = time()
    except Exception as err:
        exc_type, exc_obj, exc_tb = sys.exc_info()
        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
