@@ -164,6 +164,7 @@ def watchCluster(streamCon, destCon, settings):
                        # just to show the changestream object - comment out for less noise
                        # print(f'Modifying: {coll}, op: {u["operationType"]}, Id: {u["fullDocument"]["_id"]}')
                    if cnt > bulk_cnt:
+                       cnt = 0
                        bulk_operate(destCon, bulk_changes)
                        bulk_changes = {}
                        bulk_operate(destCon, log_changes, "log")
