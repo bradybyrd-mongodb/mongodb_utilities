@@ -84,8 +84,11 @@ def watchCluster(streamCon, destCon, settings):
    tokenCollection = settings["tokenCollection"]
    cluster = settings["cluster"]
    exclusion_list = settings["exclusionList"]
-
-   bb.message_box(f"Scanning Changes for cluster:  {cluster}", "title")
+   src = settings["source_uri"].split("@")[1]
+   dest = settings["dest_uri"].split("@")[1]
+   bb.message_box(f"STARTING: Scanning Changes for cluster: {cluster}", "title")
+   bb.logit(f'Source: {src}')
+   bb.logit(f'Destination: {dest}')
    try:
        # Set the resume token name to cluster.db.collection
        tokenId = cluster
@@ -121,6 +124,7 @@ def watchCluster(streamCon, destCon, settings):
 
                if u is not None:
                    if cnt == 0 or (time() - print_time >= 1):
+                       #v = streamCon["local"]["oplog.rs"].find({}, {"_id":0,"ts":1}).sort([("$natural",-1)]).limit(1).next()
                        v = streamCon["local"]["oplog.rs"].find({}, {"_id":0,"ts":1}).sort([("$natural",-1)]).limit(1).next()
                        last_ts = u["clusterTime"].time
                        millis = v["ts"].time-last_ts
