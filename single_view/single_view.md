@@ -49,9 +49,11 @@ single_view=# \d
 #  Demo Data Load
 
 1. Remove all the mongo stuff
-  db.party.deleteMany({})
+  python3 single_view.py action=reset_data
 2. Load the initial provider information, show the doc structure in Compass
   python3 single_view.py action=provider_sync
+2. Start the report
+  python3 single_view.py action=microservice
 3. Now add a different data set, show the additional source
   python3 single_view.py action=claim_sync
 5. Add rx_claim information, note additional name fields
@@ -59,16 +61,34 @@ single_view=# \d
 6. Add related claim information
   python3 single_view.py action=rx_claim_add
   python3 single_view.py action=medical_claim_add
+7. Now promote is_active to the canonical model
+  python3 single_view.py action=promote_field source=claim_customers field=is_active
+8. Now promote is_active to the canonical model
+  python3 single_view.py action=promote_field source=claim_customers field=title,suffix
+
 
 #-----------------------------------------------#
 #  Data Rationalization
 
 Principles:
   1. Preserve source data exactly
-  2. Enrich data completeness with a minimum(or no) downtime
+  2. Enrich data completeness with no downtime
   3.
 
 
+#----------------------------------#
+#  Meeting 2/11/22
+Hugo Tiexeira
+Mohit
+Chris
+Aman Ghandi
+Nilesh
+Sanjeev Kuls...
+
+6-7 releases per year
+  Limited by client-code delivery to the stores
+  Talk about confidence -
+Aman controls all database changes that get into production
 
 
 

@@ -14,6 +14,7 @@ import pprint
 import getopt
 import bson
 from bson.objectid import ObjectId
+from bson.json_util import dumps
 from bbutil import Util
 from pymongo import MongoClient
 import psycopg2
@@ -940,8 +941,9 @@ def append_claims():
             bulk_orig = []
         if last_mem_id != orig_doc["member_id"]:
             ans = mdb[database][parent_coll].update_one({f'sources.{parent_table}.member_id' : last_mem_id}, {
-                "$set" : {f'sources.{parent_table}.recent_claims' : bulk_docs},
-                "$addToSet" : {"medical_claims" : {"$each" : bulk_docs}}
+                "$set" : {f'sources.{parent_table}.recent_claims' : bulk_docs, "version" : "1.1"},
+                "$addToSet" : {"medical_claims" : {"$each" : bulk_docs}},
+                "$addToSet" : {"change_history" : {"last_modified_at": datetime.datetime.now(), "source" : table, "change" : "Added recent medical claims"}}
             })
             bb.logit(f'Bulk: {len(bulk_docs)}')
             bulk_docs = []
@@ -957,7 +959,8 @@ def append_claims():
     if len(bulk_docs) > 0:
         ans = mdb[database][parent_coll].update_one({f'sources.{parent_table}.member_id' : last_mem_id}, {
             "$set" : {f'sources.{parent_table}.recent_claims' : bulk_docs},
-            "$addToSet" : {"medical_claims" : {"$each" : bulk_docs}}
+            "$addToSet" : {"medical_claims" : {"$each" : bulk_docs}},
+            "$addToSet" : {"change_history" : {"last_modified_at": datetime.datetime.now(), "source" : table, "change" : "Added recent medical claims"}}
         })
         if len(bulk_orig) > 0:
             ans = mdb[database][coll].insert_many(bulk_orig)
@@ -1022,8 +1025,9 @@ def append_rx_claims():
             bulk_orig = []
         if last_mem_id != orig_doc["member_id"]:
             ans = mdb[database][parent_coll].update_one({f'sources.{parent_table}.rxmem_id' : last_mem_id}, {
-                "$set" : {f'sources.{parent_table}.recent_claims' : bulk_docs},
-                "$addToSet" : {"medical_claims" : {"$each" : bulk_docs}}
+                "$set" : {f'sources.{parent_table}.recent_claims' : bulk_docs, "version" : "1.2"},
+                "$addToSet" : {"medical_claims" : {"$each" : bulk_docs}},
+                "$addToSet" : {"change_history" : {"last_modified_at": datetime.datetime.now(), "source" : table, "change" : "Added recent rx claims"}}
             })
             bulk_docs = []
             bulk_docs.append(doc)
@@ -1037,7 +1041,8 @@ def append_rx_claims():
     if len(bulk_docs) > 0:
         ans = mdb[database][parent_coll].update_one({f'sources.{parent_table}.rxmem_id' : last_mem_id}, {
             "$set" : {f'sources.{parent_table}.recent_claims' : bulk_docs},
-            "$addToSet" : {"medical_claims" : {"$each" : bulk_docs}}
+            "$addToSet" : {"medical_claims" : {"$each" : bulk_docs}},
+            "$addToSet" : {"change_history" : {"last_modified_at": datetime.datetime.now(), "source" : table, "change" : "Added recent rx claims"}}
         })
         if len(bulk_orig) > 0:
             ans = mdb[database][coll].insert_many(bulk_orig)
@@ -1116,76 +1121,72 @@ def append_claims_addresses():
 #    finally:
 #        if conn is not None:
 
-# Sync from MSQL to Mongo
-def feed_manager():
-    feed_file = "kafka_feeds.json"
-    feeds = bb.read_json(feed_file)
+def promote_field():
+    """ Promote data from source to canonical model """
+    if "source" not in ARGS:
+        print("Send source=<source> field=<field_name>")
+        sys.exit(1)
+    source = ARGS["source"]
+    field_name = ARGS["field"]
     mdb = client_connection()
-    inc = 0
-    while True:
-        bb.message_box(f"Feed Manager (iter: {inc})")
-        for db in feeds:
-            result = sync_feed(mdb, db, feeds[db])
-            for k in result:
-                feeds[db]["tables"][k] = result[k]
-            bb.save_json(feed_file,feeds)
-        inc += 1
-        time.sleep(2)
+    database = settings["database"]
+    coll = "party"
+    action = f'Promoting: {field_name} from {source} to canonical model'
+    bb.message_box(action)
+    res = mdb[database][coll].find({})
+    bulk_docs = []
+    tot = 0
+    for doc in res:
+        #print(row)
+        chg = {}
+        for fld in field_name.split(","):
+            chg[fld] = doc["sources"][source][fld]
+        chg["version"] = increment_version(doc["version"])
+        bb.logit(f'Field: {chg}')
+        ans = mdb[database][coll].update_one({"_id" : doc["_id"]}, {
+        "$set" : chg,
+        "$addToSet" : {"change_history" : {"last_modified_at": datetime.datetime.now(), "source" : "promotion", "change" : action}}
+        })
+        tot += 1
+    bb.logit(f"All done - {tot} completed")
+    mdb.close()
 
+def increment_version(old_ver):
+    parts = old_ver.split(".")
+    return(f'{parts[0]}.{int(parts[1]) + 1}')
 
-def sync_feed(mdbconn, my_db, details):
-    db = mdbconn["customer360"]
-    conn = mysql_connection('mysql', my_db)
-    bb.logit(f"Sync: {my_db}")
-    id_field = details["id_field"]
-    tables = details["tables"]
-    cursor = conn.cursor()
-    result = {}
-    for table in tables:
-        coll_name = f'feed_{table}'
-        last_id = tables[table]
-        result[table] = last_id
-        sql = f'select * from {table} where id > {last_id} order by {id_field}'
-        bb.logit(f" - Query: {sql}")
-        cursor.execute(sql)
-        cnt = 0
-        tot = 0
-        col_names = [i[0] for i in cursor.description]
-        #print(col_names)
-        #bulk_docs = []
-        for row in cursor:
-            #bulk_docs = []
-            #print(row)
-            doc = OrderedDict()
-            for item in row:
-                field = col_names[row.index(item)]
-                #print(item.__class__.__name__)
-                if type(item) is datetime.date:
-                    doc[field] = datetime.datetime.combine(item, datetime.datetime.min.time())
-                elif type(item) is Decimal:
-                    doc[field] = bson.decimal128.Decimal128(str(item))
-                else:
-                    doc[field] = item
-            print(".", end="")
-            if tot % 100 == 0:
-                print(f"Total: {tot}")
-            tot += 1
-            doc[f'key_id_{my_db}'] = doc[id_field]
-            db[coll_name].insert_one(doc)
-            result[table] = doc[id_field]
-
-    cursor.close()
-    conn.close()
-    return result
-
-def merge_feeds():
+def reset_data():
+    """ reset data for Demo """
     mdb = client_connection()
-    db = mdb["customer360"]
-    bb.message_box("Merging Feeds")
-    batch = "feeds"
-    items = cc.batches[batch]
-    query_list(items,db)
+    database = settings["database"]
+    colls = ["party","claim"]
+    for coll in colls:
+        action = f'Wiping data in {coll}'
+        bb.logit(action)
+        res = mdb[database][coll].delete_many({})
+    mdb.close()
 
+# Runs a loop checking only v1.0 records
+def microservice_one():
+    mdb = client_connection()
+    database = settings["database"]
+    coll = "party"
+    bb.message_box("Microservice One - Executing", "title")
+    keep_going = True
+    icnt = 0
+    bb.logit("Running customer report (microservice one)")
+    while keep_going:
+        pipe = [{"$sample" : {"size" : 5}},
+            {"$project" : {"_id": 0, "member_id" : 1, "version": 1, "first_name": 1, "last_name": 1, "phone" : 1}}
+        ]
+        bb.message_box("Standard Report")
+        for item in mdb[database][coll].aggregate(pipe):
+            bb.logit(f'Member: {item["member_id"]} | "version" : {item["version"]} | Name: {item["last_name"]}, {item["first_name"]} |  Phone: {item["phone"]}')
+
+        print("\n...")
+        time.sleep(5)
+    print("Operation completed successfully!!!")
+    mdb.close()
 
 def check_file(type = "delete"):
     #  file loader.ctl
@@ -1277,6 +1278,12 @@ if __name__ == "__main__":
         append_claims()
     elif ARGS["action"] == "rx_claim_add":
         append_rx_claims()
+    elif ARGS["action"] == "promote_field":
+        promote_field()
+    elif ARGS["action"] == "reset_data":
+        reset_data()
+    elif ARGS["action"] == "microservice":
+        microservice_one()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()

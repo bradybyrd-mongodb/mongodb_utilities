@@ -87,8 +87,11 @@ def file_walk():
     conn = client_connection()
     db = conn[settings["database"]]
     doc = OrderedDict()
+    doc["files"] = []
     cnt = 0
     tot = 0
+    inc = 0
+    max_to_do = 10
     company = "base_folder"
     last_path = path
     base_parts = path.split("/")
@@ -105,6 +108,8 @@ def file_walk():
             file_arr.append(file_info(root,"dir"))
             bb.logit(f'# {root} - subdir')
             continue
+        if inc > max_to_do:
+            continue
         if root != last_path:
             bulk_docs.append(doc)
             doc = OrderedDict()
@@ -114,19 +119,29 @@ def file_walk():
             bb.logit(f'# Firm: {company}')
             bb.logit(f'# {root}')
             doc["customer"] = company
+            doc["last_modified_at"] = datetime.datetime.now()
+            doc["folder"] = root
+            doc["rep"] = ""
+            doc["status"] = "active"
+            doc["pulse"] = "Happy customer"
+            doc["quality"] = "good"
+            doc["notes"] = []
+            doc["files"] = []
         else:
             doc["customer"] = company
         doc["path"] = root
-        dir_doc = file_info(root, "dir")
-        db[collection].insert_one(dir_doc)
+        #dir_doc = file_info(root, "dir")
+        #db[collection].insert_one(dir_doc)
         for fil in files:
             if fil[0] == ".":
                 continue
             cur_file = os.path.join(root,fil)
             new_doc = (file_info(cur_file))
             file_arr.append(new_doc)
+            doc["files"].append(fil)
             if "_notes.md" in fil:
-                process_notes(fil, root)
+                for item in process_notes(fil, root):
+                    doc["notes"].append(item)
             bb.logit(cur_file)
             cnt += 1
             if cnt == batch_size:
@@ -142,6 +157,7 @@ def file_walk():
             bb.logit(f'Loading {len(bulk_docs)} more - total: {tot}')
             db[collection].insert_many(bulk_docs)
             #update_directories(bulk_docs, root)
+        inc += 1
 
     for i in jobs:
         i.join()
@@ -151,7 +167,8 @@ def file_walk():
 def process_notes(name,fullpath):
     # Break up notes file
     content = ""
-    with open(os.path.join(fullpath,name)) as f:
+    filepath = os.path.join(fullpath,name)
+    with open(filepath) as f:
         content = f.readlines()
     notes = []
     bb.logit(f'Parsing Notes: {name}')
@@ -165,9 +182,10 @@ def process_notes(name,fullpath):
         if "#---------------------------------" in line:
             bb.logit(f'header[{cnt}] - {line}')
             in_header = 1
-            note = {"date" : event_date, "subject": subject, "body" : body}
+            note = OrderedDict()
+            note = {"date" : event_date, "subject": subject, "body" : body, "source" : filepath}
             bb.logit(f'Adding: {note["date"]} - {note["subject"]}')
-            notes.append(copy.deepcopy(note))
+            notes.append(note)
             event_date = "unknown" #datetime.datetime.now()
             subject = "Generic Meeting"
             body = ""
@@ -207,14 +225,15 @@ def process_notes(name,fullpath):
                 body += line
                 bb.logit(f'body[{cnt}]')
         cnt += 1
-    bb.logit("---- Processed ----")
-    for k in notes:
-        print("#---------------------------#")
-        print(k["date"])
-        print(f'Subject: {k["subject"]}')
-        print(f'Body: \n{body}')
-        print(" ")
-
+    if False:
+        bb.logit("---- Processed ----")
+        for k in notes:
+            print("#---------------------------#")
+            print(k["date"])
+            print(f'Subject: {k["subject"]}')
+            #print(f'Body: \n{body}')
+            print(" ")
+    return(notes)
 
 def line_has_date(txt):
     #fin date string in line
