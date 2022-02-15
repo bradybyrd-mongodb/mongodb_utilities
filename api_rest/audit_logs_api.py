@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 #------------------------------------------------#
 #  Audit Logs API - Fetch audit logs from Atlas API
 #------------------------------------------------#
@@ -118,7 +119,7 @@ def rest_get(url, details = {}):
   headers = {"Content-Type" : "application/json", "Accept" : "application/json" }
   if "headers" in details:
       headers = details["headers"]
-  api_pair = bb.desecret(api_key).split(":")
+  api_pair = api_key.split(":")
   response = requests.get(url, auth=HTTPDigestAuth(api_pair[0], api_pair[1]), headers=headers)
   result = response.content.decode('ascii')
   if "verbose" in details:
@@ -133,7 +134,7 @@ def rest_get_file(url, details = {}):
   headers = {"Content-Type" : "application/json", "Accept" : "application/json" }
   if "headers" in details:
       headers = details["headers"]
-  api_pair = bb.desecret(api_key).split(":")
+  api_pair = api_key.split(":")
   local_filename = details["filename"]
   try:
       response = requests.get(url, auth=HTTPDigestAuth(api_pair[0], api_pair[1]), headers=headers, stream=True)
@@ -168,7 +169,7 @@ def rest_post(url, details = {}):
   headers = {"Content-Type" : "application/json", "Accept" : "application/json"}
   if "headers" in details:
       headers = details["headers"]
-  api_pair = bb.desecret(api_key).split(":")
+  api_pair = api_key.split(":")
   post_data = details["data"]
   response = requests.post(url, auth=HTTPDigestAuth(api_pair[0], api_pair[1]), data=json.dumps(post_data), headers=headers)
   result = response.json() #content.decode('ascii')
@@ -180,7 +181,7 @@ def rest_post(url, details = {}):
 
 def rest_update(url, details = {}):
   headers = {"Content-Type" : "application/json", "Accept" : "application/json"}
-  api_pair = bb.desecret(api_key).split(":")
+  api_pair = api_key.split(":")
   post_data = details["data"]
   if isinstance(post_data, str):
       post_data = json.loads(post_data)
@@ -200,8 +201,7 @@ if __name__ == "__main__":
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
-    api_key = settings["api_key"]
-    bb.add_secret(bb.desecret(api_key))
+    api_key = f'{settings["api_public_key"]}:{settings["api_private_key"]}'
     base_path = os.path.dirname(os.path.abspath(__file__))
 
     base_url = settings["base_url"]
