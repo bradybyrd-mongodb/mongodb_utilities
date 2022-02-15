@@ -26,6 +26,6 @@ The script will request the logs for each member of your replica set for the tim
 Logs will be saved in gzip format.  Hack this script if you want to push them to something like a MongoDb database of Splunk etc.
 Finally, make sure the audit_logs_api.py script is executable (chmod 755 audit_logs_api.py) and call if from a cron job (/etc/crontab).
 ```
-#  Download mongo logs:
-#    */60  * * * * ec2-user /home/ec2-user/audit_logs_api.py
+#  Download mongo logs every hour:
+#    */0  * * * * ec2-user /home/ec2-user/audit_logs_api.py
 ```
