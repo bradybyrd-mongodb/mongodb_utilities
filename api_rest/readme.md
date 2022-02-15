@@ -5,6 +5,7 @@
 The set of python scripts pulls logs from the Atlas rest API
 
 ####How it works:####
+
 The audit_logs_api.py script reads settings from the audit_logs_api.json file. Update these settings for your environment.
 ```
 {
