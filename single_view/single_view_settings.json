@@ -1,7 +1,6 @@
 {
-  "ouri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+  "zuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
   "uri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
-  "azureuri" : "mongodb+srv://azureeast1.vmwqj.mongodb.net",
   "localuri" : "mongodb://localhost:27017",
   "database" : "master_data",
   "collection" : "party",

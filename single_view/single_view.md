@@ -66,6 +66,8 @@ single_view=# \d
 8. Now promote is_active to the canonical model
   python3 single_view.py action=promote_field source=claim_customers field=title,suffix
 
+Start the cluster:
+  python3 /Users/brady.byrd/Documents/mongodb/dev/devops_atlas/DevOps_demo/atlas_rest.py action=resume name=MigrateDemo2
 
 #-----------------------------------------------#
 #  Data Rationalization

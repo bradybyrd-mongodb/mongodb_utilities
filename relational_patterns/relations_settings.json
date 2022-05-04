@@ -1,0 +1,20 @@
+{
+    "uri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+    "otheruri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+    "database" : "healthcare",
+    "collection" : "members",
+    "username" : "main_admin",
+    "password" : "bugsyBoo",
+    "postgres" : {
+      "host" : "localhost",
+      "username" : "bbadmin",
+      "password" : "bugsyBoo",
+      "database" : "healthcare",
+      "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+    },
+    "version" : "1.1",
+    "process_count" : 2,
+    "batch_size" : 5,
+    "batches" : 2,
+    "base_counter" : 1000000
+  }

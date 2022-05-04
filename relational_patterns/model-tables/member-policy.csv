@@ -1,0 +1,16 @@
+Full Name,Property Type,Optional/Required,Generator,Sample Data,Notes on Sample Data,Comments,Status/State,Change Notes,Maps to HCIF Class.Property,HCIF Base Class,HCIF Release
+MemberPolicy.MemberID,string,Required,"ID(""M-"")","""M"" + Incremental 1- n",Can do 1 Member Policy for each Member or can do random 1 - 4 Member Policies for each Member,,Approved,,,,7.21
+MemberPolicy.policyID,string,Required,fake.numerify('###-##-###'),Random,,,Approved,,,,7.21
+MemberPolicy.memberPolEffDate,date,Required,fake.future_date(),Random,,,Approved,,,,7.21
+MemberPolicy.memberPolTermDate,date,Optional,fake.past_date(),Random,,,Approved,,,,7.21
+MemberPolicy.PolicyRole,string,Required,"fake.random_element(('Subscriber', 'Spouse', 'Significant Other', 'Child', 'Other'))","Subscriber, Spouse, Significant Other, Child, Other",,Member role in this Policy,New,,,,7.21
+MemberPolicy.SelectedPlan,string,Optional,"""PL-"" + str(fake.random_int(min=0, max=1000))","""PL"" + Random 1-1000",,Policy plans,New,,,,7.21
+MemberPolicy.Network().ID,String,Optional,"""N-"" + str(fake.random_int(min=0, max=1000))","""N"" + Random 1-100",,"can be multiple Networks therefore the Array must include ID, Effective and End Date",Approved,,,,7.21
+MemberPolicy.Network().EffectiveDate,Date,Optional,fake.past_date(),Random,,,Approved,,,,7.21
+MemberPolicy.Network().EndDate,Date,Optional,fake.future_date(),Random,,,Approved,,,,7.21
+MemberPolicy.primaryCarePhysician().ID,String,Optional,"""P-"" + str(fake.random_int(min=0, max=500000))","""P"" + Random 1 - 500,000",,can be multiple PCP's ,Approved,,,,7.21
+MemberPolicy.primaryCarePhysician().EffectiveDate,Date,Optional,fake.past_date(),Random,,,Approved,,,,7.21
+MemberPolicy.primaryCarePhysician().EndDate,date,Optional,fake.future_date(),Random,,,Approved,,,,7.21
+MemberPolicy.COBPriority,string,Optional,"str(fake.random_int(min=1, max=5))",Random 1-5,,"Order of COB Processing 
+Need to verify Field Name",New,,,,7.21
+MemberPolicy.individualRelationshipCode,string,Required,"fake.random_element(('Subscriber', 'Spouse', 'Significant Other', 'Child', 'Other'))","Subscriber, Spouse, Significant Other, Child, Other",,,Delete,,,,7.21
