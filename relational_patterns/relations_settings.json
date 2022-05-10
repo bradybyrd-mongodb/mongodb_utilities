@@ -14,7 +14,12 @@
     },
     "version" : "1.1",
     "process_count" : 2,
-    "batch_size" : 5,
+    "batch_size" : 50,
     "batches" : 2,
-    "base_counter" : 1000000
+    "base_counter" : 1000000,
+    "data" : {
+      "provider" : {"path" : "model-tables/provider.csv", "size" : 50, "id_prefix" : "P-"},
+      "member" : {"path" : "model-tables/member.csv", "size" : 100, "id_prefix" : "M-"},
+      "claim" : {"path" : "model-tables/claim.csv", "size" : 500, "id_prefix" : "C-"}
+    }
   }

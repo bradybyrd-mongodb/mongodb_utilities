@@ -15,12 +15,12 @@ Member.Address().type,String,Optional,"fake.random_element(('Main', 'Summer', 'O
 Member.Address().effectiveDate,date,Optional,fake.past_date(),Random,,,,Approved,,,,7.21
 Member.Address().endDate,date,Optional,"fake.future_date(end_date=""+3y"")",Random,,,,Approved,,,,7.21
 Member.Address().wheelchairAccess,boolean,Optional,fake.boolean(chance_of_getting_true=10),"True, False",,,,Approved,,,,7.21
-Member.Communication.PhoneCommunication().phoneNumber,String,Optional,fake.phone_number(),Random,,,,Approved,,,,7.21
-Member.Communication.PhoneCommunication().type,String,Optional,"fake.random_element(('Home', 'Work', 'Cell', 'Fax', 'Pager'))","Home, Work, Cell, Fax, Pager",,,,Approved,,,,7.21
-Member.Communication.EmailCommunication().emailAddress,String,Optional,fake.email(),Random,,,,Approved,,,,7.21
-Member.Communication.EmailCommunication().type,String,Optional,"fake.random_element(('Home', 'Work'))","Home, Work",,,,Approved,,,,7.21
-Member.Communication.SocialMediaCommunication().SocialMediaID,String,Optional,fake.user_name(),Random,,,,Approved,,,,7.21
-Member.Communication.SocialMediaCommunication().SocialMediaType,String,Optional,"fake.random_element(('Facebook', 'Academia.edu', 'Bebo', 'CaringBridge', 'GoodReads', 'DailyStrength', 'Google+'))","Facebook, Academia.edu, Bebo, CaringBridge, GoodReads, DailyStrength, Google+",,,,Approved,,,,7.21
+Member.Communication().phoneNumber,String,Optional,fake.phone_number(),Random,,,,Approved,,,,7.21
+Member.Communication().phonetype,String,Optional,"fake.random_element(('Home', 'Work', 'Cell', 'Fax', 'Pager'))","Home, Work, Cell, Fax, Pager",,,,Approved,,,,7.21
+Member.Communication().emailAddress,String,Optional,fake.email(),Random,,,,Approved,,,,7.21
+Member.Communication().emailtype,String,Optional,"fake.random_element(('Home', 'Work'))","Home, Work",,,,Approved,,,,7.21
+Member.Communication().SocialMediaID,String,Optional,fake.user_name(),Random,,,,Approved,,,,7.21
+Member.Communication().SocialMediaType,String,Optional,"fake.random_element(('Facebook', 'Academia.edu', 'Bebo', 'CaringBridge', 'GoodReads', 'DailyStrength', 'Google+'))","Facebook, Academia.edu, Bebo, CaringBridge, GoodReads, DailyStrength, Google+",,,,Approved,,,,7.21
 Member.SSN,String,Optional,fake.ssn(),Random,,,,Approved,,,,7.21
 Member.dateOfBirth,date,Required,fake.date_of_birth(),Random,,,,Approved,,,,7.21
 Member.gender,String,Required,"fake.random_element(('Male', 'Female', 'Other'))","Male, Female, Other",,,,Approved,,,,7.21

@@ -1,5 +1,5 @@
 Full Name,Property Type,Optional/Required,Generator,Sample Data,Notes about Sample Data,Comments,Developer Comments,Status/State,Change Notes,Maps to HCIF Class.Property,HCIF Base Class,HCIF Release
-Provider.provider_id,String,Required,"ID(""P-"")","""P-"" + Incremental 1 - 1 million",,,,Approved,,Provider.pyWorkPartyUri,Data-Party,7.21
+Provider.provider_id,String,Required,"IDGEN.get(""P-"")","""P-"" + Incremental 1 - 1 million",,,,Approved,,Provider.pyWorkPartyUri,Data-Party,7.21
 Provider.federalTaxID,String,Optional,fake.ssn(),Random,,,,Approved,,Provider.FederalTaxID,PegaHC-Data-Party-Provider,7.21
 Provider.nationalProviderIdentifier,String,Required,"ID(""NPI-"")","""NPI-"" + Incremental 1 - 1 million",,,,Approved,,Provider.NationalProviderIdentifier,PegaHC-Data-Party-Provider,7.21
 Provider.NPIType,String,Required,"fake.random_element(('Individual', 'Institution'))","Individual, Institution",,,,Approved,,Provider.NPIType,PegaHC-Data-Party-Provider,7.21
