@@ -143,7 +143,7 @@ def worker_load(ipos, args):
     for domain in job_info:
         details = job_info[domain]
         template_file = details["path"]
-        base_count = settings["base_counter"] #+ details["size"] * ipos
+        base_counter = settings["base_counter"] #+ details["size"] * ipos
         IDGEN = id_generator({"seed" : base_counter, "size" : details["size"]})
         bb.message_box(domain, "title")
         table_info = ddl_from_template("info", pgconn, template_file, domain)
@@ -356,6 +356,53 @@ def execute_ddl(ddl_action = "info"):
         table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
     mycon.close
 
+def fix_provider_ids():
+    num_provs = 50
+    base_val = 1000000
+    query_sql = "select id from claim_claimline"
+    rsql = "SELECT floor(random()*(1000050-1000000+1))+1000000"
+    mycon = pg_connection()
+    cur = mycon.cursor()
+    cur2 = mycon.cursor()
+    try:
+        cur.execute(query_sql)
+        for item in cur:
+            print(f'item: {item}')
+            pid = f'P-{random.randint(base_val, base_val + num_provs)}'
+            rpid = f'P-{random.randint(base_val, base_val + num_provs)}'
+            sql = f'update claim_claimline set attendingprovider_id = \'{pid}\', operatingprovider_id = \'{pid}\', '
+            sql += f' orderingprovider_id = \'{rpid}\',  referringprovider_id = \'{rpid}\' '
+            sql += f"where id = {item[0]}"
+            #print(sql)
+            cur2.execute(sql)
+            mycon.commit()
+    except psycopg2.DatabaseError as err:
+        bb.logit(f'{err}')
+    cur.close()
+    mycon.close
+
+#----------------------------------------------------------------------#
+#   Queries
+#----------------------------------------------------------------------#
+def member_claims_api():
+    sql = {}
+    csql = "select c.*, m.firstname, m.last_name, m.dateofbirth, m.gender, clv.* "
+    csql += "from vw_claim_claimline clv INNER JOIN claim c where c.patient_id = '__MEMBER_ID__'"
+    csql += "INNER JOIN member m on m.member_id = c.patient_id "
+    csql += "INNER JOIN"
+    sql["member_claims"] = csql
+
+def claimline_vw():
+    vwsql = "create or replace view vw_claim_claimline AS \n"
+    sql = "select cl.*, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate, "
+    sql += "op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate, "
+    sql += "rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate, "
+    sql += "opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate "
+    sql += "from claim_claimline cl INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id "
+    sql += "INNER JOIN provider op on cl.orderingprovider_id = op.provider_id "
+    sql += "INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id "
+    sql += "INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id "
+
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
 #----------------------------------------------------------------------#
@@ -511,6 +558,8 @@ if __name__ == "__main__":
         pprint.pprint(result)
     elif ARGS["action"] == "execute_ddl":
         execute_ddl()
+    elif ARGS["action"] == "fix_providers":
+        fix_provider_ids()
     elif ARGS["action"] == "reset_data":
         reset_data()
     elif ARGS["action"] == "microservice":
