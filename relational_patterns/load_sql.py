@@ -17,6 +17,7 @@ import bson
 from bson.objectid import ObjectId
 from bson.json_util import dumps
 from bbutil import Util
+from id_generator import Id_generator
 from pymongo import MongoClient
 import psycopg2
 from faker import Faker
@@ -61,34 +62,6 @@ providers = ["cigna","aetna","anthem","bscbsma","kaiser"]
 '''
 settings_file = "relations_settings.json"
 
-class id_generator:
-    def __init__(self, details = {}):
-        self.tally = 100000
-        self.size = 1000
-        if "seed" in details:
-            self.tally = details["seed"]
-        if "size" in details:
-            self.size = details["size"]
-        self.base_value = self.tally
-        self.value_history = {}
-
-    def set(self, seed):
-        self.tally = seed
-        return(self.tally)
-
-    def random_value(self, prefix):
-        base = self.value_history[prefix]["base"]
-        top = self.value_history[prefix]["base"] + self.size
-        return(f'{prefix}{random.randint(base,top)}')
-
-    def get(self, prefix = "none"):
-        if prefix == "none":
-            prefix = random.choice(letters)
-            prefix += random.choice(letters)
-        result = f'{prefix}{self.tally}'
-        self.tally += 1
-        self.value_history[prefix] = {"base" : self.base_value, "current" : self.tally}
-        return result
 
 def load_postgres_data():
     # read settings and echo back
@@ -140,17 +113,20 @@ def worker_load(ipos, args):
     else:
         job_info = settings["data"]
     start_time = datetime.datetime.now()
+    #IDGEN = Id_generator({"seed" : base_counter, "size" : details["size"]})
     for domain in job_info:
         details = job_info[domain]
         template_file = details["path"]
-        base_counter = settings["base_counter"] #+ details["size"] * ipos
-        IDGEN = id_generator({"seed" : base_counter, "size" : details["size"]})
+        count = details["size"]
+        prefix = details["id_prefix"]
+        base_counter = settings["base_counter"] + count * ipos
         bb.message_box(domain, "title")
-        table_info = ddl_from_template("info", pgconn, template_file, domain)
+        table_info = ddl_from_template("none", pgconn, template_file, domain)
         batches = int(details["size"]/batch_size)
+        IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
         for k in range(batches):
             bb.logit(f"Loading batch: {k} - size: {batch_size}")
-            result = build_sql_batch_from_template(table_info, {"master" : domain, "connection" : pgconn, "template" : template_file, "batch" : k, "id_prefix" : details["id_prefix"], "base_count" : base_count})
+            result = build_sql_batch_from_template(table_info, {"master" : domain, "connection" : pgconn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter})
 
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
@@ -508,6 +484,9 @@ def sql_action(conn, action, tables):
             cursor.execute(sql)
         except psycopg2.DatabaseError as err:
             bb.logit(pprint.pformat(err))
+            print(sql)
+            conn.commit()
+            bb.logit(f"recovering...")
         else:
             print("OK")
             conn.commit()
@@ -539,7 +518,7 @@ if __name__ == "__main__":
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
     base_counter = settings["base_counter"]
-    IDGEN = id_generator({"seed" : base_counter})
+    IDGEN = Id_generator({"seed" : base_counter})
     id_map = defaultdict(int)
     MASTER_CUSTOMERS = []
     if "wait" in ARGS:
@@ -560,8 +539,6 @@ if __name__ == "__main__":
         execute_ddl()
     elif ARGS["action"] == "fix_providers":
         fix_provider_ids()
-    elif ARGS["action"] == "reset_data":
-        reset_data()
     elif ARGS["action"] == "microservice":
         microservice_one()
     else:

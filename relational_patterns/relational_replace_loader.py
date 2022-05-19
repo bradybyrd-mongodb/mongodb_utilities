@@ -15,8 +15,7 @@ import pprint
 import bson
 from bson.objectid import ObjectId
 from bbutil import Util
-#import vcf_queries as cc
-#import pysam
+from id_generator import Id_generator
 import datetime
 from pymongo import MongoClient
 
@@ -35,35 +34,6 @@ Many-Many => Assymetric embedding
 
 '''
 settings_file = "relations_settings.json"
-
-class id_generator:
-    def __init__(self, details = {}):
-        self.tally = 100000
-        self.size = 100
-        if "seed" in details:
-            self.tally = details["seed"]
-        if "size" in details:
-            self.size = details["size"]
-        self.base_value = self.tally
-        self.value_history = {}
-
-    def set(self, seed):
-        self.tally = seed
-        return(self.tally)
-
-    def random_value(self, prefix):
-        base = self.value_history[prefix]["base"]
-        top = self.value_history[prefix]["base"] + self.size
-        return(f'{prefix}{random.randint(base,top)}')
-
-    def get(self, prefix = "none"):
-        if prefix == "none":
-            prefix = random.choice(letters)
-            prefix += random.choice(letters)
-        result = f'{prefix}{self.tally}'
-        self.tally += 1
-        self.value_history[prefix] = {"base" : self.base_value, "current" : self.tally}
-        return result
 
 def synth_data_load():
     # python3 relational_replace_loader.py action=load_data
@@ -99,18 +69,19 @@ def synth_data_load():
 
 def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
+    cur_process = multiprocessing.current_process()
+    pid = cur_process.pid
     conn = client_connection()
-    bb.message_box("Loading Synthetic Data", "title")
+    bb.message_box(f"[{pid}] Worker Data", "title")
     settings = bb.read_json(settings_file)
     batch_size = settings["batch_size"]
     batches = settings["batches"]
-    cur_process = multiprocessing.current_process()
-    bb.logit('Current process is %s %s' % (cur_process.name, cur_process.pid))
+    bb.logit('Current process is %s %s' % (cur_process.name, pid))
     #file_log(f'New process {cur_process.name}')
     start_time = datetime.datetime.now()
     collection = settings["collection"]
     db = conn[settings["database"]]
-    id_num = settings["base_counter"] + (ipos * batch_size * batches)
+    #IDGEN = Id_generator({"seed" : base_counter, "size" : count})
     bulk_docs = []
     ts_start = datetime.datetime.now()
     cur_time = ts_start
@@ -125,19 +96,23 @@ def worker_load(ipos, args):
     # Loop through collection files
     for domain in job_info:
         details = job_info[domain]
+        prefix = details["id_prefix"]
+        count = details["size"]
         template_file = details["path"]
-        base_counter = settings["base_counter"] #+ details["size"] * ipos
-        IDGEN = id_generator({"seed" : base_counter, "size" : details["size"]})
-        bb.message_box(domain, "title")
+        base_counter = settings["base_counter"] + count * ipos
+        IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
+        bb.message_box(f'[{pid}] {domain} - base: {base_counter}', "title")
+        tot = 0
         batches = int(details["size"]/batch_size)
         for k in range(batches):
-            bb.logit(f"Loading batch: {k} - size: {batch_size}")
-            bulk_docs = build_batch_from_template(domain, {"connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : details["id_prefix"], "base_count" : base_counter})
+            #bb.logit(f"[{pid}] - {domain} Loading batch: {k} - size: {batch_size}")
+            bulk_docs = build_batch_from_template(domain, {"connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter})
             #print(bulk_docs)
             db[domain].insert_many(bulk_docs)
+            tot += len(bulk_docs)
             bulk_docs = []
             cnt = 0
-            bb.logit(f"{cur_process.name} Inserting Bulk, Total:{tot}")
+            bb.logit(f"[{pid}] - {domain} Loading batch: {k} - size: {batch_size}, Total:{tot}\nIDGEN - ValueHist: {IDGEN.value_history}")
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
@@ -206,40 +181,109 @@ def synth_data_update():
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
-    bb.logit(f"{cur_process.name} - Execution total took {execution_time} seconds")
+    bb.logit(f"{main_process.name} - Execution total took {execution_time} seconds")
 
 def worker_updater(ipos):
-    #  Reads EMR sample file and finds values
-    conn = client_connection()
-    bb.message_box("Updating EMR Data", "title")
-    batches = settings["batches"]
+    #  Updates documents and finds values
     cur_process = multiprocessing.current_process()
+    pid = cur_process.pid
+    conn = client_connection()
+    bb.message_box(f"[{pid}] Worker Data", "title")
+    settings = bb.read_json(settings_file)
+    base_counter = settings["base_counter"]
+    procs = settings["process_count"]
     bb.logit('Current process is %s %s' % (cur_process.name, cur_process.pid))
-    file_log(f'New process {cur_process.name}')
     start_time = datetime.datetime.now()
-    collection = settings["collection"]
-    db = conn[settings["database"]]
-    num = len(cc.doctors)
-    cnt = 0
-    tot = 0
-    for doctor in cc.doctors:
-        somethini = "ooo"
-
-        ids = list(db[collection].find({},{"_id" : 1}).skip(tot).limit(500))
-        db[collection].update_many({"_id" : {"$in" : ids}}, {"referring_physician" : doctor})
-        tot += 500
-        bb.logit(f"{cur_process.name} Updating, Total:{tot}")
-
+    db = settings["database"]
+    job_info = settings["data"]
+    # Loop through collection files
+    for domain in job_info:
+        details = job_info[domain]
+        if "thumbnail" in details:
+            prefix = details["id_prefix"]
+            count = details["size"]
+            low_id = base_counter + (count * ipos)
+            high_id = base_counter + (count * (ipos + 1))
+            criteria = {"$and" : [{f'{domain}_id' : {"$gt" : f'{prefix}{low_id}'}},{f'{domain}_id' : {"$lte" : f'{prefix}{high_id}'}}]}
+            tasks = details["thumbnail"]
+            bb.message_box(f'[{pid}] {domain}', "title")
+            for item in tasks:
+                if item["type"] == "many":
+                    update_related_many(domain,conn[db],item,criteria)
+                else:
+                    update_related_one(domain,conn[db],item,criteria)
+            tot = 0
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
     conn.close()
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
+def update_related_one(domain, db, update_info, crit):
+    bb.logit(f'UpdatingOne: {update_info}, crit: {crit}')
+    cursor = db[domain].find(crit)
+    interval = 10
+    inc = 0
+    for doc in cursor:
+        cur_qry = eval(update_info["find_query"])
+        adoc = db[update_info["coll"]].find_one(cur_qry)
+        if adoc is not None:
+            newdoc = {}
+            #bb.message_box("DOC")
+            #pprint.pprint(doc)
+            #bb.message_box(f"ADOC - {cur_qry}")
+            #pprint.pprint(adoc)
+            for item in update_info["fields"]:
+                res = adoc
+                pnam = ""
+                for level in item.split("."):
+                    if level.isdigit():
+                        level = int(level)
+                    else:
+                        pnam += level
+                    res = res[level]
+
+                newdoc[pnam] = res
+            db[domain].update_one({"_id": doc["_id"]},{"$set": {update_info["name"] : newdoc}})
+        if inc % interval == 0:
+            bb.logit(f"UpdatingOne: {inc} completed")
+        inc += 1
+    bb.logit(f"All done - {inc} completed")
+
+def update_related_many(domain, db, update_info, crit):
+    bb.logit(f'UpdatingMany: {update_info}, crit: {crit}')
+    cursor = db[domain].find(crit)
+    interval = 10
+    inc = 0
+    for doc in cursor:
+        many_crit = eval(update_info["find_query"])
+        cntq = db[update_info["coll"]].count_documents(many_crit)
+        cur2 = db[update_info["coll"]].find(many_crit)
+        newd = []
+        for adoc in cur2:
+            newdoc = {}
+            for item in update_info["fields"]:
+                res = adoc
+                pnam = ""
+                for level in item.split("."):
+                    if level.isdigit():
+                        level = int(level)
+                    else:
+                        pnam += level
+                    res = res[level]
+                newdoc[pnam] = res
+            newd.append(newdoc)
+        db[domain].update_one({"_id": doc["_id"]},{"$set": {update_info["name"] : newd}})
+        if inc % interval == 0:
+            bb.logit(f'UpdatingMany: {inc} completed - many: db.{update_info["coll"]}.find({many_crit}), cnt: {cntq}')
+        inc += 1
+    bb.logit(f"All done - {inc} completed")
+
+
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
 #----------------------------------------------------------------------#
-stripProp = lambda str: re.sub(r'\s+', '', (str[0].upper() + str[1:].strip('()')))
+stripProp = lambda str: re.sub(r'\s+', '', (str.strip('()')))
 
 def ser(o):
     """Customize serialization of types that are not JSON native"""
@@ -263,13 +307,13 @@ def procpath(path, counts, generator):
         # Return a nested page, of the specified type, populated recursively.
         return {stripped: procpath(path[1:], counts, generator)}
 
-def zipmerge(the_merger, path, base, nxt):
-    """Strategy for deepmerge that will zip merge two lists. Assumes lists of equal length."""
-    return [ the_merger.merge(base[i], nxt[i]) for i in range(0, len(base)) ]
-
 def ID(key):
     id_map[key] += 1
     return key + str(id_map[key]+base_counter)
+
+def zipmerge(the_merger, path, base, nxt):
+    """Strategy for deepmerge that will zip merge two lists. Assumes lists of equal length."""
+    return [ the_merger.merge(base[i], nxt[i]) for i in range(0, len(base)) ]
 
 def local_geo():
     coords = fake.local_latlng('US', True)
@@ -290,6 +334,33 @@ def fix_member_id():
         db["member"].update_one({"_id": adoc["_id"]},{"$set": {"Member_id" : new_id}})
         bb.logit(f"Updating: {inc} completed")
         inc += 1
+
+def id_manager(pnum, args):
+    cur_process = multiprocessing.current_process()
+    module = "IDGEN"
+    prefix = module[0].upper() + "-"
+    id = f'{prefix}|{cur_process.pid}'
+    queues = args["queues"]
+    iters = settings["iters"]
+    base_counter = settings["base_counter"]
+    bb.message_box(f"[{cur_process.pid}] {module}", "title")
+    bb.logit('Current process is %s %s' % (cur_process.name, cur_process.pid))
+    IDGEN = Id_generator({"seed" : base_counter})
+    doit = True
+    while doit:
+        for conn in queues:
+            pip = conn[1]
+            req = pip.recv()
+            bb.logit(f'{module} - {req}')
+            if req[0] == "stop":
+                doit = False
+            elif req[1] == "pass":
+                doit = True
+            elif req[1] == "get":
+                # [id, "get", prefix, iters]
+                ans = IDGEN.get(req[2], req[3])
+                req = pip.send([req[0], "response", ans])
+            #time.sleep(.05)
 
 def load_query():
     # read settings and echo back
@@ -351,7 +422,7 @@ if __name__ == "__main__":
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
     base_counter = settings["base_counter"]
-    IDGEN = id_generator({"seed" : base_counter})
+    IDGEN = Id_generator({"seed" : base_counter})
     id_map = defaultdict(int)
     if "wait" in ARGS:
         interval = int(ARGS["wait"])
@@ -366,8 +437,8 @@ if __name__ == "__main__":
         load_template()
     elif ARGS["action"] == "load_data":
         synth_data_load()
-    elif ARGS["action"] == "fix_member_id":
-        fix_member_id()
+    elif ARGS["action"] == "update_relations":
+        synth_data_update()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()
