@@ -126,7 +126,7 @@ def worker_load(ipos, args):
         IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
         for k in range(batches):
             bb.logit(f"Loading batch: {k} - size: {batch_size}")
-            result = build_sql_batch_from_template(table_info, {"master" : domain, "connection" : pgconn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter})
+            result = build_sql_batch_from_template(table_info, {"master" : domain, "connection" : pgconn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter, "size" : count})
 
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
@@ -142,12 +142,12 @@ def build_sql_batch_from_template(tables, details = {}):
     template_file = details["template"]
     batch_size = settings["batch_size"]
     base_counter = details["base_count"]
+    num_procs = settings["process_count"]
     batch = details["batch"]
-    id_prefix = details["id_prefix"]
     master_table = details["master"]
     master_id = f'{master_table}_id'.lower()
     cnt = 0
-    bulk = []
+    tab_types = table_types(tables)
     bb.logit(f'Master: {master_table} - building: {batch_size}')
     master_ids = []
     rec_counts = {}
@@ -157,11 +157,19 @@ def build_sql_batch_from_template(tables, details = {}):
     for item in tables:
         attrs = tables[item]
         cur_table = item
-        is_master = attrs["parent"] == "" #True if cur_table.lower() == master_table.lower() else False
-        num_procs = settings["process_count"]
+        parent = attrs["parent"]
+        table_type = tab_types[cur_table]
         recs = []
         bb.logit(f'Table: {cur_table} building data')
         database = attrs["database"]
+        if table_type == "submaster":
+            prefx = cur_table[0:2].upper() + "-"
+            count = details["size"] * num_procs
+            IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefx})
+        elif table_type == "none" and len(parent.split("_")) > 1:
+            id_prefix = parent[0:2].upper() + "-"
+        else:
+            id_prefix = details["id_prefix"]
         counts = random.randint(1, 5) if len(cur_table.split("_")) > 1 else 1
         bb.logit(f'Table: {cur_table} building data, factor: {counts}')
         sql = attrs["insert"]
@@ -174,20 +182,28 @@ def build_sql_batch_from_template(tables, details = {}):
                 idpos = 0
             for cur_field in attrs["fields"]:
                 #bb.logit(f'Field: {cur_field} - gen {attrs["generator"][fld_cnt]}')
-                if is_master and cur_field.lower() == master_id:
+                if table_type == "master" and cur_field.lower() == master_id:
+                    # master e.g. claim_id
                     g_id = eval(attrs["generator"][fld_cnt])
                     cur_val = g_id
                     master_ids.append(g_id)
-                    bb.logit(f'[{cnt}] - GlobalID = {g_id}')
+                    #bb.logit(f'[{cnt}] - GlobalID = {g_id}')
                     #is_master = False
                     fld_cnt += 1
-                elif cur_field.lower().replace("_id","") == attrs["parent"].lower():
-                    #bb.logit(f'IDPOSsub')
-                    cur_val = random.randint(1,base_counter + rec_counts[attrs["parent"]])
-                    cur_val = f'{attrs["parent"][0].upper()}-{str(cur_val)}'
                 elif cur_field.lower() == master_id:
                     #bb.logit(f'IDPOS: {idpos}')
                     cur_val = master_ids[idpos]
+                elif cur_field.lower().replace("_id","") == attrs["parent"].lower():
+                    # child of e.g. claim_claimline.claim_id
+                    cur_val = IDGEN.random_value(id_prefix)
+                    #bb.logit(f'IDsub[{cur_val}] {cur_table} - {attrs["parent"]}\n{IDGEN.value_history}')
+                elif cur_field.lower() == f'{cur_table.lower()}_id':
+                    #Internal id for table
+                    prefx = cur_table[0:2].upper() + "-"
+                    if table_type == "submaster":
+                        cur_val = IDGEN.get(prefx)
+                    else:
+                        cur_val = f'{prefx}{random.randint(1000,1000000)}'
                 else:
                     cur_val = eval(attrs["generator"][fld_cnt])
                     if type(cur_val) is bool:
@@ -200,7 +216,23 @@ def build_sql_batch_from_template(tables, details = {}):
         record_loader(tables,cur_table,recs,details["connection"])
         bb.logit(f'{batch_size} {cur_table} batch complete (tot = {cnt})')
     bb.logit(f'{cnt} records for {database} complete')
-    return(bulk)
+    return cnt
+
+def table_types(table_info):
+    res = {}
+    subs = []
+    for tab in table_info:
+        if table_info[tab]["parent"] not in subs:
+            subs.append(table_info[tab]["parent"])
+            
+    for tab in table_info:
+        res[tab] = "none"
+        attrs = table_info[tab]
+        if attrs["parent"] == "":
+            res[tab] = "master"
+        elif tab in subs:
+            res[tab] = "submaster"
+    return res
 
 def ddl_from_template(action, pgconn, template, domain):
     database = settings["postgres"]["database"]
@@ -219,10 +251,14 @@ def ddl_from_template(action, pgconn, template, domain):
             last_table = table
             fkey = ""
             flds = [field]
-            if len(table.split("_")) == 2:
+            if len(table.split("_")) > 1:
                 #  Add a parent_id field
                 new_field = f'{row["parent"]}_id'
                 fkey = f'  {new_field} varchar(20) NOT NULL,'
+                flds.append(new_field)
+                #  Add a self_id field
+                new_field = f'{table}_id'
+                fkey += f'  {new_field} varchar(20) NOT NULL,'
                 flds.append(new_field)
             ddl = (
                 f'CREATE TABLE {table} ('
@@ -299,11 +335,11 @@ def fields_from_template(template):
                 result["table"] = f'{path[0]}_{path[1]}'
                 result["parent"] = master
             elif depth == 4:
-                result["table"] = f'{path[1]}_{path[2]}'
+                result["table"] = f'{path[0]}_{path[1]}_{path[2]}'
                 result["parent"] = f'{path[0]}_{path[1]}'
             elif depth == 5:
-                result["table"] = f'{path[2]}_{path[3]}'
-                result["parent"] = f'{path[1]}_{path[2]}'
+                result["table"] = f'{path[0]}_{path[1]}_{path[2]}_{path[3]}'
+                result["parent"] = f'{path[0]}_{path[1]}_{path[2]}'
             ddl.append(result)
     return(ddl)
 
@@ -437,8 +473,8 @@ def record_loader(tables, table, recs, nconn = False):
         for k in record:
             stg.append(record[k])
         vals.append(tuple(stg))
-    print(sql)
-    print(vals)
+    #print(sql)
+    #print(vals)
     try:
         cur.executemany(sql, vals)
         conn.commit()
