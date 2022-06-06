@@ -393,6 +393,29 @@ def fix_provider_ids():
     cur.close()
     mycon.close
 
+def add_primary_provider_ids():
+    num_provs = 200
+    base_val = 1000000
+    query_sql = "select m.id, m.member_id from member m;"
+    mycon = pg_connection()
+    cur = mycon.cursor()
+    update_cur = mycon.cursor()
+    try:
+        cur.execute(query_sql)
+        for item in cur:
+            #print(f'item: {item}')
+            pid = f'P-{random.randint(base_val, base_val + num_provs)}'
+            sql = f'update member set primaryprovider_id = \'{pid}\' '
+            sql += f"where id = {item[0]}"
+            #print(sql)
+            bb.logit(f'Update: {item[1]}')
+            update_cur.execute(sql)
+            mycon.commit()
+    except psycopg2.DatabaseError as err:
+        bb.logit(f'{err}')
+    cur.close()
+    mycon.close
+
 #----------------------------------------------------------------------#
 #   Queries
 #----------------------------------------------------------------------#
@@ -414,6 +437,84 @@ def claimline_vw():
     sql += "INNER JOIN provider op on cl.orderingprovider_id = op.provider_id "
     sql += "INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id "
     sql += "INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id "
+
+def member_api():
+    # show a single member and recent claims
+    # include the primary provider
+    d_member = {}
+    sql = "select m.*, p.nationalprovideridentifier, p.firstname, p.lastname, p.dateofbirth, p.gender from member m INNER JOIN provider p on p.provider_id = m.primaryprovider_id;" # INNER JOIN providers p on m.primaryProvider_id = p.provider_id"
+    result = sql_query("healthcare", sql)
+    k = 0
+    for item in result:
+        if k < 20:
+            pprint.pprint(item)
+        k += 1
+
+def get_claims(conn = ''):
+    conn = pg_connection()
+    sql = "select * from claim"
+    query_result = newsql_query(sql,conn)
+    num_results = query_result["num_records"]
+    print(f'Claims: {num_results}')
+    ids = []
+    for row in query_result["data"]:
+        ids.append(row[1])
+    result = get_claimlines(conn,ids)
+    data = result["data"]
+    inc = 0
+    for k in data:
+        print(f'#-------------------- {k} --------------------------')
+        pprint.pprint(data[k])
+        inc += 1
+        if inc > 10:
+            break
+    conn.close()
+      
+def get_claimlines(conn,claim_ids):
+    #payment_fields = sql_helper.column_names("claim_claimline_payment", conn)
+    payment_fields = column_names("claim_claimline_payment", conn)
+    pfields = ', p.'.join(payment_fields)
+    ids_list = '\',\''.join(claim_ids)
+    sql = f'select c.*, p.{pfields} from claim_claimline c '
+    sql += 'INNER JOIN claim_claimline_payment p on c.claim_claimline_id = p.claim_claimline_id '
+    sql += f'WHERE c.claim_id IN (\'{ids_list}\') '
+    sql += "order by c.claim_id"
+    #query_result = sql_helper.sql_query(sql, conn)
+    query_result = newsql_query(sql,conn)
+    num_results = query_result["num_records"]
+    #claimline_fields = sql_helper.column_names("claim_claimline", conn)
+    claimline_fields = column_names("claim_claimline", conn)
+    num_cfields = len(claimline_fields)
+    # Check if the records are found
+    result = {"num_records" : num_results, "data" : []}
+    data = {}
+    if num_results > 0:
+        last_id = "zzzzzz"
+        firsttime = True
+        for row in query_result["data"]:
+            cur_id = row[1]
+            doc = {}
+            if cur_id != last_id:
+                if not firsttime:
+                    data[last_id] = docs
+                    docs = []
+                else:
+                    docs = []
+                    firsttime = False
+                last_id = cur_id
+            #print(row)
+            for k in range(num_cfields):
+                #print(claimline_fields[k])
+                doc[claimline_fields[k]] = row[k]
+            sub_doc = {}
+            for k in range(len(payment_fields)):
+                #print(payment_fields[k])
+                sub_doc[payment_fields[k]] = row[k + num_cfields]
+            doc["payment"] = sub_doc
+            docs.append(doc)
+            
+    result["data"] = data
+    return result
 
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
@@ -478,12 +579,31 @@ def record_loader(tables, table, recs, nconn = False):
     try:
         cur.executemany(sql, vals)
         conn.commit()
-        print(f'{cur.rowcount} inserted')
+        bb.logit(f'{cur.rowcount} inserted')
     except psycopg2.DatabaseError as err:
         bb.logit(f'{table} - {err}')
     cur.close()
     if not nconn:
         conn.close()
+
+def sql_query(database, sql, nconn = False):
+    # insert_into table fields () values ();
+    if nconn:
+        conn = nconn
+    else:
+        conn = pg_connection('postgres', database)
+    cur = conn.cursor()
+    #print(sql)
+    try:
+        cur.execute(sql)
+        bb.logit(f'{cur.rowcount} records')
+    except psycopg2.DatabaseError as err:
+        bb.logit(f'{sql} - {err}')
+    result = cur.fetchall()
+    cur.close()
+    if not nconn:
+        conn.close()
+    return result
 
 def value_codes(flds, special = {}):
     result = ""
@@ -497,6 +617,37 @@ def value_codes(flds, special = {}):
         else:
             result += f', {fmt}'
     return(result)
+
+def newsql_query(sql, conn):
+    # Simple query executor
+    cur = conn.cursor()
+    #print(sql)
+    try:
+        cur.execute(sql)
+        row_count = cur.rowcount
+        print(f'{row_count} records')
+    except psycopg2.DatabaseError as err:
+        print(f'{sql} - {err}')
+    result = {"num_records" : row_count, "data" : cur.fetchall()}
+    cur.close()
+    return result
+
+def column_names(table, conn):
+    sql = f'SELECT column_name FROM information_schema.columns WHERE table_schema = \'public\' AND table_name   = \'{table}\''
+    cur = conn.cursor()
+    #print(sql)
+    try:
+        cur.execute(sql)
+        row_count = cur.rowcount
+        print(f'{row_count} columns')
+    except psycopg2.DatabaseError as err:
+        print(f'{sql} - {err}')
+    rows = cur.fetchall()
+    result = []
+    for i in rows:
+        result.append(i[0])
+    cur.close()
+    return result
 
 def increment_version(old_ver):
     parts = old_ver.split(".")
@@ -574,7 +725,11 @@ if __name__ == "__main__":
     elif ARGS["action"] == "execute_ddl":
         execute_ddl()
     elif ARGS["action"] == "fix_providers":
-        fix_provider_ids()
+        add_primary_provider_ids()
+    elif ARGS["action"] == "query_test":
+        member_api()
+    elif ARGS["action"] == "claim":
+        get_claims()
     elif ARGS["action"] == "microservice":
         microservice_one()
     else:

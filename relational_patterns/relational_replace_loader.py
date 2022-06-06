@@ -77,7 +77,6 @@ def worker_load(ipos, args):
     batch_size = settings["batch_size"]
     batches = settings["batches"]
     bb.logit('Current process is %s %s' % (cur_process.name, pid))
-    #file_log(f'New process {cur_process.name}')
     start_time = datetime.datetime.now()
     collection = settings["collection"]
     db = conn[settings["database"]]
@@ -279,6 +278,27 @@ def update_related_many(domain, db, update_info, crit):
         inc += 1
     bb.logit(f"All done - {inc} completed")
 
+def add_primary_provider_ids():
+    num_provs = 200
+    base_val = 1000000
+    query = {}
+    conn = client_connection()
+    bb.message_box(f" Updater", "title")
+    db = conn[settings["database"]]
+    recs = db["member"].find(query)
+    for item in recs:
+        #print(f'item: {item}')
+        #pid = f'P-{random.randint(base_val, base_val + num_provs)}'
+        if "primaryProvider_id" in item:
+            pid = item["primaryProvider_id"]
+            prov = db["provider"].find_one({"provider_id" : pid})
+            if prov is not None:
+                prov_doc = {"primaryProvider" : {"provider_id" : pid, "nationalProviderIdentifier" : prov["nationalProviderIdentifier"], "firstName" : prov["firstName"], "lastName": prov["lastName"], "dateOfBirth": prov["dateOfBirth"], "gender" : prov["gender"]}}
+                db["member"].update_one({"_id" : item["_id"]},{"$set" : prov_doc, "$unset" : {"primaryProvider_id": ""}})
+        #print(sql)
+        bb.logit(f'Update: {item["member_id"]}')
+            
+
 
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
@@ -439,6 +459,8 @@ if __name__ == "__main__":
         synth_data_load()
     elif ARGS["action"] == "update_relations":
         synth_data_update()
+    elif ARGS["action"] == "update_provider":
+        add_primary_provider_ids()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()

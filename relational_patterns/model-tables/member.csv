@@ -26,6 +26,7 @@ Member.dateOfBirth,date,Required,"fake.past_datetime() - datetime.timedelta(365*
 Member.gender,String,Required,"fake.random_element(('Male', 'Female', 'Other'))","Male, Female, Other",,,,Approved,,,,7.21
 Member.ethnicity,String,Optional,"fake.random_element(('White', 'American Indian', 'Asian', 'Hispanic', 'African American'))","White, American Indian, Asian, Hispanic, African American",,,,Approved,,,,7.21
 Member.maritialStatus,String,Optional,"fake.random_element(('Married', 'Widow', 'Single'))","Married, Widow, Single",,,,Approved,,,,7.21
+Member.primaryProvider_id,String,Optional,"IDGEN.random_value(""P-"")",,,,,Approved,,,,7.21
 Member.EffectiveDate,Date,Optional,fake.past_datetime(),Random,,,,Approved,,,,7.21
 Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+8y"")",Random,,,,Approved,,,,7.21
 Member.languages().language,String,Optional,"fake.random_element(('Albanian', 'Farsi', 'Hindi', 'Korean', 'Polish', 'Spanish', 'Arabic', 'French', 'Hmong', 'Laotian', 'Portuguese', 'Tagalog', 'Armenian', 'German', 'Italian', 'Lithuanian', 'Punjabi', 'Thai', 'Bengali', 'Greek', 'Japanese', 'Malay', 'Romanian', 'Turkish', 'Burmese', 'Haitian Creole'))","Albanian,Farsi,Hindi,,Korean,Polish,Spanish,Arabic,French,Hmong,Laotian,Portuguese,Tagalog,Armenian,German,Italian,Lithuanian,Punjabi,Thai,Bengali,Greek,Japanese,Malay,Romanian,Turkish,Burmese,Haitian Creole",,Member can have many Languages and each Language can have many usages,,Approved,,,,7.21

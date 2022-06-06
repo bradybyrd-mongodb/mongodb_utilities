@@ -46,3 +46,4 @@ class Id_generator:
         new = {"base" : cur["base"], "prev" : cur["cur"], "cur" : cur["cur"] + amount, "size" : cur["size"]}
         self.value_history[prefix] = new
         return f'{prefix}{new["prev"]}'
+
