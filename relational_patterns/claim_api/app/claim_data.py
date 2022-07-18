@@ -138,7 +138,7 @@ def fetch_claim_by_id(claim_id):
         query = {"claim_id" : claim_id}
 
         # Fetch all the record(s)
-        records_fetched = collection.find_one({"claim_id" : claim_id})
+        records_fetched = collection.find_one(query)
         print("Results: " + dumps(records_fetched))
         print("Finding: " + claim_id)
         

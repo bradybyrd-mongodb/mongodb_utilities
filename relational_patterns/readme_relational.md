@@ -73,3 +73,6 @@ Common Relational Use Cases
         - unit_price
         - inventory
         - next_date
+
+
+ssh -i ../../../servers/bradybyrd_mdb_key.pem ec2-user@34.207.253.18

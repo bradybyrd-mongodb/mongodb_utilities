@@ -368,6 +368,57 @@ def execute_ddl(ddl_action = "info"):
         table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
     mycon.close
 
+def create_foreign_keys():
+    #  Reads settings file and finds values
+    cur_process = multiprocessing.current_process()
+    bb.message_box(f'({cur_process.name}) Creating Foreign Keys in SQL', "title")
+    start_time = datetime.datetime.now()
+    pgconn = pg_connection()
+    settings = bb.read_json(settings_file)
+    cur = pgconn.cursor()
+    cur2 = pgconn.cursor()
+    sql = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
+    cur.execute(sql)
+    for item in cur:
+        bb.logit(f'item: {item}')
+        try:
+            fkey_sql = foreign_key_sql(item[0])
+            if fkey_sql != "none":
+                print(fkey_sql)
+                cur2.execute(fkey_sql)
+                pgconn.commit()
+        except psycopg2.DatabaseError as err:
+            bb.logit(f'{err}', "ERROR")
+            pgconn.commit()
+            #cur2.close()
+            #cur2 = pgconn.cursor()
+    cur.close()
+    cur2.close()
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - start_time)
+    execution_time = time_diff.total_seconds()
+    pgconn.close()
+    bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
+
+def foreign_key_sql(table):
+    parts = table.split("_")
+    part_size = len(parts)
+    child = parts[-1]
+    if part_size == 1:
+        return("none")
+    elif part_size == 2:
+        parent = parts[0]
+    elif part_size == 3:
+        parent = f'{parts[0]}_{parts[1]}'
+    fkey = f'{parent}_id'
+    sql = (f"ALTER TABLE IF EXISTS public.{table}\n"
+        f"ADD CONSTRAINT fky_{fkey} FOREIGN KEY ({fkey})\n"
+        f"REFERENCES public.{parent} ({fkey}) MATCH SIMPLE\n"
+        f"ON UPDATE NO ACTION\n"
+        f"ON DELETE NO ACTION\n"
+        f" NOT VALID")
+    return(sql)
+
 def fix_provider_ids():
     num_provs = 50
     base_val = 1000000
@@ -411,6 +462,33 @@ def add_primary_provider_ids():
             bb.logit(f'Update: {item[1]}')
             update_cur.execute(sql)
             mycon.commit()
+    except psycopg2.DatabaseError as err:
+        bb.logit(f'{err}')
+    cur.close()
+    mycon.close
+
+def fix_member_guardian_ids():
+    num_provs = 200
+    base_val = 1000000
+    #query_sql = "select id, m.member_guardian_id from member_guardian m;"
+    query_sql = "select id, m.claim_claimline_id from claim_claimline m;"
+    mycon = pg_connection()
+    cur = mycon.cursor()
+    update_cur = mycon.cursor()
+    cnt = 1
+    try:
+        cur.execute(query_sql)
+        for item in cur:
+            #print(f'item: {item}')
+            pid = f'ME-{base_val + cnt}'
+            #sql = f'update member_guardian set member_guardian_id = \'{pid}\' '
+            sql = f'update claim_claimline set claim_claimline_id = \'{pid}\' '
+            sql += f"where id = {item[0]}"
+            #print(sql)
+            bb.logit(f'Update: {item[1]}')
+            update_cur.execute(sql)
+            mycon.commit()
+            cnt += 1
     except psycopg2.DatabaseError as err:
         bb.logit(f'{err}')
     cur.close()
@@ -726,10 +804,14 @@ if __name__ == "__main__":
         execute_ddl()
     elif ARGS["action"] == "fix_providers":
         add_primary_provider_ids()
+    elif ARGS["action"] == "fix_guardians":
+        fix_member_guardian_ids()
     elif ARGS["action"] == "query_test":
         member_api()
     elif ARGS["action"] == "claim":
         get_claims()
+    elif ARGS["action"] == "foreign_keys":
+        create_foreign_keys()
     elif ARGS["action"] == "microservice":
         microservice_one()
     else:
