@@ -2,7 +2,7 @@
     "uri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
     "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
     "localuri" : "mongodb://localhost:27017",
-    "database" : "claimscache",
+    "database" : "claims_portal",
     "collection" : "claims",
     "alt_collection" : "claim_history",
     "username" : "main_admin",
@@ -10,10 +10,12 @@
     "version" : "1.0",
     "process_count" : 1,
     "batch_size" : 500,
+    "import_path" : "updatecsv",
     "batches" : 1,
     "base_counter" : 1000000,
     "num_records" : 10000,
     "num_updates" : 0.05,
+    "num_csvupdates" : 0.25,
     "data" : {
       "claims" : {"path" : "claim.csv", "size" : 10000, "id_prefix" : "CL-", "thumbnail" : []}
     }

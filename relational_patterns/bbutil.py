@@ -114,6 +114,34 @@ class Util:
         elapsed = datetime.datetime.now() - starttime
         self.logit(f'Elapsed time: {str(elapsed)}')
 
+    def table(self, typ = "border", items = ['one','two','three'], sizes = [60,7,10],log_format = True):
+        # print a table in justified values
+        border = ""
+        data = ""
+        for k in range(len(items)):
+            border += f'{"__".ljust(sizes[k],"_")}|'
+            data += f'{items[k].ljust(sizes[k])}|'
+           
+        if typ == "border":
+            if log_format:
+                bb.logit(border)
+            else:
+                print(border)
+        elif typ == "title":
+            if log_format:
+                bb.logit(border)
+                bb.logit(data)
+                bb.logit(border)
+            else:
+                print(border)
+                print(data)
+                print(border)
+        else:
+            if log_format:
+                bb.logit(data)
+            else:
+                print(data)
+
     def process_args(self, arglist):
         args = {}
         for arg in arglist:

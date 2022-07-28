@@ -128,15 +128,19 @@ def worker_customer_load():
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
     num_records = 10000
+    start = datetime.datetime.now()
     IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
     base_id = int(IDGEN.get(prefix, num_records).replace(prefix,""))
     bulk_docs = []
     icnt = 0
+    bstart = datetime.datetime.now()
     for row in range(num_records):
         new_id = f'{prefix}{base_id + icnt}'
         if icnt != 0 and icnt % batch_size == 0:
             db[collection].insert_many(bulk_docs)
             bb.logit(f'Adding {batch_size} total: {icnt}')
+            print_stats(bstart, batch_size)
+            bstart = datetime.datetime.now()
             bulk_docs = []
         bulk_docs.append(customer_doc(new_id))
         icnt += 1
@@ -144,6 +148,7 @@ def worker_customer_load():
     db[collection].insert_many(bulk_docs)
     cur_process = multiprocessing.current_process()
     bb.logit("#-------- COMPLETE -------------#")
+    print_stats(start, icnt)
 
 def customer_doc(idval):     
     age = random.randint(28,84)
@@ -211,22 +216,30 @@ def bulk_writer(collection, bulk_arr):
     except BulkWriteError as bwe:
         print("An exception occurred ::", bwe.details)
 
-def worker_load_recommendations():
+def worker_load_recommendations(justShelf = 0):
     #  Build recommendatino shelfs for user
     collection = 'profiles'
     alt_coll = 'products'
     prefix = "REC"
     count = 1000000
+    if "shelf" in ARGS:
+        justShelf = int(ARGS["shelf"])
     conn = client_connection()
     db = conn[settings["database"]]
     base_counter = settings["base_counter"]
     batch_size = 500
+    start = datetime.datetime.now()
     IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
     base_id = int(IDGEN.get(prefix, 10000).replace(prefix,""))
     bulk_docs = []
     bulk_recs = []
-    cur = db[collection].find({})
+    if justShelf == 0:
+        pipe = [{"$project" : {"profile_id" : 1}}]
+    else:
+        pipe = [{"$sample" : {"size" : justShelf}},{"$project" : {"profile_id" : 1}}]
+    cur = db[collection].aggregate(pipe)
     icnt = 0
+    bstart = datetime.datetime.now()
     for row in cur:
         new_id = f'{prefix}{base_id + icnt}'
         '''
@@ -236,23 +249,33 @@ def worker_load_recommendations():
         if icnt != 0 and icnt % batch_size == 0:
             bb.logit(f'Adding {batch_size} total: {icnt}, bsize: {len(bulk_docs)}')
             bulk_writer(db[collection], bulk_docs)
+            print_stats(bstart, batch_size)
+            bstart = datetime.datetime.now()
             bulk_docs = []
-        ans = get_recent_purchases(db[alt_coll])
-        recs_ans = get_recent_purchases(db[alt_coll])
+        
+        if justShelf == 0:
+            ans = get_recent_purchases(db[alt_coll])
+        recs_ans = get_recent_purchases(db[alt_coll], True)
         recs = []
-        for item in recs_ans:
+        for item in recs_ans["items"]:
             item.pop("purchased_at", None)
             item["profile_id"] = row["profile_id"]
-        newdoc = {"recent_purchases": ans, "recommendations" : recs_ans}
-                    
-        bulk_docs.append(
-            UpdateOne({"_id" : row["_id"]},{"$set": newdoc})
-        )
+        if justShelf == 0:
+            bulk_docs.append(
+                UpdateOne({"_id" : row["_id"]},{"$set": {"recent_purchases": ans}, "$addToSet" : {"recommendations" : recs_ans}})
+            )
+        else:
+            bulk_docs.append(
+                UpdateOne({"_id" : row["_id"]},{"$addToSet" : {"recommendations" : recs_ans}})
+            )
+                
         icnt += 1
     # get the leftovers
     bulk_writer(db[collection], bulk_docs)
+    bb.logit("#-------- COMPLETE -------------#")
+    print_stats(start, icnt)
 
-def get_recent_purchases(coll):
+def get_recent_purchases(coll, isShelf = False):
     # return 20 random items
     pipe = [{"$sample" : { "size" : 20}},{"$project": {"sku": 1, "product_name": 1, "short_name": 1}}]
     res = coll.aggregate(pipe)
@@ -262,7 +285,11 @@ def get_recent_purchases(coll):
         buy_at = fake.date_time_between('-2y', datetime.datetime.now())
         result.append({"sku" : item["sku"],"product_name" : item["product_name"], "short_name" : item["short_name"], "purchased_at": buy_at, "rank" : icnt})
         icnt += 1
-    return result
+    if isShelf:
+        shelf = {"category" : random.choice(["retail","pharmacy","health"]), "created_at" : datetime.datetime.now(), "items" : result}
+        return shelf
+    else:
+        return result
 
 def increment_version(old_ver):
     parts = old_ver.split(".")
@@ -286,6 +313,55 @@ def file_log(msg):
     stamp = f"{cur_date}|I> "
     with open(ctl_file, 'a') as lgr:
         lgr.write(f'{stamp}{msg}\n')
+
+def print_stats(start_t, docs = 0):
+    end = datetime.datetime.now()
+    elapsed = end - start_t
+    secs = (elapsed.seconds) + elapsed.microseconds * .000001
+    bb.logit(f"Elapsed: {secs} - Docs: {docs}")
+
+def query_mix():
+    # mixed query
+    conn = client_connection()
+    db = conn[settings["database"]]
+    mix = ARGS["mix"]
+    pipe = [
+    {
+        '$sample': {
+            'size': 20
+        }
+    }, {
+        '$unwind': {
+            'path': '$recommendations'
+        }
+    }, {
+        '$match': {
+            'recommendations.category': 'pharmacy'
+        }
+    }, {
+        '$project': {
+            'profile_id': 1, 
+            'first_name': 1, 
+            'last_name': 1, 
+            'shelfDate': '$recommendations.created_at', 
+            'items': '$recommendations.items'
+        }
+    }
+    ]
+    rtot = 0
+    wtot = 0
+    for k in range(20):
+        start = datetime.datetime.now()
+        if mix == "high":
+            inum = 40
+        elif mix == "low":
+            inum = 10
+        else:
+            inum = 20
+        worker_load_recommendations(inum)
+        for k in range(20):
+            db.profiles.aggregate(pipe)
+        print_stats(start, inum + 20)
 
 
 #----------------------------------------------------------------------#
@@ -335,6 +411,8 @@ if __name__ == "__main__":
         worker_customer_load()
     elif ARGS["action"] == "recommendations_load":
         worker_load_recommendations()
+    elif ARGS["action"] == "query_mix":
+        query_mix()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()

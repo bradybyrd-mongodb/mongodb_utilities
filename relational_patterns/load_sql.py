@@ -817,3 +817,11 @@ if __name__ == "__main__":
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()
+
+'''
+# ---------------------------------------------------- #
+
+Create Database:
+    python3 load_sql.py action=execute_ddl task=create
+    python3 load_sql.py action=load_pg_data
+'''

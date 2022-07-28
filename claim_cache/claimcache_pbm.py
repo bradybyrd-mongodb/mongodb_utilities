@@ -13,7 +13,7 @@ import multiprocessing
 import pprint
 from deepmerge import Merger
 import itertools
-
+import shutil
 import bson
 from bson.objectid import ObjectId
 from bson.json_util import dumps
@@ -85,14 +85,19 @@ def worker_load(ipos):
         tester = True
     feed = 1
     if "feed" in ARGS:
-        feed = 30
+        feed = int(ARGS["feed"])
+    use_csv = False
+    if "csv" in ARGS:
+        csv = True
     bb.logit('Current process is %s %s' % (cur_process.name, cur_process.pid))
     #file_log(f'New process {cur_process.name}')
     start_time = datetime.datetime.now()
     if ipos == 0 and not tester:
         worker_history_load(feed)
+    elif csv:
+        worker_history_load_csv(feed)
     else:
-        worker_history_tester()
+        worker_history_tester(feed)
     #worker_claim_load(pgcon,tables)
     #worker_rx_load(pgcon,tables)
     end_time = datetime.datetime.now()
@@ -116,6 +121,8 @@ def worker_history_load(num_iterations):
     num_records = settings["num_records"]
     sampler = settings["num_updates"]
     sample_size = int(num_records * sampler)
+    if "size" in ARGS:
+        sample_size = int(ARGS["size"])
     pipe = [{"$sample" : {"size" : sample_size}}] # Do 10% at a time
     for k in range(num_iterations):
         bb.message_box("History Feed Simulation")
@@ -130,7 +137,7 @@ def worker_history_load(num_iterations):
             new_id = f'{prefix}{base_id + icnt}'
             if icnt != 0 and icnt % batch_size == 0:
                 db[collection].insert_many(bulk_docs)
-                bulk_writer(claimcoll,bulk_updates)
+                bulk_writer(db[claimcoll],bulk_updates)
                 bb.logit(f'Adding {batch_size} total: {icnt}')
                 bulk_docs = []
                 bulk_updates = []
@@ -138,12 +145,61 @@ def worker_history_load(num_iterations):
                 time.sleep(interval)
             bulk_docs.append(claim_doc(new_id, row))
             bulk_updates.append(UpdateOne({"_id" : row["_id"]},{"$inc" : {"sequence_id" : 1}}))
+            icnt += 1
         # get the leftovers
+        bulk_writer(db[claimcoll],bulk_updates)
         db[collection].insert_many(bulk_docs)
     bb.logit("#-------- COMPLETE -------------#")
     conn.close()
 
-def worker_history_tester():
+def worker_history_load_csv(export_path):
+    #  Send a copy of the claim with one or two field changes
+    #  Add an updateDate and sequencenumber, updateName = TCD-1
+    cur_process = multiprocessing.current_process()
+    collection = settings["alt_collection"]
+    claimcoll = settings["collection"]
+    prefix = "CLU"
+    interval = 30
+    conn = client_connection()
+    #export_path = "updatecsv/tcd_update.csv"
+    db = conn[settings["database"]]
+    base_counter = settings["base_counter"]
+    batch_size = settings["batch_size"]
+    num_records = settings["num_records"]
+    sampler = settings["num_csvupdates"]
+    sample_size = int(num_records * sampler)
+    if "size" in ARGS:
+        sample_size = int(ARGS["size"])
+    pipe = [{"$sample" : {"size" : sample_size}}] # Do 10% at a time
+    claim_cur = db[claimcoll].aggregate(pipe)
+    with open(export_path,'w') as fil:
+        bb.message_box("History Feed Simulation")
+        #bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
+        IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
+        base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
+        writer = csv.writer(fil)
+        bulk_updates = []
+        icnt = 0
+        for row in claim_cur:
+            new_id = f'{prefix}{base_id + icnt}'
+            newdoc = claim_doc(new_id, row)
+            if icnt == 0:
+                writer.writerow(newdoc.keys())
+            elif icnt % batch_size == 0:
+                bulk_writer(db[claimcoll],bulk_updates)
+                bb.logit(f'Adding {batch_size} total: {icnt}')
+                bulk_updates = []
+                #bb.logit(f'Delay, waiting: {interval} seconds')
+                #time.sleep(interval)
+            writer.writerow(newdoc.values())
+            bulk_updates.append(UpdateOne({"_id" : row["_id"]},{"$inc" : {"sequence_id" : 1}}))
+            icnt += 1
+        # get the leftovers
+        bulk_writer(db[claimcoll],bulk_updates)
+    bb.logit("#-------- COMPLETE -------------#")
+    conn.close()
+
+def worker_history_tester(num_iterations):
     #  Send a copy of the claim with one or two field changes
     #  Add an updateDate and sequencenumber, updateName = TCD-1
     collection = settings["alt_collection"]
@@ -166,7 +222,7 @@ def worker_history_tester():
     bb.logit("Doing Loop")
     for row in claim_cur:
         new_id = f'{prefix}{base_id + icnt}'
-        if icnt == 0:
+        if icnt < num_iterations:
             bb.logit("Adding History: " + new_id)
             db[collection].insert_one(claim_doc(new_id, row))
         icnt += 1
@@ -192,7 +248,7 @@ def claim_doc(idval, curclaim):
     doc['claimStatusText'] = status_code_names[k]
     doc['claimStatusDate'] =  datetime.datetime.now()
     doc['claimType'] = curclaim["claimType"]
-    doc['notes'] = curclaim["notes"]
+    doc['notes'] = fake.sentence()
     doc["plan_id"] = curclaim["plan_id"]
     doc["planSubscriber_id"] = curclaim["planSubscriber_id"]
     doc["principalDiagnosis"] = curclaim["principalDiagnosis"]
@@ -202,7 +258,7 @@ def claim_doc(idval, curclaim):
     doc["serviceFacility_id"] = curclaim["serviceFacility_id"]
     doc["prescriber_id"] = curclaim["prescriber_id"]
     doc["version"] = "1.0"
-    doc["notes"].append({"claimNoteText" : fake.sentence(), "updatedAt" : datetime.datetime.now()})
+    #doc["notes"].append({"claimNoteText" : fake.sentence(), "updatedAt" : datetime.datetime.now()})
     return(doc)
 
 def get_claim_ids(coll):
@@ -355,6 +411,83 @@ def local_geo():
     return coords
 
 #----------------------------------------------------------------------#
+#   File Monitor and CSV Import
+#----------------------------------------------------------------------#
+def file_monitor():
+    main_process = multiprocessing.current_process()
+    bb.message_box("CSV Importer", "title")
+    path = f'{CUR_PATH}/{settings["import_path"]}'
+    if "path" in ARGS:
+        path = ARGS["path"]
+    bb.logit(f'Watching {path}')
+    bb.logit('# Main process is %s %s' % (main_process.name, main_process.pid))
+    icnt = 0
+    keep_checking = True
+    while keep_checking:
+        file_walk(path, icnt)
+        time.sleep(10)
+        icnt += 1
+
+def file_walk(path, iter):
+    #we shall store all the file names in this list
+    collection = settings["collection"]
+    bulk_docs = []
+    testy = []
+    path_list = []
+    batch_size = settings["batch_size"]
+    bb.logit(f'Executing: {iter}')
+    conn = client_connection()
+    db = conn[settings["database"]]
+    cnt = 0
+    tot = 0
+    target_dir = os.path.join(CUR_PATH,"processedcsv")
+    for root, dirs, files in os.walk(path):
+        bulk_docs = []
+        cnt = 0
+        bb.logit("#--------------------------------------------------#")
+        bb.logit(f'# {root}')
+        dir_doc = file_info(root, "dir")
+        #db[collection].insert_one(dir_doc)
+        for fil in files:
+            cur_file = os.path.join(root,fil)
+            new_doc = (file_info(cur_file))
+            bulk_docs.append(new_doc)
+            bb.logit(cur_file)
+            cnt += 1
+            worker_history_load_csv(cur_file)
+            bb.logit(f"Processed: {fil}")
+            shutil.move(cur_file, target_dir)
+ 
+
+    bb.logit(f'Completed {tot} directory items')
+    conn.close()
+
+def file_info(file_obj, type = "file"):
+    try:
+        file_stats = os.stat(file_obj)
+        doc = OrderedDict()
+        doc["path_raw"] = file_obj
+        if type == "file":
+            doc["is_object"] = True
+            doc["num_objects"] = 0
+            doc["size_kb"] = file_stats.st_size * .001
+        else:
+            doc["is_object"] = False
+            doc["num_objects"] = 0
+            doc["size_kb"] = 0
+        doc["permissions"] = file_stats.st_mode
+        doc["owner"] = f'{file_stats.st_uid}:{file_stats.st_gid}'
+        m_at = file_stats.st_mtime
+        c_at = file_stats.st_ctime
+        doc["modified_at"] = datetime.fromtimestamp(m_at).strftime('%Y-%m-%d %H:%M:%S')      
+        doc["created_at"] = datetime.fromtimestamp(c_at).strftime('%Y-%m-%d %H:%M:%S') 
+        doc["paths"] = file_obj.split("/")
+    except:
+        bb.logit(f'Path: {file_obj} inaccessible')
+        doc = {"error" : True}
+    return(doc)
+
+#----------------------------------------------------------------------#
 #   Reporting
 #----------------------------------------------------------------------#
 def claims_reports():
@@ -448,25 +581,17 @@ def history_report():
     bb.message_box("Claim History Report")
     bb.logit(f'ClaimIDs: {", ".join(claim_ids)}')
     claim_cur = db[claimcoll].aggregate(pipe)
-    col_sizes = [20,12,20]
+    col_sizes = [20,12,30]
     icnt = 0
-    gridlines("title", ["Updated","Type","Status"], col_sizes)
+    bb.table("title", ["Updated","Type","Status"], col_sizes, False)
     last_id = "xxxxxx"
     for row in claim_cur:
         if last_id != row["claim_id"]:
             last_id = row["claim_id"]
-            bb.logit(f'#===  ClaimID: {last_id}  ===#')
-        gridlines("data",[row["updated_at"].strftime('%Y-%m-%dT%H:%M:%S'),row["claimType"],f'{row["claimStatus"]}-{row["claimStatusText"]}'],col_sizes)
-
-def gridlines(typ = "border", items = ['one','two','three'], sizes = [60,7,10]):
-    if typ == "border":
-        bb.logit(f'{"____".ljust(sizes[0],"_")}|{"___".ljust(sizes[1] + 3,"_")}|{"__".ljust(sizes[2],"_")}')
-    elif typ == "title":
-        bb.logit(f'{"____".ljust(sizes[0],"_")}|{"___".ljust(sizes[1] + 3,"_")}|{"__".ljust(sizes[2],"_")}')
-        bb.logit(f'{items[0].ljust(sizes[0])}| {items[1].ljust(sizes[1] + 2)}| {items[2].ljust(sizes[2])}')
-        bb.logit(f'{"____".ljust(sizes[0],"_")}|{"___".ljust(sizes[1] + 3,"_")}|{"__".ljust(sizes[2],"_")}')
-    else:
-        bb.logit(f'{items[0].ljust(sizes[0])}| {items[1].ljust(sizes[1] + 2)}| {items[2].ljust(sizes[2])}')
+            bb.table("border", ["Updated","Type","Status"], col_sizes, False)
+            print(f'#---  ClaimID: {last_id}  ---#')
+        bb.table("data",[row["updated_at"].strftime('%Y-%m-%dT%H:%M:%S'),row["claimType"],f'{row["claimStatus"]}-{row["claimStatusText"]}'], col_sizes, False)
+    bb.table("border", ["Updated","Type","Status"], col_sizes, False)
 
 #----------------------------------------------------------------------#
 #   Utility Routines
@@ -527,6 +652,7 @@ if __name__ == "__main__":
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
+    CUR_PATH = os.path.dirname(os.path.realpath(__file__))
     base_counter = settings["base_counter"]
     IDGEN = Id_generator({"seed" : base_counter})
     
@@ -543,10 +669,12 @@ if __name__ == "__main__":
     elif ARGS["action"] == "load_claims":
         csv_data_load()
     elif ARGS["action"] == "load_claim_updates":
-        # python3 claimcache_pbm.py action=load_claim_updates [feed=true | test=true]
+        # python3 claimcache_pbm.py action=load_claim_updates [feed=true | test=true | size=13]
         load_claim_updates()
     elif ARGS["action"] == "customer_load":
         worker_customer_load()
+    elif ARGS["action"] == "monitor":
+        file_monitor()
     elif ARGS["action"] == "recommendations_load":
         worker_load_recommendations()
     elif ARGS["action"] == "reports":
@@ -556,32 +684,21 @@ if __name__ == "__main__":
     #conn.close()
 
 '''
+#---- Data Load ---------------------#
+python3 claimcache.py action=customer_load
+python3 claimcache.py action=recommendations_load
+python3 claimcache_pbm.py action=load_claim_updates test=true size=10
+
 #---- Queries --------#
 Find Claim
-
+    python3 claimcache_pbm.py action=reports report=claim_details claim_ids=C-1008455,C-1006512
 Find ClaimHistory
-    python3 claimcache_pbm.py action=history_report claim_ids=C-1008455,C-1006512
+    python3 claimcache_pbm.py action=reports report=claim_history claim_ids=C-1000787,C-1000216, C-1000277
+python3 claimcache_pbm.py action=load_claim_updates
 
 Attribute changes
 "C-1006512" has 5 updates
 "C-1008455", "C-1006512"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 db[collection].aggregate([
