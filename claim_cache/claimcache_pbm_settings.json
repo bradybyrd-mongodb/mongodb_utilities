@@ -1,7 +1,7 @@
 {
-    "uri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+    "atlasuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
     "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
-    "localuri" : "mongodb://localhost:27017",
+    "uri" : "mongodb://localhost:27017",
     "database" : "claims_portal",
     "collection" : "claims",
     "alt_collection" : "claim_history",

@@ -1,0 +1,150 @@
+{
+    "id": "batch_F7GNxvDaaXnmvpGn44OE",
+    "data": [
+      {
+        "category": null,
+        "checksum": "a33a45d05c39d9bab473f30fcf29df07",
+        "created_at": "2022-04-16T12:47:52.289Z",
+        "deleted_at": "2022-04-13T13:40:52.394Z",
+        "end_time": "2022-04-13T13:40:52.394Z",
+        "id": "demo-1",
+        "log_id": "Accu-Chek Guide-2020-6-58-8-5-5",
+        "metrics": [
+          {
+            "origin": "device",
+            "type": "blood_glucose",
+            "unit": "mg/dL",
+            "value": 118
+          }
+        ],
+        "name": null,
+        "offset_origin": "source",
+        "segments": null,
+        "source": {
+          "device": {
+            "diagnostics": [
+              {
+                "type": "mobile_device_manufacturer",
+                "unit": "n/a",
+                "value": "Apple-new"
+              },
+              {
+                "type": "mobile_device_model_number",
+                "unit": "n/a",
+                "value": "iPhone10,5"
+              },
+              {
+                "type": "operating_system",
+                "unit": "n/a",
+                "value": "iOS"
+              },
+              {
+                "type": "operating_system_version",
+                "unit": "n/a",
+                "value": "13.4.1"
+              },
+              {
+                "type": "validic_library_version",
+                "unit": "n/a",
+                "value": "1.12"
+              }
+            ],
+            "id": "29",
+            "manufacturer": "roche",
+            "model": "accu-chek guide"
+          },
+          "type": "bluetooth"
+        },
+        "start_time": "2022-04-13T13:40:52.289Z",
+        "tags": [],
+        "type": "measurement",
+        "user": {
+          "organization_id": "60fefd093a0c9b0001c0f885",
+          "uid": "ba9c3cc1-75c8-4232-8acc-6b920c628c69",
+          "user_id": "5fe49fa40021f100019f5a55"
+        },
+        "user_notes": [
+          {
+            "type": "relationship_to_meal",
+            "value": "before"
+          }
+        ],
+        "utc_offset": -14400,
+        "version": "1.0"
+      },
+      {
+        "category": null,
+        "checksum": "a33a45d05c39d9bab473f30fcf29df07",
+        "created_at": "2022-04-13T15:31:50.553Z",
+        "deleted_at": "2022-04-13T15:31:50.658Z",
+        "end_time": "2022-04-13T15:31:50.658Z",
+        "id": "demo-1a",
+        "log_id": "Accu-Chek Guide-2020-6-18-8-5-5",
+        "metrics": [
+          {
+            "origin": "device",
+            "type": "blood_glucose",
+            "unit": "mg/dL",
+            "value": 118
+          }
+        ],
+        "name": null,
+        "offset_origin": "source",
+        "segments": null,
+        "source": {
+          "device": {
+            "diagnostics": [
+              {
+                "type": "mobile_device_manufacturer",
+                "unit": "n/a",
+                "value": "Apple"
+              },
+              {
+                "type": "mobile_device_model_number",
+                "unit": "n/a",
+                "value": "iPhone10,5"
+              },
+              {
+                "type": "operating_system",
+                "unit": "n/a",
+                "value": "iOS"
+              },
+              {
+                "type": "operating_system_version",
+                "unit": "n/a",
+                "value": "13.4.1"
+              },
+              {
+                "type": "validic_library_version",
+                "unit": "n/a",
+                "value": "1.12"
+              }
+            ],
+            "id": "29",
+            "manufacturer": "roche",
+            "model": "accu-chek guide"
+          },
+          "type": "bluetooth"
+        },
+        "start_time": "2022-04-13T15:31:50.553Z",
+        "tags": [],
+        "type": "measurement",
+        "user": {
+          "organization_id": "60fefd093a0c9b0001c0f885",
+          "uid": "ba9c3cc1-75c8-4232-8acc-6b920c628c69",
+          "user_id": "5fe49fa40021f100019f5a55"
+        },
+        "user_notes": [
+          {
+            "type": "relationship_to_meal",
+            "value": "before"
+          }
+        ],
+        "utc_offset": -14400,
+        "version": "1.0"
+      }
+    ],
+    "meta": {
+      "count": 2
+    }
+  }
