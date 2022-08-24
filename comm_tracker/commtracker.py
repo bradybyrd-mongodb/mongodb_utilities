@@ -458,53 +458,6 @@ python3 claimcache.py action=customer_load
 python3 claimcache.py action=recommendations_load
 python3 claimcache_pbm.py action=load_claim_updates test=true size=10
 
-{"user.user_id" : {$in: ["PROF1000178","PROF1000780","PROF1000246","PROF1000739","PROF1000910","PROF1000702"]}}
-
-
-[
-    {
-        '$group': {
-            '_id': '$user.user_id', 
-            'count': {
-                '$sum': 1
-            }
-        }
-    }, {
-        '$sort': {
-            'count': -1
-        }
-    }
-]
-
-#  Grouped Activities
-[
-    {
-        '$match': {
-            'user.user_id': {
-                '$in': [
-                    'PROF1000178', 'PROF1000780', 'PROF1000246', 'PROF1000739', 'PROF1000910', 'PROF1000702'
-                ]
-            }
-        }
-    }, {
-        '$unwind': {
-            'path': '$metrics'
-        }
-    }, {
-        '$group': {
-            '_id': {
-                'user': '$user.user_id', 
-                'activity': '$metrics.type'
-            }, 
-            'Activity': {
-                '$first': '$metrics.type'
-            }, 
-            'Count': {
-                '$sum': 1
-            }
-        }
-    }
-]
-
+{"user.user_id" : {$in: ["PROF1000083","PROF1000107","PROF1000123","PROF1000244","PROF1000255","PROF1000702"]}}
 
 '''

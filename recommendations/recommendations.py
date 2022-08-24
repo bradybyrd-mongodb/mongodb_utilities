@@ -118,7 +118,45 @@ def worker_csv_load():
             icnt += 1
         # get the leftovers
         db[collection].insert_many(bulk_docs)
-                      
+
+def build_csv_data():
+    #  Creates csv files
+    #  20Million customers, 1 billion recommends (100/customer)
+    '''
+        create customer, create 100 recommends
+    '''
+    collection = 'suggestions'
+    prefix = "REC"
+    count = 1000000
+    conn = client_connection()
+    db = conn[settings["database"]]
+    base_counter = settings["base_counter"]
+    batch_size = settings["batch_size"]
+    IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
+    csv_file = settings["import_csv"]
+    fields = []
+    bulk_docs = []
+    icnt = 0
+    for batchnum in range(batches):
+        for it in range(batch_size):
+            buy_at = fake.date_time_between('-2y', datetime.datetime.now())
+            bulk_docs.append({"sku" : item["sku"],"product_name" : item["product_name"], "short_name" : item["short_name"], "purchased_at": buy_at, "rank" : icnt})
+        
+            doc = {headers[0]: row[0], headers[1]: row[1], headers[2]: row[2], headers[3]: row[3]}
+                #append_customer_info(doc)
+                bulk_docs.append(doc)
+            icnt += 1
+        # get the leftovers
+        db[collection].insert_many(bulk_docs)
+
+def write_dict(fields,dict, filepath):
+    #  write the dict to file
+    fieldnames = []
+    writer = csv.DictWriter(filepath, fieldnames = fieldnames)
+    writer.writeheader()
+    writer.writerows(dict)
+
+
 def worker_customer_load():
     #  Creates new customer profile
     collection = 'profiles'
@@ -405,6 +443,8 @@ if __name__ == "__main__":
         sys.exit(1)
     elif ARGS["action"] == "load_data":
         load_recommendations_data()
+    elif ARGS["action"] == "load_csv_data":
+        build_csvs()
     elif ARGS["action"] == "load_skus":
         worker_sku_update()
     elif ARGS["action"] == "customer_load":
