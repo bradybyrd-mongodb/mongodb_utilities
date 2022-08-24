@@ -26,8 +26,7 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # apppend parent folder to path
 sys.path.append(os.path.dirname(base_dir))
 sys.path.append(os.path.join(base_dir, "templates"))
-from t_profile import ProfileFactory
-from t_activity import ActivityFactory
+from t_comm import CommFactory
 from bbutil import Util
 from id_generator import Id_generator
 
@@ -36,11 +35,11 @@ letters = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","
 providers = ["cigna","aetna","anthem","bscbsma","kaiser"]
 
 '''
- #  Wellness IOT
-#  BJB 8/1/22
-Intermediary Cache from DTShare (cdc from DataGeneral to Warehouse in teradata)
+ #  CommTracker
+#  BJB 8/18/22
+Communications Cache from Hadoop UDF
 
-    python3 wellness_iot.py action=load_csv
+    python3 commtracker.py action=load_csv
 
 # Startup Env:
     Atlas M10BasicAgain
@@ -67,9 +66,9 @@ Intermediary Cache from DTShare (cdc from DataGeneral to Warehouse in teradata)
     create trigger and function to update
         
 '''
-settings_file = "wellness_iot_settings.json"
+settings_file = "commtracker_settings.json"
 
-def load_activities():
+def load_messages():
     # read settings and echo back
     bb.message_box("Activity Loader", "title")
     bb.logit(f'# Settings from: {settings_file}')
@@ -109,7 +108,7 @@ def worker_load(ipos):
     if profile:
         worker_profile_load(feed)
     else:
-        worker_activity_load(feed)
+        worker_message_generate(feed)
     #worker_claim_load(pgcon,tables)
     #worker_rx_load(pgcon,tables)
     end_time = datetime.datetime.now()
@@ -118,58 +117,25 @@ def worker_load(ipos):
     #file_log(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
-def worker_activity_load(num_iterations):
-    #  Send a copy of the claim with one or two field changes
-    #  Add an updateDate and sequencenumber, updateName = TCD-1
-    cur_process = multiprocessing.current_process()
-    collection = settings["collection"]
-    profilecoll = settings["alt_collection"]
-    prefix = "ACT"
-    interval = 1
-    conn = client_connection()
-    db = conn[settings["database"]]
-    base_counter = settings["base_counter"]
-    batch_size = settings["batch_size"]
-    num_records = settings["num_records"]
-    sampler = settings["num_updates"]
-    sample_size = int(num_records * sampler)
-    if "size" in ARGS:
-        sample_size = int(ARGS["size"])
-    pipe = [{"$sample" : {"size" : sample_size}}] # Do 10% at a time
-    for k in range(num_iterations):
-        bb.message_box("Activity Feed Simulation")
-        bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
-        profile_cur = db[profilecoll].aggregate(pipe)
-        IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
-        base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
-        bulk_docs = []
-        icnt = 0
-        for row in profile_cur:
-            new_id = f'{prefix}{base_id + icnt}'
-            if icnt != 0 and icnt % batch_size == 0:
-                db[collection].insert_many(bulk_docs)
-                bb.logit(f'Adding {batch_size} total: {icnt}')
-                bulk_docs = []
-                time.sleep(interval)
-            metrics = act.build_doc(new_id, row)
-            bulk_docs.append(metrics)
-            icnt += 1
-        # get the leftovers
-        bb.logit(bulk_docs)
-        db[collection].insert_many(bulk_docs)
-    bb.logit("#-------- COMPLETE -------------#")
-    conn.close()
+def worker_message_generate(num_iterations):
+    '''
+        generate messages - publish to pub/sub
+        accumulate x-million
+        start consumer
+            read from pub/sub
+            push to mongoDB (collection per topic)
 
-def worker_activity_update_new(num_iterations):
+        single-instance now
+        gke - scale up
+    
+    '''
     #  Send a copy of the claim with one or two field changes
     #  Add an updateDate and sequencenumber, updateName = TCD-1
     cur_process = multiprocessing.current_process()
     collection = settings["collection"]
-    profilecoll = settings["profile_collection"]
-    rawcoll = settings["history_collection"]
-    prefix = "ACT"
+    prefix = "COM"
     feed = False
-    act = ActivityFactory()
+    comm = CommFactory()
     interval = 0
     conn = client_connection()
     db = conn[settings["database"]]
@@ -191,163 +157,32 @@ def worker_activity_update_new(num_iterations):
         sample_size = int(ARGS["size"])
     pipe = [{"$sample" : {"size" : sample_size}}] # Do 10% at a time
     for k in range(num_iterations):
-        bb.message_box("Activity Feed Simulation")
+        bb.message_box("Comm Feed Simulation")
         bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
-        act_cur = db[profilecoll].aggregate(pipe)
         IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
         base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
         bulk_docs = []
         bulk_updates = []
         icnt = 0
-        for row in act_cur:
+        for row in range(batch_size):
             new_id = f'{prefix}{base_id + icnt}'
             cur_doc = bb.read_json(act_template)
             if icnt != 0 and icnt % batch_size == 0:
                 if feed:
-                    db[rawcoll].insert_many(bulk_docs)
+                    db[collection].insert_many(bulk_docs)
                 else:
-                    bulk_writer(db[collection],bulk_updates)
+                    db[collection].insert_many(bulk_docs)
                 bb.logit(f'Adding {batch_size} total: {icnt}')
-                bulk_updates = []
-            metrics = act.build_doc(new_id, row, cur_doc)
-            if feed:
-                bulk_docs.append(metrics)
-            else:
-                for dat in metrics["data"]:
-                    bulk_updates.append(ReplaceOne({"id" : dat["id"]},dat, upsert=True))
+            comm_item = comm.build_doc(new_id, row, cur_doc)
+            bulk_docs.append(comm_item)
             icnt += 1
         # get the leftovers
         #bb.logit(f'Leftovers {bulk_docs}')
-        if feed:
-            db[rawcoll].insert_many(bulk_docs)
-            if interval > 0:
-                bb.logit(f'Delay, waiting: {interval} seconds')
-                time.sleep(interval)
-        else:
-            bulk_writer(db[collection],bulk_updates)
-
-    bb.logit("#-------- COMPLETE -------------#")
-    conn.close()
-
-def worker_activity_update(num_iterations):
-    #  OLD one - now superseeded
-    #  Add an updateDate and sequencenumber, updateName = TCD-1
-    cur_process = multiprocessing.current_process()
-    collection = settings["collection"]
-    profilecoll = settings["alt_collection"]
-    prefix = "ACT"
-    act = ActivityFactory()
-    interval = 1
-    conn = client_connection()
-    db = conn[settings["database"]]
-    base_counter = settings["base_counter"]
-    batch_size = settings["batch_size"]
-    num_records = settings["num_records"]
-    sampler = settings["num_updates"]
-    sample_size = int(num_records * sampler)
-    if "size" in ARGS:
-        sample_size = int(ARGS["size"])
-    pipe = [{"$sample" : {"size" : sample_size}}] # Do 10% at a time
-    for k in range(num_iterations):
-        bb.message_box("Activity Feed Simulation")
-        bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
-        act_cur = db[collection].aggregate(pipe)
-        IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
-        base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
-        bulk_docs = []
-        icnt = 0
-        for row in act_cur:
-            new_id = f'{prefix}{base_id + icnt}'
-            if icnt != 0 and icnt % batch_size == 0:
-                bulk_writer(db[collection],bulk_updates)
-                bb.logit(f'Adding {batch_size} total: {icnt}')
-                bulk_updates = []
-                #bb.logit(f'Delay, waiting: {interval} seconds')
-                time.sleep(interval)
-            metrics = act.build_doc(new_id, row, row["id"])
-            bulk_updates.append(UpdateOne({"_id" : row["_id"]},{"$addToSet" : {"data" : metrics}}))
-            icnt += 1
-        # get the leftovers
-        bulk_writer(db[profilecoll],bulk_updates)
-    bb.logit("#-------- COMPLETE -------------#")
-    conn.close()
-
-def worker_profile_load(num_iterations):
-    #  Send a copy of the claim with one or two field changes
-    #  Add an updateDate and sequencenumber, updateName = TCD-1
-    cur_process = multiprocessing.current_process()
-    collection = settings["profile_collection"]
-    profilecoll = settings["collection"]
-    prefix = "PROF"
-    prof = ProfileFactory()
-    interval = 1
-    conn = client_connection()
-    db = conn[settings["database"]]
-    base_counter = settings["base_counter"]
-    batch_size = settings["batch_size"]
-    num_records = settings["num_records"]
-    sampler = settings["num_updates"]
-    sample_size = int(num_records * sampler)
-    if "size" in ARGS:
-        sample_size = int(ARGS["size"])
-    for k in range(num_iterations):
-        bb.message_box("Activity Feed Simulation - Profiles")
-        bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
-        IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
-        base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
-        bulk_docs = []
-        bulk_updates = []
-        icnt = 0
-        for k in range(num_records):
-            new_id = f'{prefix}{base_id + icnt}'
-            if icnt != 0 and icnt % batch_size == 0:
-                db[collection].insert_many(bulk_docs)
-                bb.logit(f'Adding {batch_size} total: {icnt}')
-                bulk_docs = []
-                #bb.logit(f'Delay, waiting: {interval} seconds')
-                time.sleep(interval)
-            bulk_docs.append(prof.build_doc(new_id))
-            icnt += 1
-        # get the leftovers
         db[collection].insert_many(bulk_docs)
+
     bb.logit("#-------- COMPLETE -------------#")
     conn.close()
 
-def worker_history_tester(num_iterations):
-    #  Send a copy of the claim with one or two field changes
-    #  Add an updateDate and sequencenumber, updateName = TCD-1
-    collection = settings["alt_collection"]
-    claimcoll = settings["collection"]
-    prefix = "CLU"
-    conn = client_connection()
-    db = conn[settings["database"]]
-    base_counter = settings["base_counter"]
-    batch_size = settings["batch_size"]
-    num_records = settings["num_records"]
-    sampler = settings["num_updates"]
-    sample_size = 50
-    pipe = [{"$sample" : {"size" : sample_size}}] # Do 10% at a time
-    claim_cur = db[claimcoll].aggregate(pipe)
-    IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
-    bb.logit("Getting id")
-    base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
-    bulk_docs = []
-    icnt = 0
-    bb.logit("Doing Loop")
-    for row in claim_cur:
-        new_id = f'{prefix}{base_id + icnt}'
-        if icnt < num_iterations:
-            bb.logit("Adding History: " + new_id)
-            db[collection].insert_one(claim_doc(new_id, row))
-        icnt += 1
-    bb.logit("#-------- COMPLETE -------------#")
-    conn.close()
-
-def get_claim_ids(coll):
-    MASTER_CLAIMS = []
-    cur = coll.find({},{"_id" : 0 ,"claim_id" : 1})
-    for it in cur:
-        MASTER_CLAIMS.append(it["claim_id"])
 
 #----------------------------------------------------------------------#
 #   Reporting
@@ -443,7 +278,7 @@ if __name__ == "__main__":
         print("Send action= argument")
         sys.exit(1)
     elif ARGS["action"] == "load_data":
-        load_activities()
+        worker_load()
     elif ARGS["action"] == "load_updates":
         worker_activity_update_new(1)
     elif ARGS["action"] == "reports":
