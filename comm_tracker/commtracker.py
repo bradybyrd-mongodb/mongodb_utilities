@@ -183,7 +183,69 @@ def worker_message_generate(num_iterations):
     bb.logit("#-------- COMPLETE -------------#")
     conn.close()
 
+def worker_message_subscribe(num_iterations):
+    '''
+        read from pub/sub
+        (batch size)
+            push to mongoDB (bulk op) (collection per topic)
 
+        single-instance now
+        gke - scale up
+    
+    '''
+    #  Send a copy of the claim with one or two field changes
+    #  Add an updateDate and sequencenumber, updateName = TCD-1
+    cur_process = multiprocessing.current_process()
+    collection = settings["collection"]
+    prefix = "COM"
+    feed = False
+    comm = CommFactory()
+    interval = 0
+    conn = client_connection()
+    db = conn[settings["database"]]
+    base_counter = settings["base_counter"]
+    batch_size = settings["batch_size"]
+    num_records = settings["num_records"]
+    sampler = settings["num_updates"]
+    act_template = settings["activity_template"]
+    sample_size = int(num_records * sampler)
+    if "repeat" in ARGS:
+        num_iterations = int(ARGS["repeat"])
+     
+    if "feed" in ARGS:
+        sample_size = 10
+        num_iterations = int(ARGS["feed"])
+        interval = 5
+        feed = True
+    if "size" in ARGS:
+        sample_size = int(ARGS["size"])
+    pipe = [{"$sample" : {"size" : sample_size}}] # Do 10% at a time
+    for k in range(num_iterations):
+        bb.message_box("Comm Feed Simulation")
+        bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
+        IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
+        base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
+        bulk_docs = []
+        bulk_updates = []
+        icnt = 0
+        for row in range(batch_size):
+            new_id = f'{prefix}{base_id + icnt}'
+            cur_doc = bb.read_json(act_template)
+            if icnt != 0 and icnt % batch_size == 0:
+                if feed:
+                    db[collection].insert_many(bulk_docs)
+                else:
+                    db[collection].insert_many(bulk_docs)
+                bb.logit(f'Adding {batch_size} total: {icnt}')
+            comm_item = comm.build_doc(new_id, row, cur_doc)
+            bulk_docs.append(comm_item)
+            icnt += 1
+        # get the leftovers
+        #bb.logit(f'Leftovers {bulk_docs}')
+        db[collection].insert_many(bulk_docs)
+
+    bb.logit("#-------- COMPLETE -------------#")
+    conn.close()
 #----------------------------------------------------------------------#
 #   Reporting
 #----------------------------------------------------------------------#
