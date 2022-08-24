@@ -1,0 +1,254 @@
+{"query":{"bool":{"filter":[{"term":{"constituentidentifier.keyword":"42~MECFFVHS"}},
+{"match_phrase":{"cmnctnchnltypecd":"SMS"}},
+{"multi_match":{"zero_terms_query":"ALL","query":"","minimum_should_match":"100%",
+"fields":["taxonomyidentifier","taxonomyportfolio","taxonomyprogramname","taxonomycmnctnowner",
+"taxonomycmnctnformat","taxonomycmnctngoal","taxonomycmnctncontenttopic","taxonomycalltoaction",
+"taxonomyaudiencetype","lobnm","taxonomyregulatorytype","taxonomytrigger","taxonomyfrequency",
+"cmnctnactivity","cmnctnlangname","medianame","cmnctnaddress","vndrnm","exttaxonomyidentifier",
+"campaignname","vndrjobid","vndrjobnamee","cmnctnmgrname","cmnctnchnltypecd"]}},
+{"range":{"taxonomycmnctnsentdt":{"lte":"2022-08-18","gte":"2021-08-18"}}}]}},
+"sort":[{"taxonomycmnctnsentdt":{"order":"desc"}}],"from":0,"size":50}
+
+
+
+[
+    {$search: {
+        {"bool":{"filter":[{"text":{"constituentidentifier.keyword":"42~MECFFVHS"}},
+{"match_phrase":{"cmnctnchnltypecd":"SMS"}},
+{"multi_match":{"zero_terms_query":"ALL","query":"","minimum_should_match":"100%"
+
+    }}
+        }}
+    {
+        $project: {
+            ["taxonomyidentifier","taxonomyportfolio","taxonomyprogramname","taxonomycmnctnowner",
+"taxonomycmnctnformat","taxonomycmnctngoal","taxonomycmnctncontenttopic","taxonomycalltoaction",
+"taxonomyaudiencetype","lobnm","taxonomyregulatorytype","taxonomytrigger","taxonomyfrequency",
+"cmnctnactivity","cmnctnlangname","medianame","cmnctnaddress","vndrnm","exttaxonomyidentifier",
+"campaignname","vndrjobid","vndrjobnamee","cmnctnmgrname","cmnctnchnltypecd"]
+        }
+    },
+    {$sort: {"taxonomycmnctnsentdt":-1}
+]
+
+# ---------------------------------------------------------------- #
+# --  Summary
+# 1.	Search with MemberId: 42~MECFFVHS and Channel: SMS
+{
+    "query":{
+       "bool":{
+          "filter":[
+             {
+                "term":{
+                   "constituentidentifier.keyword":"42~MECFFVHS"
+                }
+             },
+             {
+                "match_phrase":{
+                   "cmnctnchnltypecd":"SMS"
+                }
+             },
+             {
+                "multi_match":{
+                   "zero_terms_query":"ALL",
+                   "query":"",
+                   "minimum_should_match":"100%",
+                   "fields":[
+                      "taxonomyidentifier",
+                      "taxonomyportfolio",
+                      "taxonomyprogramname",
+                      "taxonomycmnctnowner",
+                      "taxonomycmnctnformat",
+                      "taxonomycmnctngoal",
+                      "taxonomycmnctncontenttopic",
+                      "taxonomycalltoaction",
+                      "taxonomyaudiencetype",
+                      "lobnm",
+                      "taxonomyregulatorytype",
+                      "taxonomytrigger",
+                      "taxonomyfrequency",
+                      "cmnctnactivity",
+                      "cmnctnlangname",
+                      "medianame",
+                      "cmnctnaddress",
+                      "vndrnm",
+                      "exttaxonomyidentifier",
+                      "campaignname",
+                      "vndrjobid",
+                      "vndrjobnamee",
+                      "cmnctnmgrname",
+                      "cmnctnchnltypecd"
+                   ]
+                }
+             },
+             {
+                "range":{
+                   "taxonomycmnctnsentdt":{
+                      "lte":"2022-08-18",
+                      "gte":"2021-08-18"
+                   }
+                }
+             }
+          ]
+       }
+    },
+    "sort":[
+       {
+          "taxonomycmnctnsentdt":{
+             "order":"desc"
+          }
+       }
+    ],
+    "from":0,
+    "size":50
+ }
+
+ # ---------------------------------------------------------------- #
+ # --  Summary
+ # 2.	Search With MemberId: 42~ MECFFVHS , Channel: SMS , and Keyword: site
+ {
+    "query":{
+       "bool":{
+          "filter":[
+             {
+                "term":{
+                   "constituentidentifier.keyword":"42~MECFFVHS"
+                }
+             },
+             {
+                "match_phrase":{
+                   "cmnctnchnltypecd":"SMS"
+                }
+             },
+             {
+                "multi_match":{
+                   "zero_terms_query":"ALL",
+                   "query":"site",
+                   "minimum_should_match":"100%",
+                   "fields":[
+                      "taxonomyidentifier",
+                      "taxonomyportfolio",
+                      "taxonomyprogramname",
+                      "taxonomycmnctnowner",
+                      "taxonomycmnctnformat",
+                      "taxonomycmnctngoal",
+                      "taxonomycmnctncontenttopic",
+                      "taxonomycalltoaction",
+                      "taxonomyaudiencetype",
+                      "lobnm",
+                      "taxonomyregulatorytype",
+                      "taxonomytrigger",
+                      "taxonomyfrequency",
+                      "cmnctnactivity",
+                      "cmnctnlangname",
+                      "medianame",
+                      "cmnctnaddress",
+                      "vndrnm",
+                      "exttaxonomyidentifier",
+                      "campaignname",
+                      "vndrjobid",
+                      "vndrjobnamee",
+                      "cmnctnmgrname",
+                      "cmnctnchnltypecd"
+                   ]
+                }
+             },
+             {
+                "range":{
+                   "taxonomycmnctnsentdt":{
+                      "lte":"2022-08-18",
+                      "gte":"2021-08-18"
+                   }
+                }
+             }
+          ]
+       }
+    },
+    "sort":[
+       {
+          "taxonomycmnctnsentdt":{
+             "order":"desc"
+          }
+       }
+    ],
+    "from":0,
+    "size":50
+ } 
+
+ # ---------------------------------------------------------------- #
+ # --  Summary
+ # 3.	Search With MemberId: 42~ MECFFVHS , Channel: All , Keyword: Administrative , Date filter
+ {
+    "query":{
+       "bool":{
+          "filter":[
+             {
+                "term":{
+                   "constituentidentifier.keyword":"42~MECFFVHS"
+                }
+             },
+             {
+                "multi_match":{
+                   "zero_terms_query":"ALL",
+                   "query":"Administrative",
+                   "minimum_should_match":"100%",
+                   "fields":[
+                      "taxonomyidentifier",
+                      "taxonomyportfolio",
+                      "taxonomyprogramname",
+                      "taxonomycmnctnowner",
+                      "taxonomycmnctnformat",
+                      "taxonomycmnctngoal",
+                      "taxonomycmnctncontenttopic",
+                      "taxonomycalltoaction",
+                      "taxonomyaudiencetype",
+                      "lobnm",
+                      "taxonomyregulatorytype",
+                      "taxonomytrigger",
+                      "taxonomyfrequency",
+                      "cmnctnactivity",
+                      "cmnctnlangname",
+                      "medianame",
+                      "cmnctnaddress",
+                      "vndrnm",
+                      "exttaxonomyidentifier",
+                      "campaignname",
+                      "vndrjobid",
+                      "vndrjobnamee",
+                      "cmnctnmgrname",
+                      "cmnctnchnltypecd"
+                   ]
+                }
+             },
+             {
+                "range":{
+                   "taxonomycmnctnsentdt":{
+                      "lte":"2022-02-13",
+                      "gte":"2022-02-11"
+                   }
+                }
+             }
+          ]
+       }
+    },
+    "sort":[
+       {
+          "taxonomycmnctnsentdt":{
+             "order":"desc"
+          }
+       }
+    ],
+    "from":0,
+    "size":50
+ }
+
+ #--------- MongoDB ----------------#
+ [
+    {$search: {
+        "compound" : {
+            "must" : [
+                {"text" : { "query" : "42~MECFFVHS", "path" : "constituentidentifier"}
+            ]
+        }
+    }}
+ ]
