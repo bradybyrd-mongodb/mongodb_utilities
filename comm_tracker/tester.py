@@ -27,8 +27,9 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(base_dir))
 from bbutil import Util
 from id_generator import Id_generator
+from mongo_loader import DbLoader
 
-sample_doc = "sample_doc.json"
+sample_doc = "templates/sample_doc.json"
 fake = Faker()
 categories = ["Running", "Cycling","CrossFit","OrangeTheory","Walking","Swimming","Jujitsu","SpeedKnitting"]
 
@@ -37,16 +38,17 @@ categories = ["Running", "Cycling","CrossFit","OrangeTheory","Walking","Swimming
 #------------------------------------------------------------------#
 if __name__ == "__main__":
     bb = Util()
+    settings = bb.read_json("commtracker_settings.json")
+    loader = DbLoader({"settings" : settings})
     ARGS = bb.process_args(sys.argv)
-    doct_t = bb.read_json(sample_doc)
     CUR_PATH = os.path.dirname(os.path.realpath(__file__))
     ans = []
     bb.logit("START")
-    for k in range(1000):
+    for k in range(100):
         cur_doc = bb.read_json(sample_doc) #copy.deepcopy(doct_t)
         cur_doc["data"][0]["category"] = random.choice(categories)
-        ans.append(cur_doc)
-    for k in ans:
-        bb.logit(k["data"][0]["category"])
+        loader.add(cur_doc)
+    loader.flush()
+    loader = None
     bb.logit("END")
     
