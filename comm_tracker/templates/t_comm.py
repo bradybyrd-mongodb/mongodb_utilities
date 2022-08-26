@@ -1,8 +1,8 @@
 '''
-    Template for customer profile
-    BJB 8/2/22
+    Template for Communication Message profile
+    BJB 8/18/22
     include this file in your python header
-    import profile as profile
+    import CommFactory as comm
 '''
 from faker import Faker
 import random
@@ -10,20 +10,25 @@ import datetime
 import copy
 import pprint
 fake = Faker()
+'''
+    "communicationid": "42~MECFFVHS^HMO^66475^Other^Verizon - Medicare Cal^UKN-00000000^CPLVoyantFax",
+    "constituentid": "42~MECFFVHS",
+  
+    Campaigns - each campaign generates x1000 messages
+        compaignidentifier, campaignname, cmnctnmgrcampaignname
 
-class ActivityFactory:
+'''
+class CommFactory:
     categories = ["Running", "Cycling","CrossFit","OrangeTheory","Walking","Swimming","Jujitsu","SpeedKnitting"]
-    vendors = ["WellDoc","Oura","FitBit","Apple", "QuantHealth"]
+    channels = ["SMS","FAX","SMS","IVR", "Pigeon"]
+    cell_providers = ["Verizon", "AT&T","T-Mobile","Cricket"]
     metrics = ["duration","steps","energy_burned","distance","max_heart_rate","elevation_change","blood_glucose"]
     makers = ["apple","fitbit","oura","samsung","roche","omnipod","B-D"]
+    campaigns = []
 
     def __init__(self, details = {}):
         oddvar = "odd"
-
-    # Three scenarios - 
-    # 1. build a new doc with some metrics
-    # 2. Add to an existing doc with additional metrics (same activity)
-    # 3. Add a whole new activity to the same data element
+        build_campaigns()
 
     def build_doc(self, id_val, profile, doc):
         doc["id"] = id_val
@@ -75,6 +80,14 @@ class ActivityFactory:
         doc["metrics"] = mets
         return(doc)       
 
+    def communication_id_gen(self, id_val):
+        # "42~MECFFVHS^HMO^66475^Other^Verizon - Medicare Cal^UKN-00000000^CPLVoyantFax"
+        return f'{random.randint(10,100)}~{id_val}^HMO^66475^Other^{random.choice(cell_providers)} - Medicare Cal^UKN-{id_val}'
+
+    def build_campaigns():
+        for k in range(100):
+            campaigns.append(fake.bs())
+
     def build_metric(self, item = "none"):
         if item == "none":
             item = random.choice(self.metrics)
@@ -97,47 +110,3 @@ class ActivityFactory:
 
         answer["origin"] = "manual"
         return(answer)
-
-'''
-    {
-        "profile_id" : "blahblah697980",
-        "vendor" : "Welldoc",
-        "data" : [
-          {
-            "category" : {"string" : "running"},
-            "checksum" : "963133bb47aea1405d32cd1",
-            "created_at" : "2020-05-13T10:50:16.015573",
-            "deleted_at" : "2022-07-27T10:50:16.015573",
-            "end_time" : "2022-07-27T10:50:16.015573",
-            "id" : "BAX-9999",
-            "log_id" : "43050850237",
-            "metrics" [
-              {
-                "origin" : "manual",
-                "type" : "distance",
-                "unit" : "m",
-                "value" : 3218.688
-              },
-              {
-                "origin" : "manual",
-                "type" : "active_duration",
-                "unit" : "s",
-                "value" : 1800
-              },
-              {
-                "origin" : "manual",
-                "type" : "steps",
-                "unit" : "count",
-                "value" : 2755
-              },
-              {
-                "origin" : "manual",
-                "type" : "energy_burned",
-                "unit" : "kcal",
-                "value" : 3218.688
-              }         
-            ]
-          }
-        ]
-      }
-'''

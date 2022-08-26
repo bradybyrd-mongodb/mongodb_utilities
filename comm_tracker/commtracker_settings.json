@@ -2,8 +2,8 @@
     "uri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
     "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
     "locluri" : "mongodb://localhost:27017",
-    "database" : "wellness",
-    "collection" : "testy",
+    "database" : "commtracker",
+    "collection" : "messages",
     "profile_collection" : "profiles",
     "history_collection" : "activity_raw",
     "username" : "main_admin",
@@ -19,10 +19,11 @@
     "num_csvupdates" : 0.25,
     "messages_per_profile" : 100,
     "activity_template" : "templates/sample_doc.json",
+    "summary_template" : "templates/summary_template.json",
     "gcp" : {
       "pub_sub_topic" : "comm-msg-topic",
       "pub_sub_project" : "bradybyrd-POC",
-      "pub_sub_subsciption" : "comm-msg-topic-sub",
+      "pub_sub_subscription" : "comm-msg-topic-sub",
       "pub_sub_timeout" : 3.0
     },
     "data" : {

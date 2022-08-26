@@ -11,7 +11,7 @@ import time
 import re
 import multiprocessing
 import pprint
-from deepmerge import Merger
+#from deepmerge import Merger
 import itertools
 import shutil
 import bson
@@ -28,10 +28,11 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # apppend parent folder to path
 sys.path.append(os.path.dirname(base_dir))
 sys.path.append(os.path.join(base_dir, "templates"))
-from t_comm import CommFactory
+#from t_comm import CommFactory
 from bbutil import Util
 from id_generator import Id_generator
 from mongo_loader import DbLoader
+from message_loader import MessageLoader
 
 fake = Faker()
 letters = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
@@ -120,7 +121,32 @@ def worker_load(ipos):
     #file_log(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
-def worker_message_generate(num_iterations):
+# --------------------------------------------------------- #
+#  Pub Sub Publish
+# --------------------------------------------------------- #
+def message_publisher():
+    # read settings and echo back
+    bb.message_box("Pub/Sub Message Subscriiption", "title")
+    bb.logit(f'# Settings from: {settings_file}')
+    # Spawn processes
+    num_procs = settings["process_count"]
+    jobs = []
+    inc = 0
+    multiprocessing.set_start_method("fork", force=True)
+    for item in range(num_procs):
+        p = multiprocessing.Process(target=worker_message_generate, args = (item,))
+        jobs.append(p)
+        p.start()
+        time.sleep(1)
+        inc += 1
+
+    main_process = multiprocessing.current_process()
+    bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
+    for i in jobs:
+        i.join()
+
+
+def worker_message_generate(proc_num):
     '''
         generate messages - publish to pub/sub
         accumulate x-million
@@ -135,22 +161,16 @@ def worker_message_generate(num_iterations):
     #  Send a copy of the claim with one or two field changes
     #  Add an updateDate and sequencenumber, updateName = TCD-1
     cur_process = multiprocessing.current_process()
-    collection = settings["collection"]
-    prefix = "COM"
+    prefix = "COMT"
     feed = False
-    comm = CommFactory()
+    loader = MessageLoader({"settings": settings})
     interval = 0
-    conn = client_connection()
-    db = conn[settings["database"]]
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
     num_records = settings["num_records"]
-    sampler = settings["num_updates"]
-    act_template = settings["activity_template"]
-    sample_size = int(num_records * sampler)
-    if "repeat" in ARGS:
-        num_iterations = int(ARGS["repeat"])
-     
+    summary_template = settings["summary_template"]
+    num_iterations = int(num_records/batch_size)
+    IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
     if "feed" in ARGS:
         sample_size = 10
         num_iterations = int(ARGS["feed"])
@@ -158,33 +178,47 @@ def worker_message_generate(num_iterations):
         feed = True
     if "size" in ARGS:
         sample_size = int(ARGS["size"])
-    pipe = [{"$sample" : {"size" : sample_size}}] # Do 10% at a time
+    bb.message_box("Comm Feed Simulation")
     for k in range(num_iterations):
-        bb.message_box("Comm Feed Simulation")
-        bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
-        IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
-        base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
-        bulk_docs = []
-        bulk_updates = []
+        #bb.logit(f'Iter: {k} of {num_iterations}, {batch_size} per batch - total: {icnt}')
         icnt = 0
+        base_id = int(IDGEN.get(prefix, num_records).replace(prefix,""))
         for row in range(batch_size):
             new_id = f'{prefix}{base_id + icnt}'
-            cur_doc = bb.read_json(act_template)
-            if icnt != 0 and icnt % batch_size == 0:
-                if feed:
-                    db[collection].insert_many(bulk_docs)
-                else:
-                    db[collection].insert_many(bulk_docs)
-                bb.logit(f'Adding {batch_size} total: {icnt}')
-            comm_item = comm.build_doc(new_id, row, cur_doc)
-            bulk_docs.append(comm_item)
+            new_doc = process_message(summary_template, new_id)
+            loader.add(new_doc)
             icnt += 1
         # get the leftovers
-        #bb.logit(f'Leftovers {bulk_docs}')
-        db[collection].insert_many(bulk_docs)
+        loader.flush()
 
     bb.logit("#-------- COMPLETE -------------#")
-    conn.close()
+    loader = None
+
+def process_message(doc_template, new_id):
+    cur_doc = bb.read_json(doc_template)
+    age = random.randint(0,6)
+    yr = 0
+    month = 9
+    month = month - age
+    if month < 1:
+        month = 12 + month
+        yr = 1
+    year = 2022 - yr
+    day = random.randint(1,28)
+    msgdt = datetime.datetime(year,month,day, 10, 45)
+    cur_doc["id"] = new_id
+    cur_doc["cmnctn_identifier"] = f'{new_id}_{cur_doc["cmnctn_identifier"]}'
+    cur_doc["ext_taxonomy_identifier"] = f'{new_id}_{cur_doc["ext_taxonomy_identifier"]}'
+    cur_doc["taxonomy_identifier"] = f'{new_id}_{cur_doc["taxonomy_identifier"]}'
+    cur_doc["cmnctn_activity_dts"] = msgdt.strftime("%Y-%m-%dT%H:%M:%S")
+    cur_doc["cmnctn_last_updated_dt"] = (msgdt + datetime.timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%S")
+    cur_doc["load_day"] = day
+    cur_doc["load_month"] = month
+    cur_doc["load_year"] = year
+    cur_doc["campaign_name"] = fake.sentence()
+    cur_doc["taxonomy_cmnctn_content_topic"] = fake.bs()
+    cur_doc["taxonomy_portfolio"] = random.choice(["Behavior Change/Next Best Action","Marketing Inquiry","Survey","Post-call quality check"])
+    return(cur_doc)
 
 # --------------------------------------------------------- #
 #  Pub Sub Subscription
@@ -224,6 +258,7 @@ def worker_message_subscribe(num_iterations):
     #  Send a copy of the claim with one or two field changes
     #  Add an updateDate and sequencenumber, updateName = TCD-1
     cur_process = multiprocessing.current_process()
+    global g_loader
     tester = False
     if "test" in ARGS:
         tester = True
@@ -234,68 +269,50 @@ def worker_message_subscribe(num_iterations):
         num_iterations = int(ARGS["feed"])
         interval = 5
     bb.logit('Current process is %s %s' % (cur_process.name, cur_process.pid))
+    project = settings["gcp"]["pub_sub_project"]
+    subscription = settings["gcp"]["pub_sub_subscription"]
+    timeout = settings["gcp"]["pub_sub_timeout"]
+    bb.logit(f'Subscriber set in {project} for topic: {subscription}')
+    g_loader = DbLoader({"settings" : settings})
+    
     start_time = datetime.datetime.now()
-    collection = settings["collection"]
-    prefix = "COM"
     feed = False
-    #comm = CommFactory()
-    conn = client_connection()
-    db = conn[settings["database"]]
+    keep_going = True
+    # consumer function to consume messages from a topics for a given timeout period
+    subscriber = pubsub_v1.SubscriberClient()
+    subscription_path = subscriber.subscription_path(project, subscription)
+    bb.logit(f"Listening for messages on {subscription_path}..\n")
+    streaming_pull_future = subscriber.subscribe(subscription_path, callback=process_payload)
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
-    for k in range(num_iterations):
+    icnt = 0
+    while keep_going:
         bb.message_box("Comm Feed Simulation")
-        bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
-        IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
-        base_id = int(IDGEN.get(prefix, sample_size).replace(prefix,""))
-        bulk_docs = []
-        bulk_updates = []
-        icnt = 0
-        for row in range(batch_size):
-            new_id = f'{prefix}{base_id + icnt}'
-            cur_doc = bb.read_json(act_template)
-            if icnt != 0 and icnt % batch_size == 0:
-                if feed:
-                    db[collection].insert_many(bulk_docs)
-                else:
-                    db[collection].insert_many(bulk_docs)
-                bb.logit(f'Adding {batch_size} total: {icnt}')
-            comm_item = comm.build_doc(new_id, row, cur_doc)
-            bulk_docs.append(comm_item)
-            icnt += 1
-        # get the leftovers
-        #bb.logit(f'Leftovers {bulk_docs}')
-        db[collection].insert_many(bulk_docs)
+        #bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
+        # Wrap subscriber in a 'with' block to automatically call close() when done.
+        with subscriber:
+            try:
+                # When `timeout` is not set, result() will block indefinitely,
+                # unless an exception is encountered first.                
+                streaming_pull_future.result(timeout=timeout)
+            except TimeoutError:
+                streaming_pull_future.cancel()
+                keep_going = False
+        icnt += 1
+
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
     #file_log(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")   
     bb.logit("#-------- COMPLETE -------------#")
-    conn.close()
-
-# consumer function to consume messages from a topics for a given timeout period
-def consume_payload(callback, period):
-        project = settings["gcp"]["pub_sub_project"]
-        subscription = settings["gcp"]["pub_sub_subscription"]
-        timeout = settings["gcp"]["pub_sub_timeout"]
-        subscriber = pubsub_v1.SubscriberClient()
-        subscription_path = subscriber.subscription_path(project, subscription)
-        bb.logit(f"Listening for messages on {subscription_path}..\n")
-        streaming_pull_future = subscriber.subscribe(subscription_path, callback=process_payload)
-        # Wrap subscriber in a 'with' block to automatically call close() when done.
-        with subscriber:
-            try:
-                # When `timeout` is not set, result() will block indefinitely,
-                # unless an exception is encountered first.                
-                streaming_pull_future.result(timeout=period)
-            except TimeoutError:
-                streaming_pull_future.cancel()
 
 # callback function for processing consumed payloads 
 # prints recieved payload
 def process_payload(message):
-    bb.logit(f"Received {message.data}.")
+    new_doc = json.loads((message.data).decode())
+    bb.logit(f'Received message {new_doc["taxonomy_identifier"]}.')
+    g_loader.add(new_doc)
     message.ack()    
 
 #----------------------------------------------------------------------#
@@ -380,7 +397,6 @@ if __name__ == "__main__":
     CUR_PATH = os.path.dirname(os.path.realpath(__file__))
     base_counter = settings["base_counter"]
     IDGEN = Id_generator({"seed" : base_counter})
-    
     MASTER_CLAIMS = []
     if "wait" in ARGS:
         interval = int(ARGS["wait"])
@@ -396,7 +412,9 @@ if __name__ == "__main__":
     elif ARGS["action"] == "load_updates":
         worker_activity_update_new(1)
     elif ARGS["action"] == "subscribe":
-        claims_reports()
+        message_subscription()
+    elif ARGS["action"] == "publish":
+        message_publisher()
     elif ARGS["action"] == "reports":
         claims_reports()
     else:
