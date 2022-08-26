@@ -1,5 +1,5 @@
 '''
-    MongoLoader - class for loadingrecords
+    MessageLoader - class for loadingrecords
     BJB 8/25/22
 '''
 import datetime

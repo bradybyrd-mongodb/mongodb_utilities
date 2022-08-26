@@ -23,14 +23,17 @@ class DbLoader:
     def add(self, doc):
         if len(self.bulk_docs) == self.batch_size:
             self.flush()
+        doc["seq_id"] = self.counter
         self.bulk_docs.append(doc)
         self.counter += 1
 
     def flush(self):
         db = self.conn[self.settings["database"]]
-        ans = db[self.settings["collection"]].insert_many(self.bulk_docs)
         self.logit(f"Loading batch: {self.batch_size} - total: {self.counter}")
+        ans = db[self.settings["collection"]].insert_many(self.bulk_docs)
         self.bulk_docs = []
+        self.logit(f'Bulk Docs: ')
+        pprint.pprint(self.bulk_docs)
         
 
     def client_connection(self, type = "uri"):

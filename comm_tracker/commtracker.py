@@ -226,7 +226,7 @@ def process_message(doc_template, new_id):
 
 def message_subscription():
     # read settings and echo back
-    bb.message_box("Pub/Sub Message Subscriiption", "title")
+    bb.message_box("Pub/Sub Message Subscription", "title")
     bb.logit(f'# Settings from: {settings_file}')
     # Spawn processes
     num_procs = settings["process_count"]
@@ -259,6 +259,7 @@ def worker_message_subscribe(num_iterations):
     #  Add an updateDate and sequencenumber, updateName = TCD-1
     cur_process = multiprocessing.current_process()
     global g_loader
+    global icnt
     tester = False
     if "test" in ARGS:
         tester = True
@@ -274,6 +275,7 @@ def worker_message_subscribe(num_iterations):
     timeout = settings["gcp"]["pub_sub_timeout"]
     bb.logit(f'Subscriber set in {project} for topic: {subscription}')
     g_loader = DbLoader({"settings" : settings})
+    icnt = 0
     
     start_time = datetime.datetime.now()
     feed = False
@@ -285,9 +287,7 @@ def worker_message_subscribe(num_iterations):
     streaming_pull_future = subscriber.subscribe(subscription_path, callback=process_payload)
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
-    icnt = 0
     while keep_going:
-        bb.message_box("Comm Feed Simulation")
         #bb.logit(f'Iter: {k} of {num_iterations}, {sample_size} per batch')
         # Wrap subscriber in a 'with' block to automatically call close() when done.
         with subscriber:
@@ -298,8 +298,7 @@ def worker_message_subscribe(num_iterations):
             except TimeoutError:
                 streaming_pull_future.cancel()
                 keep_going = False
-        icnt += 1
-
+    
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
@@ -311,7 +310,11 @@ def worker_message_subscribe(num_iterations):
 # prints recieved payload
 def process_payload(message):
     new_doc = json.loads((message.data).decode())
-    bb.logit(f'Received message {new_doc["taxonomy_identifier"]}.')
+    if "_id" in new_doc:
+        new_doc["old_id"] = new_doc["_id"]
+        new_doc.pop("_id", None)    
+    bb.logit(f'Message[{icnt}] {new_doc["taxonomy_identifier"]}.')
+    icnt += 1
     g_loader.add(new_doc)
     message.ack()    
 
