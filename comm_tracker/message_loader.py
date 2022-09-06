@@ -8,23 +8,65 @@ import os
 import sys
 from google.cloud import pubsub_v1
 from concurrent.futures import TimeoutError
+import os
+import time
+from confluent_kafka import Producer
+import socket
+import json
+base_dir = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.append(os.path.dirname(base_dir))
+sys.path.append(os.path.join(base_dir, "templates"))
+from bbutil import Util
+
+DEFAULT_CONFIG = {
+    "bootstrap.servers": "pkc-56d1g.eastus.azure.confluent.cloud:9092",
+    "security.protocol": "SASL_SSL",
+    "sasl.mechanisms": "PLAIN",
+    "sasl.username": "4LDRX2W3K2PPOMED",
+    "sasl.password": "hiafC+1cwOPLeQlO4xfNMztdT3YYeHSDqqlDBN+LR+fO3k5bWkX6fw8Jpapss/B7",
+    "client.id": socket.gethostname()
+}
+
 
 class MessageLoader:
 
-    def __init__(self, details = {}):
+    def __init__(self, details={}):
         self.bulk_docs = []
         self.counter = 0
         self.settings = details["settings"]
-        self.conn = self.pubsub_connection()
+        # self.conn = self.pubsub_connection()
         self.batch_size = self.settings["batch_size"]
         self.project = self.settings["gcp"]["pub_sub_project"]
-        self.topic = self.settings["gcp"]["pub_sub_topic"]
+        # self.topic = self.settings["gcp"]["pub_sub_topic"]
         self.timeout = self.settings["gcp"]["pub_sub_timeout"]
-        self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
-    
+        # self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
+
+        self.config_kafka = DEFAULT_CONFIG
+        self.topic = "kafka-topic"
+        self.DEFAULT_CONFIG = {
+            "bootstrap.servers": "pkc-56d1g.eastus.azure.confluent.cloud:9092",
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanisms": "PLAIN",
+            "sasl.username": "4LDRX2W3K2PPOMED",
+            "sasl.password": "hiafC+1cwOPLeQlO4xfNMztdT3YYeHSDqqlDBN+LR+fO3k5bWkX6fw8Jpapss/B7",
+            "client.id": socket.gethostname()
+        }
+        self.producer = Producer(self.DEFAULT_CONFIG)
+
+
+
+# Best practice for higher availability in librdkafka clients prior to 1.7
+# session.timeout.ms=45000
+
+# Required connection configs for Confluent Cloud Schema Registry
+# schema.registry.url=https://{{ SR_ENDPOINT }}
+# basic.auth.credentials.source=USER_INFO
+# basic.auth.user.info={{ SR_API_KEY }}:{{ SR_API_SECRET }}
+
     def __del__(self):
         cool = "not"
-        #self.conn.close()
+        # self.conn.close()
 
     def not_add(self, doc):
         if len(self.bulk_docs) == self.batch_size:
@@ -32,12 +74,25 @@ class MessageLoader:
         self.bulk_docs.append(doc)
         self.counter += 1
 
-    def add(self, payload):        
-            topic_path = self.conn.topic_path(self.project, self.topic)        
-            data = json.dumps(payload).encode("utf-8")           
-            future = self.conn.publish(topic_path, data=data)
-            self.logit("Pushed message to topic.")
-            
+    def add_pubsub(self, payload):
+        topic_path = self.conn.topic_path(self.project, self.topic)
+        data = json.dumps(payload).encode("utf-8")
+        future = self.conn.publish(topic_path, data=data)
+        self.logit("Pushed message to topic.")
+
+    def add_kafka(self, payload):
+        data = json.dumps(payload).encode("utf-8")
+        print("add_kafka class")
+        self.producer.produce(self.topic, data, callback=self.delivery_callback)
+        # self.producer.poll(10000)
+        self.producer.flush()
+    def delivery_callback(self, err, msg):
+        if err:
+            print('ERROR: Message failed delivery: {}'.format(err))
+        else:
+            print("Produced event to topic {topic}: key = {key:12} value = {value:12}".format(
+                topic=msg.topic(), key=msg.key().decode('utf-8'), value=msg.value().decode('utf-8')))
+
     def flush(self):
         cool = "not"
         '''
@@ -47,12 +102,11 @@ class MessageLoader:
         self.bulk_docs = []
         '''
 
-    def pubsub_connection(self, type = "uri"):
+    def pubsub_connection(self, type="uri"):
         publisher = pubsub_v1.PublisherClient()
         return publisher
 
-
-    def logit(self, message, log_type = "INFO", display_only = True):
+    def logit(self, message, log_type="INFO", display_only=True):
         cur_date = datetime.datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         stamp = f"{cur_date}|{log_type}> "
         if type(message) == dict or type(message) == list:
@@ -61,3 +115,4 @@ class MessageLoader:
             message = "Raw output, check file"
         for line in message.splitlines():
             print(f"{stamp}{line}")
+
