@@ -84,8 +84,8 @@ class MessageLoader:
         data = json.dumps(payload).encode("utf-8")
         print("add_kafka class")
         self.producer.produce(self.topic, data, callback=self.delivery_callback)
-        # self.producer.poll(10000)
-        self.producer.flush()
+        self.producer.poll()
+        # self.producer.flush()
     def delivery_callback(self, err, msg):
         if err:
             print('ERROR: Message failed delivery: {}'.format(err))
@@ -95,6 +95,8 @@ class MessageLoader:
 
     def flush(self):
         cool = "not"
+        self.producer.flush()
+
         '''
         db = self.conn[self.settings["database"]]
         ans = db[self.settings["collection"]].insert_many(self.bulk_docs)
