@@ -124,7 +124,7 @@ def worker_load(ipos):
 # --------------------------------------------------------- #
 #  Pub Sub Publish
 # --------------------------------------------------------- #
-def message_publisher():
+def message_publisher(stream):
     # read settings and echo back
     bb.message_box("Pub/Sub Message Subscriiption", "title")
     bb.logit(f'# Settings from: {settings_file}')
@@ -134,7 +134,7 @@ def message_publisher():
     inc = 0
     multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
-        p = multiprocessing.Process(target=worker_message_generate, args = (item,))
+        p = multiprocessing.Process(target=worker_message_generate, args = (item, stream))
         jobs.append(p)
         p.start()
         time.sleep(1)
@@ -146,7 +146,7 @@ def message_publisher():
         i.join()
 
 
-def worker_message_generate(proc_num):
+def worker_message_generate(proc_num, stream):
     '''
         generate messages - publish to pub/sub
         accumulate x-million
@@ -179,6 +179,11 @@ def worker_message_generate(proc_num):
     if "size" in ARGS:
         sample_size = int(ARGS["size"])
     bb.message_box("Comm Feed Simulation")
+    if stream == "kafka":
+        loader.add = loader.add_kafka
+    elif stream == "pubsub":
+        loader.add = loader.add_pubsub
+
     for k in range(num_iterations):
         #bb.logit(f'Iter: {k} of {num_iterations}, {batch_size} per batch - total: {icnt}')
         icnt = 0
@@ -226,24 +231,25 @@ def process_message(doc_template, new_id):
 
 def message_subscription():
     # read settings and echo back
-    bb.message_box("Pub/Sub Message Subscription", "title")
+    bb.message_box("Pub/Sub Message Subscriiption", "title")
     bb.logit(f'# Settings from: {settings_file}')
     # Spawn processes
     num_procs = settings["process_count"]
     jobs = []
     inc = 0
-    multiprocessing.set_start_method("fork", force=True)
-    for item in range(num_procs):
-        p = multiprocessing.Process(target=worker_message_subscribe, args = (item,))
-        jobs.append(p)
-        p.start()
-        time.sleep(1)
-        inc += 1
+    # multiprocessing.set_start_method("fork", force=True)
+    # for item in range(num_procs):
+    #     p = multiprocessing.Process(target=worker_message_subscribe, args = (item,))
+    #     jobs.append(p)
+    #     p.start()
+    #     time.sleep(1)
+    #     inc += 1
+    worker_message_subscribe()
 
-    main_process = multiprocessing.current_process()
-    bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
-    for i in jobs:
-        i.join()
+    # main_process = multiprocessing.current_process()
+    # bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
+    # for i in jobs:
+    #     i.join()
 
 def worker_message_subscribe(num_iterations):
     '''
@@ -257,7 +263,7 @@ def worker_message_subscribe(num_iterations):
     '''
     #  Send a copy of the claim with one or two field changes
     #  Add an updateDate and sequencenumber, updateName = TCD-1
-    cur_process = multiprocessing.current_process()
+    # cur_process = multiprocessing.current_process()
     global g_loader
     global icnt
     tester = False
@@ -298,7 +304,7 @@ def worker_message_subscribe(num_iterations):
             except TimeoutError:
                 streaming_pull_future.cancel()
                 keep_going = False
-    
+
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
@@ -306,16 +312,18 @@ def worker_message_subscribe(num_iterations):
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")   
     bb.logit("#-------- COMPLETE -------------#")
 
-# callback function for processing consumed payloads 
+# callback function for procesrsing consumed payloads 
 # prints recieved payload
 def process_payload(message):
+    global icnt
     new_doc = json.loads((message.data).decode())
     if "_id" in new_doc:
         new_doc["old_id"] = new_doc["_id"]
         new_doc.pop("_id", None)    
+    new_doc["_id"] = new_doc["taxonomy_identifier"]
     bb.logit(f'Message[{icnt}] {new_doc["taxonomy_identifier"]}.')
-    icnt += 1
     g_loader.add(new_doc)
+    icnt += 1
     message.ack()    
 
 #----------------------------------------------------------------------#
@@ -416,8 +424,10 @@ if __name__ == "__main__":
         worker_activity_update_new(1)
     elif ARGS["action"] == "subscribe":
         message_subscription()
-    elif ARGS["action"] == "publish":
-        message_publisher()
+    elif ARGS["action"] == "publish" and ARGS["stream"] == "kafka":
+        message_publisher("kafka")
+    elif ARGS["action"] == "publish" and ARGS["stream"] == "pubsub":
+        message_publisher("pubsub")
     elif ARGS["action"] == "reports":
         claims_reports()
     else:

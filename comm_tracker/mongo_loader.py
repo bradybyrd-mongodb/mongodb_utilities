@@ -23,7 +23,7 @@ class DbLoader:
     def add(self, doc):
         if len(self.bulk_docs) == self.batch_size:
             self.flush()
-        doc["seq_id"] = self.counter
+        # doc["seq_id"] = self.counter
         self.bulk_docs.append(doc)
         self.counter += 1
 
