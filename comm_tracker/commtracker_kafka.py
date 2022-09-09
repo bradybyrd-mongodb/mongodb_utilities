@@ -32,7 +32,10 @@ sys.path.append(os.path.join(base_dir, "templates"))
 from bbutil import Util
 from id_generator import Id_generator
 from mongo_loader import DbLoader
+#from message_loader_kafka import MessageLoader
 from message_loader import MessageLoader
+from perf_queries import PerfQueries
+
 
 fake = Faker()
 letters = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
@@ -181,29 +184,38 @@ def worker_message_generate(proc_num, stream):
     bb.message_box("Comm Feed Simulation")
     if stream == "kafka":
         loader.add = loader.add_kafka
-        bb.logit(f"Pubishing Kafka Messages - {num_records}")
+        bb.logit(f"[{cur_process.name}] Pubishing Kafka Messages - {num_records} to do")
     elif stream == "pubsub":
         loader.add = loader.add_pubsub
+    elif stream == "direct":
+        conn = client_connection()
     icnt = 0
+    bulk_docs = []
     base_id = int(IDGEN.get(prefix, num_records).replace(prefix,""))
     for k in range(num_iterations):
         #bb.logit(f'Iter: {k} of {num_iterations}, {batch_size} per batch - total: {icnt}')
         for row in range(batch_size):
             new_id = f'{prefix}{base_id + icnt}'
-            new_doc = process_message(summary_template, new_id, icnt)
-            loader.add(new_doc)
+            new_doc = process_message(summary_template, new_id, icnt, stream)
+            if stream == "direct":
+                if len(bulk_docs) == batch_size:
+                    flush_direct(conn[settings["database"]],bulk_docs)
+                    bulk_docs = []
+                bulk_docs.append(new_doc)
+            else:
+                loader.add(new_doc, icnt)
             if icnt % 500 == 0:
-                print(f'{icnt} msgs')
+                print(f'[{cur_process.name}] {icnt} msgs')
             elif icnt % 20 == 0:
                 print(".", end="", flush=True)
             icnt += 1
-        # get the leftovers
-        loader.flush()
-
+    # get the leftovers
+    if stream == "direct":
+        flush_direct(conn[settings["database"]],bulk_docs)
     bb.logit("#-------- COMPLETE -------------#")
     loader = None
 
-def process_message(doc_template, new_id, cnt):
+def process_message(doc_template, new_id, cnt, stype = "normal"):
     cur_doc = bb.read_json(doc_template)
     camp = f'C~{1000 + int(cnt/1000)}'
     age = random.randint(0,6)
@@ -220,8 +232,8 @@ def process_message(doc_template, new_id, cnt):
     cur_doc["cmnctn_identifier"] = f'{new_id}_{cur_doc["cmnctn_identifier"]}'
     cur_doc["ext_taxonomy_identifier"] = f'{new_id}_{cur_doc["ext_taxonomy_identifier"]}'
     cur_doc["taxonomy_identifier"] = f'{new_id}_{cur_doc["taxonomy_identifier"]}'
-    cur_doc["cmnctn_activity_dts"] = msgdt.strftime("%Y-%m-%dT%H:%M:%S")
-    cur_doc["cmnctn_last_updated_dt"] = (msgdt + datetime.timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%S")
+    cur_doc["cmnctn_activity_dts"] = msgdt if stype == "direct" else msgdt.strftime("%Y-%m-%dT%H:%M:%S")
+    cur_doc["cmnctn_last_updated_dt"] = msgdt + datetime.timedelta(hours=4) if stype == "direct" else (msgdt + datetime.timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%S")
     cur_doc["load_day"] = day
     cur_doc["load_month"] = month
     cur_doc["load_year"] = year
@@ -230,8 +242,13 @@ def process_message(doc_template, new_id, cnt):
     cur_doc["taxonomy_cmnctn_format"] = random.choice(["Email", "SMS", "Call", "Popup", "DirectMail"])
     cur_doc["taxonomy_cmnctn_content_topic"] = fake.bs()
     cur_doc["taxonomy_portfolio"] = random.choice(["Behavior Change/Next Best Action","Marketing Inquiry","Survey","Post-call quality check"])
-    cur_doc["version"] = "1.2"
+    cur_doc["version"] = "1.4"
     return(cur_doc)
+
+def flush_direct(db,docs):
+    ans = db[settings["collection"]].insert_many(docs)
+    bb.logit(f"Loading batch: {len(docs)}")
+    docs = []
 
 # --------------------------------------------------------- #
 #  Pub Sub Subscription
@@ -337,22 +354,11 @@ def process_payload(message):
 #----------------------------------------------------------------------#
 #   Reporting
 #----------------------------------------------------------------------#
-def claims_reports():
-    #  Take an array of claims, give the timeline of changes
-    #  Add an updateDate and sequencenumber, updateName = TCD-1
-    cur_process = multiprocessing.current_process()
-    report_type = "none"
-    if "report" in ARGS:
-        report_type = ARGS["report"]
-    else:
-        print("Send report=<report_type>")
-        sys.exit(1)    # Spawn processes
-    if report_type == "claim_history":
-        history_report()
-    elif report_type == "claim_details":
-        claim_detail()
-    else:
-        print(f"No report called {report_type} choices: claim_history, claim_details")
+def perf_stats():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    cc = PerfQueries({"args" : ARGS, "settings" : settings, "db" : db})
+    cc.perf_stats()
 
 #----------------------------------------------------------------------#
 #   Utility Routines
@@ -434,10 +440,13 @@ if __name__ == "__main__":
         message_subscription()
     elif ARGS["action"] == "publish" and ARGS["stream"] == "kafka":
         message_publisher("kafka")
+    elif ARGS["action"] == "publish" and ARGS["stream"] == "direct":
+        message_publisher("direct")
     elif ARGS["action"] == "publish" and ARGS["stream"] == "pubsub":
         message_publisher("pubsub")
-    elif ARGS["action"] == "reports":
-        claims_reports()
+    elif ARGS["action"] == "perf":
+        # python3 commtracker_kafka.py action=perf batch=simple_match iters=20000
+        perf_stats()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()

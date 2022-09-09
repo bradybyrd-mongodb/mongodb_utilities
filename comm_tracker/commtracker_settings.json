@@ -1,76 +1,43 @@
 {
-    "uri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
-    "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
-    "locluri" : "mongodb://localhost:27017",
-    "database" : "commtracker",
-    "collection" : "messages",
-    "profile_collection" : "profiles",
-    "history_collection" : "activity_raw",
-    "username" : "main_admin",
-    "password" : "bugsyBoo",
-    "version" : "1.0",
-    "process_count" : 1,
-    "batch_size" : 20,
-    "import_path" : "updatecsv",
-    "batches" : 1,
-    "base_counter" : 1000000,
-    "num_records" : 1000,
-    "num_updates" : 0.1,
-    "num_csvupdates" : 0.25,
-    "messages_per_profile" : 100,
-    "activity_template" : "templates/sample_doc.json",
-    "summary_template" : "templates/summary_template.json",
-    "gcp" : {
-      "pub_sub_topic" : "comm-msg-topic",
-      "pub_sub_project" : "bradybyrd-POC",
-      "pub_sub_subscription" : "comm-msg-topic-sub",
-      "pub_sub_timeout" : 3.0
-    },
-    "data" : {
-      "claims" : {"path" : "claim.csv", "size" : 10000, "id_prefix" : "CL-", "thumbnail" : []}
-    },
-    "samples" : [
-      {
-        "id" : "blahblah697980",
-        "vendor" : "Welldoc",
-        "data" : [
-          {
-            "category" : {"string" : "running"},
-            "checksum" : "963133bb47aea1405d32cd1",
-            "created_at" : "2020-05-13T10:50:16.015573",
-            "deleted_at" : "2022-07-27T10:50:16.015573",
-            "end_time" : "2022-07-27T10:50:16.015573",
-            "id" : "bb-99999",
-            "log_id" : "43050850237",
-            "metrics" :[
-              {
-                "origin" : "manual",
-                "type" : "distance",
-                "unit" : "m",
-                "value" : 3218.688
-              },
-              {
-                "origin" : "manual",
-                "type" : "active_duration",
-                "unit" : "s",
-                "value" : 1800
-              },
-              {
-                "origin" : "manual",
-                "type" : "steps",
-                "unit" : "count",
-                "value" : 2755
-              },
-              {
-                "origin" : "manual",
-                "type" : "energy_burned",
-                "unit" : "kcal",
-                "value" : 3218.688
-              }         
-            ]
-          }
-        ]
-      }
-    ]
-  }
-  
+  "basuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+  "uri" : "mongodb+srv://commstracker.mhsdb.mongodb.net",
+  "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+  "locluri" : "mongodb://localhost:27017",
+  "database" : "commtracker",
+  "collection" : "messages",
+  "profile_collection" : "profiles",
+  "history_collection" : "activity_raw",
+  "username" : "main_admin",
+  "password" : "bugsyBoo",
+  "version" : "1.0",
+  "process_count" : 3,
+  "batch_size" : 50,
+  "import_path" : "updatecsv",
+  "batches" : 1,
+  "base_counter" : 1000000,
+  "num_records" : 100000,
+  "num_updates" : 0.1,
+  "num_csvupdates" : 0.25,
+  "messages_per_profile" : 100,
+  "kafka_topic" : "kafka-topic",
+  "activity_template" : "templates/sample_doc.json",
+  "summary_template" : "templates/summary_template.json",
+  "gcp" : {
+    "pub_sub_topic" : "comm-msg-topic",
+    "pub_sub_project" : "bradybyrd-POC",
+    "pub_sub_subscription" : "comm-msg-topic-sub",
+    "pub_sub_timeout" : 3.0
+  },
+  "confluent" : {
+    "bootstrap.servers": "pkc-lgwgm.eastus2.azure.confluent.cloud:9092",
+    "security.protocol": "SASL_SSL",
+    "sasl.mechanisms": "PLAIN",
+    "sasl.username": "WMU4KF63X5A6APDR",
+    "sasl.password": "KS5gNBEVJGocALbg6sLeCMPh+H2d2xcKLQpzWCG9cPGKg8QMh1U8hEEcrCnirCfg",
+    "client.id": "none"
+  },
+  "data" : {
+    "claims" : {"path" : "claim.csv", "size" : 10000, "id_prefix" : "CL-", "thumbnail" : []}
+  },
+  "poo" : "done"
+}

@@ -19,14 +19,7 @@ sys.path.append(os.path.dirname(base_dir))
 sys.path.append(os.path.join(base_dir, "templates"))
 from bbutil import Util
 
-DEFAULT_CONFIG = {
-    "bootstrap.servers": "pkc-56d1g.eastus.azure.confluent.cloud:9092",
-    "security.protocol": "SASL_SSL",
-    "sasl.mechanisms": "PLAIN",
-    "sasl.username": "4LDRX2W3K2PPOMED",
-    "sasl.password": "hiafC+1cwOPLeQlO4xfNMztdT3YYeHSDqqlDBN+LR+fO3k5bWkX6fw8Jpapss/B7",
-    "client.id": socket.gethostname()
-}
+
 
 
 class MessageLoader:
@@ -42,21 +35,10 @@ class MessageLoader:
         self.timeout = self.settings["gcp"]["pub_sub_timeout"]
         # self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
 
-        self.config_kafka = DEFAULT_CONFIG
-        if "topic" in details:
-            self.topic = details["topic"]
-        else:
-            self.topic = "kafka-topic"
-        self.DEFAULT_CONFIG = {
-            "bootstrap.servers": "pkc-56d1g.eastus.azure.confluent.cloud:9092",
-            "security.protocol": "SASL_SSL",
-            "sasl.mechanisms": "PLAIN",
-            "sasl.username": "4LDRX2W3K2PPOMED",
-            "sasl.password": "hiafC+1cwOPLeQlO4xfNMztdT3YYeHSDqqlDBN+LR+fO3k5bWkX6fw8Jpapss/B7",
-            "client.id": socket.gethostname()
-        }
-        self.producer = Producer(self.DEFAULT_CONFIG)
-
+        self.config_kafka = self.settings["confluent"]
+        self.config_kafka["client.id"] = socket.gethostname()
+        self.topic = self.settings["kafka_topic"]
+        self.producer = Producer(self.config_kafka)
 
 
 # Best practice for higher availability in librdkafka clients prior to 1.7
@@ -71,23 +53,25 @@ class MessageLoader:
         cool = "not"
         # self.conn.close()
 
-    def not_add(self, doc):
+    def add_mongo(self, doc, cnt):
         if len(self.bulk_docs) == self.batch_size:
             self.flush()
         self.bulk_docs.append(doc)
         self.counter += 1
+        return True
 
-    def add_pubsub(self, payload):
+    def add_pubsub(self, payload, cnt):
         topic_path = self.conn.topic_path(self.project, self.topic)
         data = json.dumps(payload).encode("utf-8")
         future = self.conn.publish(topic_path, data=data)
         self.logit("Pushed message to topic.")
+        return True
 
-    def add_kafka(self, payload):
+    def add_kafka(self, payload, cnt):
         data = json.dumps(payload).encode("utf-8")
         self.producer.produce(self.topic, data, callback=self.delivery_callback)
         self.producer.poll()
-        # self.producer.flush()
+        return True
 
     def delivery_callback(self, err, msg):
         if err:
@@ -97,14 +81,10 @@ class MessageLoader:
 
     def flush(self):
         cool = "not"
-        self.producer.flush()
-
-        '''
         db = self.conn[self.settings["database"]]
         ans = db[self.settings["collection"]].insert_many(self.bulk_docs)
         self.logit(f"Loading batch: {self.batch_size} - total: {self.counter}")
         self.bulk_docs = []
-        '''
 
     def pubsub_connection(self, type="uri"):
         publisher = pubsub_v1.PublisherClient()

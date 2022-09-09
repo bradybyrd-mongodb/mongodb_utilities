@@ -10,7 +10,7 @@ from google.cloud import pubsub_v1
 from concurrent.futures import TimeoutError
 import os
 import time
-from confluent_kafka import Producer
+#from confluent_kafka import Producer
 import socket
 import json
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -52,7 +52,7 @@ class MessageLoader:
             "sasl.password": "hiafC+1cwOPLeQlO4xfNMztdT3YYeHSDqqlDBN+LR+fO3k5bWkX6fw8Jpapss/B7",
             "client.id": socket.gethostname()
         }
-        self.producer = Producer(self.DEFAULT_CONFIG)
+        self.producer = None #Producer(self.DEFAULT_CONFIG)
 
 
 
