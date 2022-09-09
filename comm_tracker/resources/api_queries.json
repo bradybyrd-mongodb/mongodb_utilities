@@ -12,6 +12,15 @@
 
 
 [
+   {
+      $match: {"constituentidentifier.keyword":"42~MECFFVHS","cmnctnchnltypecd":"SMS"}
+   },
+   {
+      $sort: {"taxonomycmnctnsentdt":-1}
+   }
+]
+
+[
     {$search: {
         {"bool":{"filter":[{"text":{"constituentidentifier.keyword":"42~MECFFVHS"}},
 {"match_phrase":{"cmnctnchnltypecd":"SMS"}},

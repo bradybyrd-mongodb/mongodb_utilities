@@ -38,6 +38,6 @@
   },
   "data" : {
     "claims" : {"path" : "claim.csv", "size" : 10000, "id_prefix" : "CL-", "thumbnail" : []}
-  },
-  "poo" : "done"
+  }
+ 
 }

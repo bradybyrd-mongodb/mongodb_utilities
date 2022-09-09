@@ -19,19 +19,9 @@ sys.path.append(os.path.dirname(base_dir))
 sys.path.append(os.path.join(base_dir, "templates"))
 from bbutil import Util
 
-DEFAULT_CONFIG = {
-    "bootstrap.servers": "pkc-56d1g.eastus.azure.confluent.cloud:9092",
-    "security.protocol": "SASL_SSL",
-    "sasl.mechanisms": "PLAIN",
-    "sasl.username": "4LDRX2W3K2PPOMED",
-    "sasl.password": "hiafC+1cwOPLeQlO4xfNMztdT3YYeHSDqqlDBN+LR+fO3k5bWkX6fw8Jpapss/B7",
-    "client.id": socket.gethostname()
-}
-
-
 class MessageLoader:
 
-    def __init__(self, details={}):
+    def __init__(self, topic, details={}):
         self.bulk_docs = []
         self.counter = 0
         self.settings = details["settings"]
@@ -42,18 +32,16 @@ class MessageLoader:
         self.timeout = self.settings["gcp"]["pub_sub_timeout"]
         # self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
 
-        self.config_kafka = DEFAULT_CONFIG
-        self.topic = "kafka-topic"
-        self.DEFAULT_CONFIG = {
-            "bootstrap.servers": "pkc-56d1g.eastus.azure.confluent.cloud:9092",
-            "security.protocol": "SASL_SSL",
-            "sasl.mechanisms": "PLAIN",
-            "sasl.username": "4LDRX2W3K2PPOMED",
-            "sasl.password": "hiafC+1cwOPLeQlO4xfNMztdT3YYeHSDqqlDBN+LR+fO3k5bWkX6fw8Jpapss/B7",
-            "client.id": socket.gethostname()
-        }
-        self.producer = None #Producer(self.DEFAULT_CONFIG)
-
+        self.topic = topic
+        # self.DEFAULT_CONFIG = {
+        #     "bootstrap.servers": "pkc-lgwgm.eastus2.azure.confluent.cloud:9092",
+        #     "security.protocol": "SASL_SSL",
+        #     "sasl.mechanisms": "PLAIN",
+        #     "sasl.username": "WMU4KF63X5A6APDR",
+    	#     "sasl.password": "KS5gNBEVJGocALbg6sLeCMPh+H2d2xcKLQpzWCG9cPGKg8QMh1U8hEEcrCnirCfg",
+        #     "client.id": socket.gethostname()
+        # }
+        self.producer = Producer(self.settings["kafka"])
 
 
 # Best practice for higher availability in librdkafka clients prior to 1.7
@@ -82,7 +70,6 @@ class MessageLoader:
 
     def add_kafka(self, payload):
         data = json.dumps(payload).encode("utf-8")
-        print("add_kafka class")
         self.producer.produce(self.topic, data, callback=self.delivery_callback)
         self.producer.poll()
         # self.producer.flush()
@@ -90,8 +77,7 @@ class MessageLoader:
         if err:
             print('ERROR: Message failed delivery: {}'.format(err))
         else:
-            print("Produced event to topic {topic}: key = {key:12} value = {value:12}".format(
-                topic=msg.topic(), key=msg.key().decode('utf-8'), value=msg.value().decode('utf-8')))
+             print("Produced event to topic ", self.topic)
 
     def flush(self):
         cool = "not"

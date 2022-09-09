@@ -163,7 +163,7 @@ def worker_message_generate(proc_num, stream):
     cur_process = multiprocessing.current_process()
     prefix = "COMT"
     feed = False
-    loader = MessageLoader({"settings": settings})
+    loader = MessageLoader("kafka-topic",{"settings": settings})
     interval = 0
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
@@ -425,6 +425,16 @@ if __name__ == "__main__":
     elif ARGS["action"] == "subscribe":
         message_subscription()
     elif ARGS["action"] == "publish" and ARGS["stream"] == "kafka":
+        # match ARGS["topic_id"]:
+        #     case "topic1":
+        #         # message_publisher("kafka", "topic1")
+        #         print(1)
+        #     case "topic2":
+        #         # message_publisher("kafka", "topic2")
+        #         print(2)
+        #     case _:
+        #         # message_publisher("kafka")p
+        #         print("Topic selected is not a valid option")
         message_publisher("kafka")
     elif ARGS["action"] == "publish" and ARGS["stream"] == "pubsub":
         message_publisher("pubsub")
