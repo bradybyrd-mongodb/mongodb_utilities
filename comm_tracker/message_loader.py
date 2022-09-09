@@ -21,7 +21,7 @@ from bbutil import Util
 
 class MessageLoader:
 
-    def __init__(self, details={}):
+    def __init__(self, topic, details={}):
         self.bulk_docs = []
         self.counter = 0
         self.settings = details["settings"]
@@ -31,16 +31,16 @@ class MessageLoader:
         # self.topic = self.settings["gcp"]["pub_sub_topic"]
         self.timeout = self.settings["gcp"]["pub_sub_timeout"]
         # self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
-        self.topic = "kafka-topic"
-        self.DEFAULT_CONFIG = {
-            "bootstrap.servers": "pkc-lgwgm.eastus2.azure.confluent.cloud:9092",
-            "security.protocol": "SASL_SSL",
-            "sasl.mechanisms": "PLAIN",
-            "sasl.username": "WMU4KF63X5A6APDR",
-    	    "sasl.password": "KS5gNBEVJGocALbg6sLeCMPh+H2d2xcKLQpzWCG9cPGKg8QMh1U8hEEcrCnirCfg",
-            "client.id": socket.gethostname()
-        }
-        self.producer = Producer(self.DEFAULT_CONFIG)
+        self.topic = topic
+        # self.DEFAULT_CONFIG = {
+        #     "bootstrap.servers": "pkc-lgwgm.eastus2.azure.confluent.cloud:9092",
+        #     "security.protocol": "SASL_SSL",
+        #     "sasl.mechanisms": "PLAIN",
+        #     "sasl.username": "WMU4KF63X5A6APDR",
+    	#     "sasl.password": "KS5gNBEVJGocALbg6sLeCMPh+H2d2xcKLQpzWCG9cPGKg8QMh1U8hEEcrCnirCfg",
+        #     "client.id": socket.gethostname()
+        # }
+        self.producer = Producer(self.settings["kafka"])
 
 
 
