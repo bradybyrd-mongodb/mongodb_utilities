@@ -19,7 +19,10 @@
   "num_updates" : 0.1,
   "num_csvupdates" : 0.25,
   "messages_per_profile" : 100,
-  "kafka_topic" : "kafka-topic",
+  "topics" : {
+    "comm-detail" : "comm_detail",
+    "comm-summary" : "comm_summary"
+  },
   "activity_template" : "templates/sample_doc.json",
   "summary_template" : "templates/summary_template.json",
   "gcp" : {

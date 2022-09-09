@@ -65,11 +65,12 @@ class MessageLoader:
         self.producer.produce(self.topic, data, callback=self.delivery_callback)
         self.producer.poll()
         # self.producer.flush()
+        
     def delivery_callback(self, err, msg):
         if err:
             print('ERROR: Message failed delivery: {}'.format(err))
-        else:
-             print("Produced event to topic ", self.topic)
+        #else:
+        #     print("Produced event to topic ", self.topic)
 
     def flush(self):
         cool = "not"
