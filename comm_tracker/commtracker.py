@@ -1,7 +1,3 @@
-from message_loader import MessageLoader
-from mongo_loader import DbLoader
-from id_generator import Id_generator
-from bbutil import Util
 import sys
 import os
 import csv
@@ -32,12 +28,16 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # apppend parent folder to path
 sys.path.append(os.path.dirname(base_dir))
 sys.path.append(os.path.join(base_dir, "templates"))
-#from t_comm import CommFactory
+from bbutil import Util
+from id_generator import Id_generator
+from mongo_loader import DbLoader
+from message_loader import MessageLoader
+from perf_queries import PerfQueries
+
 
 fake = Faker()
-letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
-           "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
-providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
+letters = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
+providers = ["cigna","aetna","anthem","bscbsma","kaiser"]
 
 '''
  #  CommTracker
@@ -73,7 +73,6 @@ Communications Cache from Hadoop UDF
 '''
 settings_file = "commtracker_settings.json"
 
-
 def load_messages():
     # read settings and echo back
     bb.message_box("Activity Loader", "title")
@@ -84,7 +83,7 @@ def load_messages():
     inc = 0
     multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
-        p = multiprocessing.Process(target=worker_load, args=(item,))
+        p = multiprocessing.Process(target=worker_load, args = (item,))
         jobs.append(p)
         p.start()
         time.sleep(1)
@@ -94,7 +93,6 @@ def load_messages():
     bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
     for i in jobs:
         i.join()
-
 
 def worker_load(ipos):
     #  Reads file and finds values
@@ -116,8 +114,8 @@ def worker_load(ipos):
         worker_profile_load(feed)
     else:
         worker_message_generate(feed)
-    # worker_claim_load(pgcon,tables)
-    # worker_rx_load(pgcon,tables)
+    #worker_claim_load(pgcon,tables)
+    #worker_rx_load(pgcon,tables)
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
@@ -127,14 +125,15 @@ def worker_load(ipos):
 # --------------------------------------------------------- #
 #  Pub Sub Publish
 # --------------------------------------------------------- #
-
-
-def message_publisher(stream, topics):
+def message_publisher(stream):
     # read settings and echo back
     bb.message_box("Pub/Sub Message Subscriiption", "title")
     bb.logit(f'# Settings from: {settings_file}')
     # Spawn processes
     num_procs = settings["process_count"]
+    topics = list(settings["topics"].keys())
+    if "topics" in ARGS:
+        topics = ARGS["topics"].replace(" ","").split(",")
     jobs = []
     inc = 0
     multiprocessing.set_start_method("fork", force=True)
@@ -144,7 +143,6 @@ def message_publisher(stream, topics):
                 target=worker_message_generate, args=(item, stream, topics[topic_id]))
             jobs.append(p)
             p.start()
-
             time.sleep(1)
             inc += 1
 
@@ -154,7 +152,7 @@ def message_publisher(stream, topics):
         i.join()
 
 
-def worker_message_generate(proc_num, stream, topic):
+def worker_message_generate(proc_num, stream, topic = "direct"):
     '''
         generate messages - publish to pub/sub
         accumulate x-million
@@ -164,21 +162,25 @@ def worker_message_generate(proc_num, stream, topic):
 
         single-instance now
         gke - scale up
-
+    
     '''
     #  Send a copy of the claim with one or two field changes
     #  Add an updateDate and sequencenumber, updateName = TCD-1
     cur_process = multiprocessing.current_process()
     prefix = "COMT"
     feed = False
-    loader = MessageLoader(topic, {"settings": settings})
-    interval = 0
+    if stream == "direct":
+        loader = None
+    else:
+        loader = MessageLoader(topic, {"settings": settings})
+    global interval_vars
+    interval_vars = {}
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
     num_records = settings["num_records"]
     summary_template = settings["summary_template"]
     num_iterations = int(num_records/batch_size)
-    IDGEN.set({"seed": base_counter, "size": num_records, "prefix": prefix})
+    IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
     if "feed" in ARGS:
         sample_size = 10
         num_iterations = int(ARGS["feed"])
@@ -189,28 +191,54 @@ def worker_message_generate(proc_num, stream, topic):
     bb.message_box("Comm Feed Simulation")
     if stream == "kafka":
         loader.add = loader.add_kafka
+        bb.logit(f"[{cur_process.name}] Pubishing Kafka Messages - {num_records} to do")
     elif stream == "pubsub":
         loader.add = loader.add_pubsub
-
+    elif stream == "direct":
+        conn = client_connection()
+    icnt = 0
+    bulk_docs = []
+    start_time = datetime.datetime.now()
+    base_id = int(IDGEN.get(prefix, num_records).replace(prefix,""))
     for k in range(num_iterations):
         #bb.logit(f'Iter: {k} of {num_iterations}, {batch_size} per batch - total: {icnt}')
-        icnt = 0
-        base_id = int(IDGEN.get(prefix, num_records).replace(prefix, ""))
         for row in range(batch_size):
             new_id = f'{prefix}{base_id + icnt}'
-            new_doc = process_message(summary_template, new_id)
-            loader.add(new_doc)
+            new_doc = process_message(summary_template, new_id, icnt, stream, topic)
+            if stream == "direct":
+                if len(bulk_docs) == batch_size:
+                    flush_direct(conn, topic, bulk_docs)
+                    bulk_docs = []
+                bulk_docs.append(new_doc)
+            else:
+                loader.add(new_doc)
+            if icnt % 500 == 0:
+                end_time = datetime.datetime.now()
+                time_diff = (end_time - start_time)
+                execution_time = time_diff.microseconds * 0.000001
+    
+                print(f'[{cur_process.name}] {icnt} msgs, speed: {500/execution_time} msgs/sec')
+            elif icnt % 20 == 0:
+                print(".", end="", flush=True)
             icnt += 1
-        # get the leftovers
-        loader.flush()
-
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - start_time)
+    execution_time = time_diff.microseconds * 0.000001
+    bb.logit(f'[{cur_process.name}] {icnt} msgs, speed: {icnt/execution_time} msgs/sec')
+    
+    # get the leftovers
+    if stream == "direct":
+        flush_direct(conn[settings["database"]],bulk_docs)
     bb.logit("#-------- COMPLETE -------------#")
     loader = None
 
-
-def process_message(doc_template, new_id):
+def process_message(doc_template, new_id, cnt, stype, topic):
     cur_doc = bb.read_json(doc_template)
-    age = random.randint(0, 6)
+    camp = f'C~{1000 + int(cnt/1000)}'
+    global interval_vars
+    age = random.randint(0,10)
+    ctype = random.randint(0,9)
+    dformat = "%Y-%m-%d %H:%M:%S"
     yr = 0
     month = 9
     month = month - age
@@ -218,28 +246,70 @@ def process_message(doc_template, new_id):
         month = 12 + month
         yr = 1
     year = 2022 - yr
-    day = random.randint(1, 28)
-    msgdt = datetime.datetime(year, month, day, 10, 45)
+    day = random.randint(1,28)
+    msgdt = datetime.datetime(year,month,day, 10, 45)
+    if cnt == 0 or cnt % 10000 == 0:
+        interval_vars["campaign"] = fake.sentence()
+        interval_vars["campaign_identifier"] = f'C~{1000000 + cnt}'
     cur_doc["id"] = new_id
     cur_doc["cmnctn_identifier"] = f'{new_id}_{cur_doc["cmnctn_identifier"]}'
+    cur_doc["is_medicaid"] = "N"
     cur_doc["ext_taxonomy_identifier"] = f'{new_id}_{cur_doc["ext_taxonomy_identifier"]}'
     cur_doc["taxonomy_identifier"] = f'{new_id}_{cur_doc["taxonomy_identifier"]}'
-    cur_doc["cmnctn_activity_dts"] = msgdt.strftime("%Y-%m-%dT%H:%M:%S")
-    cur_doc["cmnctn_last_updated_dt"] = (
-        msgdt + datetime.timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%S")
+    cur_doc["cmnctn_activity_dts"] = msgdt if stype == "direct" else msgdt.strftime(dformat)
+    cur_doc["cmnctn_last_updated_dt"] = msgdt + datetime.timedelta(hours=4) if stype == "direct" else (msgdt + datetime.timedelta(hours=4)).strftime(dformat)
     cur_doc["load_day"] = day
     cur_doc["load_month"] = month
     cur_doc["load_year"] = year
-    cur_doc["campaign_name"] = fake.sentence()
+    cur_doc["campaign_name"] = interval_vars["campaign"]
+    cur_doc["campaign_identifier"] = interval_vars["campaign_identifier"]
+    cur_doc["taxonomy_cmnctn_format"] = random.choice(["Email", "SMS", "Call", "Popup", "DirectMail"])
     cur_doc["taxonomy_cmnctn_content_topic"] = fake.bs()
-    cur_doc["taxonomy_portfolio"] = random.choice(
-        ["Behavior Change/Next Best Action", "Marketing Inquiry", "Survey", "Post-call quality check"])
+    cur_doc["taxonomy_portfolio"] = random.choice(["Behavior Change/Next Best Action","Marketing Inquiry","Survey","Post-call quality check"])
+    cur_doc["version"] = "1.4"
+    cur_doc["archive_date"] = msgdt.strftime(dformat)
+    cur_doc["type"] = "comm_summary"
+    if topic == "comm-detail":
+        build_detail(cur_doc, new_id)
+    if ctype > 8:
+        cur_doc["is_medicaid"] = "Y" 
     return(cur_doc)
+
+def build_detail(doc, id):
+    doc["cmnctn_detail_id"] = "41~2650905331^MEA^1757^1479^One Time Password Notification^Member Password Change and Notification^CT-0000001837^COMETS"
+    doc["cmnctn_activity_status_desc"] = "Sent to Archive, Request Received, Request sent to SMS vendor, Request Rcvd For Archive, Sent To OMS, Filenet load Successful, Sent To OMS Archive"
+    doc["cmnctn_activity_url"] = fake.url()
+    doc["cmnctn_content_id"] = ""
+    doc["cmnctn_transcripts"] = "N/A"
+    doc["cmnctn_send_performance_desc"] = fake.bs()
+    doc["src_cmnctn_id"] = ""
+    doc["src_cmnctn_parent_purpose_name"] = ""
+    doc["src_cmnctn_child_purpose_name"] = ""
+    doc["src_cmnctn_parent_display_name"] = ""
+    doc["src_cmnctn_child_display_name"] = ""
+    doc["cmnctn_detail_name1"] = fake.word()
+    doc["cmnctn_detail_value1"] = fake.word()
+    doc["cmnctn_detail_name2"] = fake.word()
+    doc["cmnctn_detail_value2"] = fake.word()
+    doc["cmnctn_detail_name3"] = fake.word()
+    doc["cmnctn_detail_value3"] = fake.word()
+    doc["cmnctn_detail_name4"] = fake.word()
+    doc["cmnctn_detail_value4"] = fake.word()
+    doc["cmnctn_detail_name5"] = fake.word()
+    doc["cmnctn_detail_value5"] = fake.word()
+    doc["type"] = "comm_detail"
+    return doc
+
+def flush_direct(conn,topic, docs):
+    db = conn[settings["database"]]
+    coll = settings["topics"][topic] 
+    ans = db[coll].insert_many(docs)
+    bb.logit(f"Loading batch: {len(docs)}")
+    docs = []
 
 # --------------------------------------------------------- #
 #  Pub Sub Subscription
 # --------------------------------------------------------- #
-
 
 def message_subscription():
     # read settings and echo back
@@ -263,7 +333,6 @@ def message_subscription():
     # for i in jobs:
     #     i.join()
 
-
 def worker_message_subscribe(num_iterations):
     '''
         read from pub/sub
@@ -272,7 +341,7 @@ def worker_message_subscribe(num_iterations):
 
         single-instance now
         gke - scale up
-
+    
     '''
     #  Send a copy of the claim with one or two field changes
     #  Add an updateDate and sequencenumber, updateName = TCD-1
@@ -293,9 +362,9 @@ def worker_message_subscribe(num_iterations):
     subscription = settings["gcp"]["pub_sub_subscription"]
     timeout = settings["gcp"]["pub_sub_timeout"]
     bb.logit(f'Subscriber set in {project} for topic: {subscription}')
-    g_loader = DbLoader({"settings": settings})
+    g_loader = DbLoader({"settings" : settings})
     icnt = 0
-
+    
     start_time = datetime.datetime.now()
     feed = False
     keep_going = True
@@ -303,8 +372,7 @@ def worker_message_subscribe(num_iterations):
     subscriber = pubsub_v1.SubscriberClient()
     subscription_path = subscriber.subscription_path(project, subscription)
     bb.logit(f"Listening for messages on {subscription_path}..\n")
-    streaming_pull_future = subscriber.subscribe(
-        subscription_path, callback=process_payload)
+    streaming_pull_future = subscriber.subscribe(subscription_path, callback=process_payload)
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
     while keep_going:
@@ -313,7 +381,7 @@ def worker_message_subscribe(num_iterations):
         with subscriber:
             try:
                 # When `timeout` is not set, result() will block indefinitely,
-                # unless an exception is encountered first.
+                # unless an exception is encountered first.                
                 streaming_pull_future.result(timeout=timeout)
             except TimeoutError:
                 streaming_pull_future.cancel()
@@ -323,54 +391,37 @@ def worker_message_subscribe(num_iterations):
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
     #file_log(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
-    bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
+    bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")   
     bb.logit("#-------- COMPLETE -------------#")
 
-# callback function for procesrsing consumed payloads
+# callback function for procesrsing consumed payloads 
 # prints recieved payload
-
-
 def process_payload(message):
     global icnt
     new_doc = json.loads((message.data).decode())
     if "_id" in new_doc:
         new_doc["old_id"] = new_doc["_id"]
-        new_doc.pop("_id", None)
+        new_doc.pop("_id", None)    
     new_doc["_id"] = new_doc["taxonomy_identifier"]
     bb.logit(f'Message[{icnt}] {new_doc["taxonomy_identifier"]}.')
     g_loader.add(new_doc)
     icnt += 1
-    message.ack()
+    message.ack()    
 
 #----------------------------------------------------------------------#
 #   Reporting
 #----------------------------------------------------------------------#
-
-
-def claims_reports():
-    #  Take an array of claims, give the timeline of changes
-    #  Add an updateDate and sequencenumber, updateName = TCD-1
-    cur_process = multiprocessing.current_process()
-    report_type = "none"
-    if "report" in ARGS:
-        report_type = ARGS["report"]
-    else:
-        print("Send report=<report_type>")
-        sys.exit(1)    # Spawn processes
-    if report_type == "claim_history":
-        history_report()
-    elif report_type == "claim_details":
-        claim_detail()
-    else:
-        print(
-            f"No report called {report_type} choices: claim_history, claim_details")
+def perf_stats():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    cc = PerfQueries({"args" : ARGS, "settings" : settings, "db" : db})
+    cc.perf_stats()
 
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
 
-
-def client_connection(type="uri", details={}):
+def client_connection(type = "uri", details = {}):
     mdb_conn = settings[type]
     username = settings["username"]
     password = settings["password"]
@@ -380,19 +431,16 @@ def client_connection(type="uri", details={}):
     mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
     bb.logit(f'Connecting: {mdb_conn}')
     if "readPreference" in details:
-        client = MongoClient(
-            mdb_conn, readPreference=details["readPreference"])  # &w=majority
+        client = MongoClient(mdb_conn, readPreference=details["readPreference"]) #&w=majority
     else:
         client = MongoClient(mdb_conn)
     return client
-
 
 def increment_version(old_ver):
     parts = old_ver.split(".")
     return(f'{parts[0]}.{int(parts[1]) + 1}')
 
-
-def check_file(type="delete"):
+def check_file(type = "delete"):
     #  file loader.ctl
     ctl_file = "loader.ctl"
     result = True
@@ -402,7 +450,6 @@ def check_file(type="delete"):
             result = False
     return(result)
 
-
 def file_log(msg):
     if not "file" in ARGS:
         return("goody")
@@ -411,7 +458,6 @@ def file_log(msg):
     stamp = f"{cur_date}|I> "
     with open(ctl_file, 'a') as lgr:
         lgr.write(f'{stamp}{msg}\n')
-
 
 def bulk_writer(collection, bulk_arr):
     try:
@@ -432,7 +478,7 @@ if __name__ == "__main__":
     settings = bb.read_json(settings_file)
     CUR_PATH = os.path.dirname(os.path.realpath(__file__))
     base_counter = settings["base_counter"]
-    IDGEN = Id_generator({"seed": base_counter})
+    IDGEN = Id_generator({"seed" : base_counter})
     MASTER_CLAIMS = []
     if "wait" in ARGS:
         interval = int(ARGS["wait"])
@@ -447,26 +493,20 @@ if __name__ == "__main__":
         worker_load()
     elif ARGS["action"] == "load_updates":
         worker_activity_update_new(1)
-
     elif ARGS["action"] == "subscribe":
         message_subscription()
-    elif ARGS["action"] == "publish" and ARGS["stream"] == "kafka":
-        if len(ARGS) == 3:
-            bb.logit(f'Loading summary documents into topic: kafka-topic')
-            message_publisher("kafka", ["kafka-topic"])
-        elif len(ARGS) == 4:
-            topics = ARGS["topics"].split(',')
-            bb.logit(f'Loading summary documents into topics:' + topics[0] +"and" + topics[1])
-            message_publisher("kafka", topics)
-
-
-    elif ARGS["action"] == "publish" and ARGS["stream"] == "pubsub":
+    elif ARGS["action"] == "publish_kafka":
+        message_publisher("kafka")
+    elif ARGS["action"] == "publish_direct":
+        message_publisher("direct")
+    elif ARGS["action"] == "publish_pubsub":
         message_publisher("pubsub")
-    elif ARGS["action"] == "reports":
-        claims_reports()
+    elif ARGS["action"] == "perf":
+        # python3 commtracker_kafka.py action=perf batch=simple_match iters=20000
+        perf_stats()
     else:
         print(f'{ARGS["action"]} not found')
-    # conn.close()
+    #conn.close()
 
 '''
 #---- Data Load ---------------------#
