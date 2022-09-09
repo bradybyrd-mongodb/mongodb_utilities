@@ -10,7 +10,7 @@
   "username" : "main_admin",
   "password" : "bugsyBoo",
   "version" : "1.0",
-  "process_count" : 3,
+  "process_count" : 2,
   "batch_size" : 50,
   "import_path" : "updatecsv",
   "batches" : 1,

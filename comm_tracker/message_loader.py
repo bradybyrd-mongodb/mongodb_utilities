@@ -10,7 +10,7 @@ from google.cloud import pubsub_v1
 from concurrent.futures import TimeoutError
 import os
 import time
-#from confluent_kafka import Producer
+from confluent_kafka import Producer
 import socket
 import json
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,15 +33,7 @@ class MessageLoader:
         # self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
 
         self.topic = topic
-        # self.DEFAULT_CONFIG = {
-        #     "bootstrap.servers": "pkc-lgwgm.eastus2.azure.confluent.cloud:9092",
-        #     "security.protocol": "SASL_SSL",
-        #     "sasl.mechanisms": "PLAIN",
-        #     "sasl.username": "WMU4KF63X5A6APDR",
-    	#     "sasl.password": "KS5gNBEVJGocALbg6sLeCMPh+H2d2xcKLQpzWCG9cPGKg8QMh1U8hEEcrCnirCfg",
-        #     "client.id": socket.gethostname()
-        # }
-        self.producer = Producer(self.settings["kafka"])
+        self.producer = Producer(self.settings["confluent"])
 
 
 # Best practice for higher availability in librdkafka clients prior to 1.7
