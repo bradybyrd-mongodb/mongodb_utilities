@@ -167,7 +167,8 @@ def worker_message_generate(proc_num, stream):
     prefix = "COMT"
     feed = False
     loader = MessageLoader({"settings": settings})
-    interval = 0
+    global interval_vars
+    interval_vars = {}
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
     num_records = settings["num_records"]
@@ -191,6 +192,7 @@ def worker_message_generate(proc_num, stream):
         conn = client_connection()
     icnt = 0
     bulk_docs = []
+    start_time = datetime.datetime.now()
     base_id = int(IDGEN.get(prefix, num_records).replace(prefix,""))
     for k in range(num_iterations):
         #bb.logit(f'Iter: {k} of {num_iterations}, {batch_size} per batch - total: {icnt}')
@@ -205,10 +207,19 @@ def worker_message_generate(proc_num, stream):
             else:
                 loader.add(new_doc, icnt)
             if icnt % 500 == 0:
-                print(f'[{cur_process.name}] {icnt} msgs')
+                end_time = datetime.datetime.now()
+                time_diff = (end_time - start_time)
+                execution_time = time_diff.microseconds * 0.000001
+    
+                print(f'[{cur_process.name}] {icnt} msgs, speed: {500/execution_time} msgs/sec')
             elif icnt % 20 == 0:
                 print(".", end="", flush=True)
             icnt += 1
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - start_time)
+    execution_time = time_diff.microseconds * 0.000001
+    bb.logit(f'[{cur_process.name}] {icnt} msgs, speed: {icnt/execution_time} msgs/sec')
+    
     # get the leftovers
     if stream == "direct":
         flush_direct(conn[settings["database"]],bulk_docs)
@@ -218,7 +229,10 @@ def worker_message_generate(proc_num, stream):
 def process_message(doc_template, new_id, cnt, stype = "normal"):
     cur_doc = bb.read_json(doc_template)
     camp = f'C~{1000 + int(cnt/1000)}'
-    age = random.randint(0,6)
+    global interval_vars
+    age = random.randint(0,10)
+    ctype = random.randint(0,9)
+    dformat = "%Y-%m-%d %H:%M:%S"
     yr = 0
     month = 9
     month = month - age
@@ -228,22 +242,58 @@ def process_message(doc_template, new_id, cnt, stype = "normal"):
     year = 2022 - yr
     day = random.randint(1,28)
     msgdt = datetime.datetime(year,month,day, 10, 45)
+    if cnt == 0 or cnt % 10000 == 0:
+        interval_vars["campaign"] = fake.sentence()
+        interval_vars["campaign_identifier"] = f'C~{1000000 + cnt}'
     cur_doc["id"] = new_id
     cur_doc["cmnctn_identifier"] = f'{new_id}_{cur_doc["cmnctn_identifier"]}'
+    cur_doc["is_medicaid"] = "N"
     cur_doc["ext_taxonomy_identifier"] = f'{new_id}_{cur_doc["ext_taxonomy_identifier"]}'
     cur_doc["taxonomy_identifier"] = f'{new_id}_{cur_doc["taxonomy_identifier"]}'
-    cur_doc["cmnctn_activity_dts"] = msgdt if stype == "direct" else msgdt.strftime("%Y-%m-%dT%H:%M:%S")
-    cur_doc["cmnctn_last_updated_dt"] = msgdt + datetime.timedelta(hours=4) if stype == "direct" else (msgdt + datetime.timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%S")
+    cur_doc["cmnctn_activity_dts"] = msgdt if stype == "direct" else msgdt.strftime(dformat)
+    cur_doc["cmnctn_last_updated_dt"] = msgdt + datetime.timedelta(hours=4) if stype == "direct" else (msgdt + datetime.timedelta(hours=4)).strftime(dformat)
     cur_doc["load_day"] = day
     cur_doc["load_month"] = month
     cur_doc["load_year"] = year
-    cur_doc["campaign_name"] = fake.sentence()
-    cur_doc["campaign_identifier"] = camp
+    cur_doc["campaign_name"] = interval_vars["campaign"]
+    cur_doc["campaign_identifier"] = interval_vars["campaign_identifier"]
     cur_doc["taxonomy_cmnctn_format"] = random.choice(["Email", "SMS", "Call", "Popup", "DirectMail"])
     cur_doc["taxonomy_cmnctn_content_topic"] = fake.bs()
     cur_doc["taxonomy_portfolio"] = random.choice(["Behavior Change/Next Best Action","Marketing Inquiry","Survey","Post-call quality check"])
     cur_doc["version"] = "1.4"
+    cur_doc["archive_date"] = if stype == "direct" else msgdt.strftime(dformat)
+    cur_doc["type"] = "comm_summary"
+    if ctype > 5:
+        build_detail(cur_doc, new_id)
+    if ctype > 8:
+        cur_doc["is_medicaid"] = "Y" 
     return(cur_doc)
+
+def build_detail(doc, id):
+    doc["cmnctn_detail_id"] = "41~2650905331^MEA^1757^1479^One Time Password Notification^Member Password Change and Notification^CT-0000001837^COMETS"
+    doc["cmnctn_activity_status_desc"] = "Sent to Archive, Request Received, Request sent to SMS vendor, Request Rcvd For Archive, Sent To OMS, Filenet load Successful, Sent To OMS Archive"
+    doc["cmnctn_activity_dts"] = "2021-12-21 10:42:44, 2021-12-21 10:42:42, 2021-12-21 10:45:41, 2021-12-21 10:42:45"
+    doc["cmnctn_activity_url"] = fake.url()
+    doc["cmnctn_content_id"] = ""
+    doc["cmnctn_transcripts"] = "N/A"
+    doc["cmnctn_send_performance_desc"] = fake.bs()
+    doc["src_cmnctn_id"] = ""
+    doc["src_cmnctn_parent_purpose_name"] = ""
+    doc["src_cmnctn_child_purpose_name"] = ""
+    doc["src_cmnctn_parent_display_name"] = ""
+    doc["src_cmnctn_child_display_name"] = ""
+    doc["cmnctn_detail_name1"] = fake.word()
+    doc["cmnctn_detail_value1"] = fake.word()
+    doc["cmnctn_detail_name2"] = fake.word()
+    doc["cmnctn_detail_value2"] = fake.word()
+    doc["cmnctn_detail_name3"] = fake.word()
+    doc["cmnctn_detail_value3"] = fake.word()
+    doc["cmnctn_detail_name4"] = fake.word()
+    doc["cmnctn_detail_value4"] = fake.word()
+    doc["cmnctn_detail_name5"] = fake.word()
+    doc["cmnctn_detail_value5"] = fake.word()
+    doc["type"] = "comm_detail"
+    return doc
 
 def flush_direct(db,docs):
     ans = db[settings["collection"]].insert_many(docs)
