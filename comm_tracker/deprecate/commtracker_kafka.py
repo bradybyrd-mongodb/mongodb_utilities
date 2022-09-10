@@ -28,11 +28,9 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # apppend parent folder to path
 sys.path.append(os.path.dirname(base_dir))
 sys.path.append(os.path.join(base_dir, "templates"))
-#from t_comm import CommFactory
 from bbutil import Util
 from id_generator import Id_generator
 from mongo_loader import DbLoader
-#from message_loader_kafka import MessageLoader
 from message_loader import MessageLoader
 from perf_queries import PerfQueries
 
@@ -133,15 +131,20 @@ def message_publisher(stream):
     bb.logit(f'# Settings from: {settings_file}')
     # Spawn processes
     num_procs = settings["process_count"]
+    topics = list(settings["topics"].keys())
+    if "topics" in ARGS:
+        topics = ARGS["topics"].replace(" ","").split(",")
     jobs = []
     inc = 0
     multiprocessing.set_start_method("fork", force=True)
-    for item in range(num_procs):
-        p = multiprocessing.Process(target=worker_message_generate, args = (item, stream))
-        jobs.append(p)
-        p.start()
-        time.sleep(1)
-        inc += 1
+    for topic_id in range(len(topics)):
+        for item in range(num_procs):
+            p = multiprocessing.Process(
+                target=worker_message_generate, args=(item, stream, topics[topic_id]))
+            jobs.append(p)
+            p.start()
+            time.sleep(1)
+            inc += 1
 
     main_process = multiprocessing.current_process()
     bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
@@ -149,7 +152,7 @@ def message_publisher(stream):
         i.join()
 
 
-def worker_message_generate(proc_num, stream):
+def worker_message_generate(proc_num, stream, topic = "direct"):
     '''
         generate messages - publish to pub/sub
         accumulate x-million
@@ -166,8 +169,12 @@ def worker_message_generate(proc_num, stream):
     cur_process = multiprocessing.current_process()
     prefix = "COMT"
     feed = False
-    loader = MessageLoader({"settings": settings})
-    interval = 0
+    if stream == "direct":
+        loader = None
+    else:
+        loader = MessageLoader(topic, {"settings": settings})
+    global interval_vars
+    interval_vars = {}
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
     num_records = settings["num_records"]
@@ -191,34 +198,47 @@ def worker_message_generate(proc_num, stream):
         conn = client_connection()
     icnt = 0
     bulk_docs = []
+    start_time = datetime.datetime.now()
     base_id = int(IDGEN.get(prefix, num_records).replace(prefix,""))
     for k in range(num_iterations):
         #bb.logit(f'Iter: {k} of {num_iterations}, {batch_size} per batch - total: {icnt}')
         for row in range(batch_size):
             new_id = f'{prefix}{base_id + icnt}'
-            new_doc = process_message(summary_template, new_id, icnt, stream)
+            new_doc = process_message(summary_template, new_id, icnt, stream, topic)
             if stream == "direct":
                 if len(bulk_docs) == batch_size:
-                    flush_direct(conn[settings["database"]],bulk_docs)
+                    flush_direct(conn, topic, bulk_docs)
                     bulk_docs = []
                 bulk_docs.append(new_doc)
             else:
-                loader.add(new_doc, icnt)
+                loader.add(new_doc)
             if icnt % 500 == 0:
-                print(f'[{cur_process.name}] {icnt} msgs')
+                end_time = datetime.datetime.now()
+                time_diff = (end_time - start_time)
+                execution_time = time_diff.microseconds * 0.000001
+    
+                print(f'[{cur_process.name}] {icnt} msgs, speed: {500/execution_time} msgs/sec')
             elif icnt % 20 == 0:
                 print(".", end="", flush=True)
             icnt += 1
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - start_time)
+    execution_time = time_diff.microseconds * 0.000001
+    bb.logit(f'[{cur_process.name}] {icnt} msgs, speed: {icnt/execution_time} msgs/sec')
+    
     # get the leftovers
     if stream == "direct":
         flush_direct(conn[settings["database"]],bulk_docs)
     bb.logit("#-------- COMPLETE -------------#")
     loader = None
 
-def process_message(doc_template, new_id, cnt, stype = "normal"):
+def process_message(doc_template, new_id, cnt, stype, topic):
     cur_doc = bb.read_json(doc_template)
     camp = f'C~{1000 + int(cnt/1000)}'
-    age = random.randint(0,6)
+    global interval_vars
+    age = random.randint(0,10)
+    ctype = random.randint(0,9)
+    dformat = "%Y-%m-%d %H:%M:%S"
     yr = 0
     month = 9
     month = month - age
@@ -228,25 +248,62 @@ def process_message(doc_template, new_id, cnt, stype = "normal"):
     year = 2022 - yr
     day = random.randint(1,28)
     msgdt = datetime.datetime(year,month,day, 10, 45)
+    if cnt == 0 or cnt % 10000 == 0:
+        interval_vars["campaign"] = fake.sentence()
+        interval_vars["campaign_identifier"] = f'C~{1000000 + cnt}'
     cur_doc["id"] = new_id
     cur_doc["cmnctn_identifier"] = f'{new_id}_{cur_doc["cmnctn_identifier"]}'
+    cur_doc["is_medicaid"] = "N"
     cur_doc["ext_taxonomy_identifier"] = f'{new_id}_{cur_doc["ext_taxonomy_identifier"]}'
     cur_doc["taxonomy_identifier"] = f'{new_id}_{cur_doc["taxonomy_identifier"]}'
-    cur_doc["cmnctn_activity_dts"] = msgdt if stype == "direct" else msgdt.strftime("%Y-%m-%dT%H:%M:%S")
-    cur_doc["cmnctn_last_updated_dt"] = msgdt + datetime.timedelta(hours=4) if stype == "direct" else (msgdt + datetime.timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%S")
+    cur_doc["cmnctn_activity_dts"] = msgdt if stype == "direct" else msgdt.strftime(dformat)
+    cur_doc["cmnctn_last_updated_dt"] = msgdt + datetime.timedelta(hours=4) if stype == "direct" else (msgdt + datetime.timedelta(hours=4)).strftime(dformat)
     cur_doc["load_day"] = day
     cur_doc["load_month"] = month
     cur_doc["load_year"] = year
-    cur_doc["campaign_name"] = fake.sentence()
-    cur_doc["campaign_identifier"] = camp
+    cur_doc["campaign_name"] = interval_vars["campaign"]
+    cur_doc["campaign_identifier"] = interval_vars["campaign_identifier"]
     cur_doc["taxonomy_cmnctn_format"] = random.choice(["Email", "SMS", "Call", "Popup", "DirectMail"])
     cur_doc["taxonomy_cmnctn_content_topic"] = fake.bs()
     cur_doc["taxonomy_portfolio"] = random.choice(["Behavior Change/Next Best Action","Marketing Inquiry","Survey","Post-call quality check"])
     cur_doc["version"] = "1.4"
+    cur_doc["archive_date"] = msgdt.strftime(dformat)
+    cur_doc["type"] = "comm_summary"
+    if topic == "comm-detail":
+        build_detail(cur_doc, new_id)
+    if ctype > 8:
+        cur_doc["is_medicaid"] = "Y" 
     return(cur_doc)
 
-def flush_direct(db,docs):
-    ans = db[settings["collection"]].insert_many(docs)
+def build_detail(doc, id):
+    doc["cmnctn_detail_id"] = "41~2650905331^MEA^1757^1479^One Time Password Notification^Member Password Change and Notification^CT-0000001837^COMETS"
+    doc["cmnctn_activity_status_desc"] = "Sent to Archive, Request Received, Request sent to SMS vendor, Request Rcvd For Archive, Sent To OMS, Filenet load Successful, Sent To OMS Archive"
+    doc["cmnctn_activity_url"] = fake.url()
+    doc["cmnctn_content_id"] = ""
+    doc["cmnctn_transcripts"] = "N/A"
+    doc["cmnctn_send_performance_desc"] = fake.bs()
+    doc["src_cmnctn_id"] = ""
+    doc["src_cmnctn_parent_purpose_name"] = ""
+    doc["src_cmnctn_child_purpose_name"] = ""
+    doc["src_cmnctn_parent_display_name"] = ""
+    doc["src_cmnctn_child_display_name"] = ""
+    doc["cmnctn_detail_name1"] = fake.word()
+    doc["cmnctn_detail_value1"] = fake.word()
+    doc["cmnctn_detail_name2"] = fake.word()
+    doc["cmnctn_detail_value2"] = fake.word()
+    doc["cmnctn_detail_name3"] = fake.word()
+    doc["cmnctn_detail_value3"] = fake.word()
+    doc["cmnctn_detail_name4"] = fake.word()
+    doc["cmnctn_detail_value4"] = fake.word()
+    doc["cmnctn_detail_name5"] = fake.word()
+    doc["cmnctn_detail_value5"] = fake.word()
+    doc["type"] = "comm_detail"
+    return doc
+
+def flush_direct(conn,topic, docs):
+    db = conn[settings["database"]]
+    coll = settings["topics"][topic] 
+    ans = db[coll].insert_many(docs)
     bb.logit(f"Loading batch: {len(docs)}")
     docs = []
 
@@ -438,11 +495,11 @@ if __name__ == "__main__":
         worker_activity_update_new(1)
     elif ARGS["action"] == "subscribe":
         message_subscription()
-    elif ARGS["action"] == "publish" and ARGS["stream"] == "kafka":
+    elif ARGS["action"] == "publish_kafka":
         message_publisher("kafka")
-    elif ARGS["action"] == "publish" and ARGS["stream"] == "direct":
+    elif ARGS["action"] == "publish_direct":
         message_publisher("direct")
-    elif ARGS["action"] == "publish" and ARGS["stream"] == "pubsub":
+    elif ARGS["action"] == "publish_pubsub":
         message_publisher("pubsub")
     elif ARGS["action"] == "perf":
         # python3 commtracker_kafka.py action=perf batch=simple_match iters=20000
