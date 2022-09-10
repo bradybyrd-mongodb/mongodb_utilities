@@ -145,6 +145,8 @@ def message_publisher(stream, topics):
             jobs.append(p)
             p.start()
 
+            
+
             time.sleep(1)
             inc += 1
 
