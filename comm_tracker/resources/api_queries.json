@@ -261,3 +261,115 @@
         }
     }}
  ]
+
+ # Translatedm-R Kauffmann
+ {
+   "query": {
+     "bool": {
+       "must": [
+         {
+           "range": {
+             "vendordate": {
+               "gte": "2020-09-26",
+               "lte": "2020-11-30"
+             }
+           }
+         }
+       ],
+       "filter": [
+         {
+           "match": {
+             "channel": "Email"
+           }
+         },
+         {
+           "match": {
+             "vendorname": "SFMC"
+           }
+         },
+         {
+           "query_string": {
+             "query": "P02*",
+             "fields": [
+               "campaignname",
+               "jobname",
+               "vendorname",
+               "channel",
+               "jobid",
+               "campaignid"
+             ]
+           }
+         }
+       ]
+     }
+   },
+   "from": 0,
+   "sort": [
+     {
+       "vendordate": {
+         "order": "desc"
+       }
+     }
+   ],
+   "size": 50
+ }
+ 
+ 
+ 
+ MDB Search Query (NOT Tested yet)
+ 
+ db.coll.aggregate
+ (
+     [
+        {
+           $search:{
+              index: "query2",
+              compound : { 
+                 "must": [ 
+                     { 
+                         range :  { 
+                             path : "vendordate",  
+                             "gte": ISODate("2021-11-25T00:00:00.000Z"), 
+                             "lt": ISODate("2021-12-02T00:00:00.000Z") 
+                         } 
+                     } 
+                 ],
+                 "filter": [ 
+                     { 
+                         "text": { 
+                             "query":  "Email", 
+                             "path": "channel" 
+                         } 
+                     },
+                     {
+                         "text": {
+                             "query": "SFMC", 
+                             "path": "vendorname"
+ 
+                         }
+                     }
+                 ], 
+                 "should": [ 
+                     { 
+                         "regex": { 
+                             "query": "P02*", 
+                             "path" : ["compaignname","jobname","vendorname","channel","jobid","campaignid"] 
+                         } 
+                     } 
+                 ]
+             } 
+         } 
+     },
+     {
+         $sort: {"vendordate": -1}
+ 
+     },
+     {
+         limit: 50
+     }
+  
+ ]
+     
+ )
+ 
+ 
