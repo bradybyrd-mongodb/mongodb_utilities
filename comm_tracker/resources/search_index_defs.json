@@ -1,0 +1,37 @@
+
+# ---------------------------------------- #
+#   Example - modify to our needs
+{
+    "mappings": {
+      "dynamic": false,
+      "fields": {
+        "Title": {"type": "string", "analyzer": "lucene.standard",
+          "multi": {
+            "keywordAnalyzer": {
+              "type": "string",
+              "analyzer": "lucene.keyword"
+            }
+          }
+        },
+                    "TeamId": {
+          "type": "string",
+          "analyzer": "lucene.keyword",
+          "multi": {
+            "keywordAnalyzer": {
+              "type": "string",
+              "analyzer": "lucene.standard"
+            }
+          }
+        },
+        "ContentType": {
+          "type": "string",
+          "analyzer": "lucene.keyword"
+        },
+        "DisplayDate": {
+          "type": "date"
+        }
+      }
+    }
+  }
+  cmnctn_activity_dts
+  id
