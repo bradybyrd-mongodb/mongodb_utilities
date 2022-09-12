@@ -114,7 +114,7 @@
               </elementProp>
               <elementProp name="api-key" elementType="Header">
                 <stringProp name="Header.name">api-key</stringProp>
-                <stringProp name="Header.value">aNB1gCJZU0R8T4HQKlpVXclJysY9sX2JcwAaXGwPnXCDymKc2bKzThL71JjyY8Wt</stringProp>
+                <stringProp name="Header.value"><EnterAPIKEY></stringProp>
               </elementProp>
             </collectionProp>
             <stringProp name="TestPlan.comments">Created from cURL on 2022-09-12T12:25:52.457431</stringProp>
