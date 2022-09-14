@@ -143,6 +143,12 @@ def message_publisher(stream):
                 target=worker_message_generate, args=(item, stream, topics[topic_id]))
             jobs.append(p)
             p.start()
+<<<<<<< HEAD
+
+            
+
+=======
+>>>>>>> b4f42691ca4add9247d9e7afd5b0126515ad4b15
             time.sleep(1)
             inc += 1
 
