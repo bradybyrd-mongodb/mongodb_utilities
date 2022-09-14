@@ -1,3 +1,78 @@
+#-----------------------------------------------#
+#  Search Index Definitions
+#-----------------------------------------------#
+
+{
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "cmnctn_identifier" : {"type" : "string"},
+      "taxonomy_identifier" : {"type" : "string"},
+      "cmnctn_activity_dts" : {"type" : "date"},
+      "taxonomy_portfolio" : {"type" : "string"},
+      "taxonomy_program_name" : {"type" : "string"},
+      "taxonomy_cmnctn_owner" : {"type" : "string"},
+      "taxonomy_cmnctn_format" : {"type" : "string"},
+      "taxonomy_cmnctn_goal" : {"type" : "string"},
+      "taxonomy_cmnctn_content_topic" : {"type" : "string"},
+      "taxonomy_call_to_action" : {"type" : "string"},
+      "taxonomy_audience_type" : {"type" : "string"},
+      "lob_nm" : {"type" : "string"},
+      "taxonomy_regulatory_type" : {"type" : "string"},
+      "taxonomy_trigger" : {"type" : "string"},
+      "taxonomy_frequency" : {"type" : "string"},
+      "taxonomy_cmnctn_sent_dt" : {"type" : "string"},
+      "cmnctn_activity" : {"type" : "string"},
+      "cmnctn_lang_name" : {"type" : "string"},
+      "medianame" : {"type" : "string"},
+      "cmnctnaddress" : {"type" : "string"},
+      "vndr_nm" : {"type" : "string"},
+      "ext_taxonomy_identifier" : {"type" : "string"},
+      "campaign_identifier" : {"type" : "string"},
+      "campaign_name" : {"type" : "string"},
+      "vndr_job_id" : {"type" : "string"},
+      "vndr_job_name" : {"type" : "string"},
+      "cmnctn_mgr_name" : {"type" : "string"},
+      "id" : {"type" : "string"},
+      "is_medicaid" : {"type" : "string"},
+      "version" : {"type" : "string"},
+      "archive_date" : {"type" : "date"},
+      "type" : {"type" : "string"},
+      "cmnctn_last_updated_dt" : {"type" : "date"}
+    }
+  }
+}
+#--------------------------------------#
+{
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "cmnctn_identifier" : {"type" : "string"},
+      "taxonomy_identifier" : {"type" : "string"},
+      "cmnctn_activity_dts" : {"type" : "date"},
+      "taxonomy_cmnctn_format" : {"type" : "string"},
+      "cmnctn_activity" : {"type" : "string"},
+      "cmnctn_lang_name" : {"type" : "string"},
+      "medianame" : {"type" : "string"},
+      "cmnctnaddress" : {"type" : "string"},
+      "ext_taxonomy_identifier" : {"type" : "string"},
+      "campaign_identifier" : {"type" : "string"},
+      "campaign_name" : {"type" : "string"},
+      "vndr_job_id" : {"type" : "string"},
+      "vndr_job_name" : {"type" : "string"},
+      "cmnctn_mgr_name" : {"type" : "string"},
+      "id" : {"type" : "string"},
+      "is_medicaid" : {"type" : "string"},
+      "version" : {"type" : "string"},
+      "archive_date" : {"type" : "date"},
+      "type" : {"type" : "string"},
+      "cmnctn_last_updated_dt" : {"type" : "date"}
+    }
+  }
+}
+
+taxonomy_cmnctn_content_topic
+
 
 # ---------------------------------------- #
 #   Example - modify to our needs

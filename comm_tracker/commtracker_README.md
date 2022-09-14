@@ -7,14 +7,83 @@ python3 claimcache_pbm.py action=load_claim_updates test=true size=10
 
 python3 commtracker.py action=publish_direct > output9-11.txt 2>&1 &
 
-INdexes:
+mongosh "mongodb+srv://commstracker.mhsdb.mongodb.net/commtracker" --apiVersion 1 --username main_admin --password bugsyBoo
+
+APIkey: qzllcgrg:37c9c00b-21c0-43e9-b097-36426f700142
+
+# --- Sharded Cluster --- #
+mongosh "mongodb+srv://commsharded.mhsdb.mongodb.net/commtracker" --apiVersion 1 --username main_admin --password bugsyBoo
+M40 3 shards, 500Gb, 3 region
+
+ShardKey: taxonomy_cmnctn_format, id
+Atlas [mongos] commtracker> sh.enableSharding("commtracker")
+{
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1663180948, i: 2 }),
+    signature: {
+      hash: Binary(Buffer.from("99d350367cda83822d5d908aaaa24a75904dc48b", "hex"), 0),
+      keyId: Long("7143073664617938948")
+    }
+  },
+  operationTime: Timestamp({ t: 1663180948, i: 2 })
+}
+
+sh.shardCollection("commtracker.comm_detail", { constituent_indentifier: "hashed" } )
+sh.shardCollection("commtracker.comm_summary", { constituent_indentifier: "hashed" } )
+Atlas [mongos] commtracker> sh.shardCollection("commtracker.comm_detail", { constituent_indentifier: 1 } )
+{
+  collectionsharded: 'commtracker.comm_detail',
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1663187243, i: 19 }),
+    signature: {
+      hash: Binary(Buffer.from("302dad912359304b3dfbac5a9aa8a882b23f2952", "hex"), 0),
+      keyId: Long("7143073664617938948")
+    }
+  },
+  operationTime: Timestamp({ t: 1663187243, i: 15 })
+}
+
+# ----------------------------------------- #
+#  Index Creation
 db.comm_summary.createIndex({
     cmnctn_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
 })
 db.comm_detail.createIndex({
     cmnctn_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
 })
-cmnctn_identifier, cmnctn_activity_dts, taxonomy_cmnctn_format
+
+db.comm_detail.createIndex({
+  "is_medicaid": 1,
+  "version": 1
+})
+
+db.comm_summary.createIndex({
+  "is_medicaid": 1,
+  "version": 1
+})
+
+180 days = 86400*180
+db.comm_summary.createIndex({
+  "archive_date": 1
+},{expireAfterSeconds: 15552000})
+
+Atlas [mongos] commtracker> db.comm_summary.deleteMany({})
+{ acknowledged: true, deletedCount: 62000 }
+Atlas [mongos] commtracker> sh.shardCollection("commtracker.comm_summary", { constituent_indentifier: 1 } )
+{
+  collectionsharded: 'commtracker.comm_summary',
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1663187377, i: 7 }),
+    signature: {
+      hash: Binary(Buffer.from("02bda7dd12f3b2bd986a504aa20fe91e3af67a02", "hex"), 0),
+      keyId: Long("7143073664617938948")
+    }
+  },
+  operationTime: Timestamp({ t: 1663187377, i: 2 })
+}
 
 # ----------------------------------------- #
 #  Data API
@@ -56,7 +125,7 @@ Index: ext_taxonomy_identifier,  taxonomy_cmnctn_format
 
 Query:
 [
-    {$match: {"ext_taxonomy_identifier": {"$regex" : "^COMT1000002.*"}, "taxonomy_cmnctn_format" : "Email"}},
+    {$match: {"cmnctn_identifier": {"$regex" : "^COMT1000002.*"}, "taxonomy_cmnctn_format" : "Email"}},
     {$sort: {"cmnctn_last_updated_dt" : 1}},
     {$count: "num_recs"}
 ]
@@ -65,12 +134,12 @@ Query:
     {$search: {
         compound: {
             must: [
-                {"regex" : {"query" : "^COMT1000002.*", "path" : "ext_taxonomy_identifier", "allowAnalyzedField": true}},
+                {"regex" : {"query" : "COMT1000002.*", "path" : "cmnctn_identifier", "allowAnalyzedField": true}},
                 {"text" : {"path" : "taxonomy_cmnctn_format", "query" : "Email"}}
             ]
         }
     }},
-    {"$project": {"score": {"$meta": "searchScore"},"ext_taxonomy_identifier": 1, "taxonomy_cmnctn_format": 1, "cmnctn_activity_dts": 1}},
+    {"$project": {"score": {"$meta": "searchScore"},"cmnctn_identifier": 1, "taxonomy_cmnctn_format": 1, "cmnctn_activity_dts": 1}},
     {"$count": "numrecords"}
 ]
 
@@ -126,3 +195,115 @@ Query:
   taxonomy_cmnctn_format: 1,
   cmnctn_activity_dts: 1
 }}, {$count: 'numrecords'}]
+
+
+[
+   {
+      $search:{
+         index: "default",
+         compound : { 
+            "must": [
+               { 
+                  "regex": { 
+                      "query": "COMT369.*", 
+                      "path" : "cmnctn_identifier",
+                      "allowAnalyzedField": true
+                  } 
+               },
+               { 
+                  range :  { 
+                     path : "cmnctn_activity_dts",  
+                     "gte": ISODate("2021-11-25T00:00:00.000Z"), 
+                     "lt": ISODate("2021-12-02T00:00:00.000Z") 
+                  } 
+               },
+            ],
+            "filter": [ 
+                { 
+                    "text": { 
+                        "query":  "Email", 
+                        "path": "taxonomy_cmnctn_format" 
+                    } 
+                }
+            ]
+        } 
+    } 
+   },
+   {
+      $sort: {"cmnctn_activity_dts": -1}
+   },
+   {
+      $limit: 50
+   }
+]
+
+Date range:
+[
+   {
+      $search:{
+         index: "default",
+         compound : { 
+            "must": [
+               { 
+                  range :  { 
+                     path : "cmnctn_activity_dts",  
+                     "gte": ISODate("2021-11-25T00:00:00.000Z"), 
+                     "lt": ISODate("2021-12-02T00:00:00.000Z") 
+                  } 
+               },
+            ]
+        } 
+    } 
+   },
+   {
+      $count: "numrecords"
+   }
+]
+
+#   Set the Archive Date
+db.comm_detail.updateMany({},{$currentDate : {"archive_date" : true}})
+db.comm_summary.updateMany({},{$currentDate : {"archive_date" : true}})
+# -------------------------------------------------------- #
+#  Materialized View
+
+- Summary
+Started build 6:38
+[
+    {$match: { is_medicaid: "N"}},
+    {$merge: {
+         into: "vw_summary_non_medicaid",
+         on: "_id",
+         whenMatched: "replace",
+         whenNotMatched: "insert"
+      }
+   }
+]
+
+- Detail
+Started build - 6:27pm - done 6:34 1.7M rows
+[
+    {$match: { is_medicaid: "N"}},
+    {$merge: {
+         into: "vw_detail_non_medicaid",
+         on: "_id",
+         whenMatched: "replace",
+         whenNotMatched: "insert"
+      }
+   }
+]
+
+- create view
+db.createView(
+    "vw_nonmedicaid",
+    "comm_summary",
+    [{$match: {is_medicaid: "N"}}]
+)
+
+
+- Update 11:40 - 60million new
+db.comm_summary.aggregate(pipe)
+
+# ----------------------------------------- #
+#  Rest API
+
+ProcessID: 820acde8445dc943b6d28e986798ee02

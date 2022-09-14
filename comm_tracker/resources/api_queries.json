@@ -352,7 +352,7 @@
                  "should": [ 
                      { 
                          "regex": { 
-                             "query": "P02*", 
+                             "query": "P02.*", 
                              "path" : ["compaignname","jobname","vendorname","channel","jobid","campaignid"] 
                          } 
                      } 
@@ -371,5 +371,92 @@
  ]
      
  )
- 
+
+ # --------------------- Search Queries BJB ------------------------------ #
+ [
+   {
+      $search:{
+         index: "default",
+         compound : { 
+            "must": [ 
+                { 
+                    range :  { 
+                        path : "cmnctn_activity_dts",  
+                        "gte": ISODate("2021-11-25T00:00:00.000Z"), 
+                        "lt": ISODate("2021-12-02T00:00:00.000Z") 
+                    } 
+                } 
+            ],
+            "filter": [ 
+                { 
+                    "text": { 
+                        "query":  "Email", 
+                        "path": "taxonomy_cmnctn_format" 
+                    } 
+                }
+            ], 
+            "should": [ 
+                { 
+                    "regex": { 
+                        "query": "P02.*", 
+                        "path" : "cmnctn_identifier",
+                        "allowAnalyzedField": true
+                    } 
+                } 
+            ]
+        } 
+    } 
+},
+{
+    $sort: {"cmnctn_activity_dts": -1}
+},
+{
+    $limit: 50
+}
+]
+
+# ---- Give 1600 Results ----- #
+[
+   {
+      $search:{
+         index: "default",
+         compound : { 
+            "must": [
+               { 
+                  "regex": { 
+                      "query": "COMT369.*", 
+                      "path" : "cmnctn_identifier",
+                      "allowAnalyzedField": true
+                  } 
+               },
+               { 
+                  range :  { 
+                     path : "cmnctn_activity_dts",  
+                     "gte": ISODate("2021-11-25T00:00:00.000Z"), 
+                     "lt": ISODate("2021-12-02T00:00:00.000Z") 
+                  } 
+               },
+            ],
+            "filter": [ 
+                { 
+                    "text": { 
+                        "query":  "Email", 
+                        "path": "taxonomy_cmnctn_format" 
+                    } 
+                }
+            ]
+        } 
+    } 
+   },
+   {
+      $sort: {"cmnctn_activity_dts": -1}
+   },
+   {
+      $limit: 50
+   }
+]
+
+{
+   $count: "numrecords"
+}
  

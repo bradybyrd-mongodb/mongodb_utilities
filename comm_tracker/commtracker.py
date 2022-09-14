@@ -167,6 +167,7 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
     #  Send a copy of the claim with one or two field changes
     #  Add an updateDate and sequencenumber, updateName = TCD-1
     cur_process = multiprocessing.current_process()
+    cprocess = cur_process.name.replace("Process","p") # Process-7 p-7
     prefix = "COMT"
     feed = False
     if stream == "direct":
@@ -178,6 +179,7 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
     num_records = settings["num_records"]
+    base_counter = base_counter + num_records * proc_num
     summary_template = settings["summary_template"]
     num_iterations = int(num_records/batch_size)
     IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
@@ -199,12 +201,13 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
     icnt = 0
     bulk_docs = []
     start_time = datetime.datetime.now()
+    istart_time = datetime.datetime.now()
     base_id = int(IDGEN.get(prefix, num_records).replace(prefix,""))
     for k in range(num_iterations):
         #bb.logit(f'Iter: {k} of {num_iterations}, {batch_size} per batch - total: {icnt}')
         for row in range(batch_size):
             new_id = f'{prefix}{base_id + icnt}'
-            new_doc = process_message(summary_template, new_id, icnt, stream, topic)
+            new_doc = process_message(summary_template, new_id, icnt, stream, topic, cprocess)
             if stream == "direct":
                 if len(bulk_docs) == batch_size:
                     flush_direct(conn, topic, bulk_docs)
@@ -212,19 +215,20 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
                 bulk_docs.append(new_doc)
             else:
                 loader.add(new_doc)
-            if icnt % 500 == 0:
+            if icnt % 1000 == 0:
                 end_time = datetime.datetime.now()
-                time_diff = (end_time - start_time)
+                time_diff = (end_time - istart_time)
                 execution_time = time_diff.microseconds * 0.000001
-    
-                print(f'[{cur_process.name}] {icnt} msgs, speed: {500/execution_time} msgs/sec')
+                istart_time = datetime.datetime.now()
+                print(f'[{cur_process.name}] {icnt} msgs, speed: {1000/execution_time} msgs/sec')
             elif icnt % 20 == 0:
-                print(".", end="", flush=True)
+                #print(".", end="", flush=True)
+                doo = "not"
             icnt += 1
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.microseconds * 0.000001
-    bb.logit(f'[{cur_process.name}] {icnt} msgs, speed: {icnt/execution_time} msgs/sec')
+    bb.logit(f'[{cur_process.name}] Complete {icnt} msgs, speed: {(batch_size * num_iterations)/execution_time} msgs/sec')
     
     # get the leftovers
     if stream == "direct":
@@ -232,7 +236,7 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
     bb.logit("#-------- COMPLETE -------------#")
     loader = None
 
-def process_message(doc_template, new_id, cnt, stype, topic):
+def process_message(doc_template, new_id, cnt, stype, topic, cprocess):
     cur_doc = bb.read_json(doc_template)
     camp = f'C~{1000 + int(cnt/1000)}'
     global interval_vars
@@ -248,11 +252,15 @@ def process_message(doc_template, new_id, cnt, stype, topic):
     year = 2022 - yr
     day = random.randint(1,28)
     msgdt = datetime.datetime(year,month,day, 10, 45)
+    if cnt == 0 or cnt % 100 == 0:
+        interval_vars["constituent_identifier"] = f'{new_id}-{cprocess}'
     if cnt == 0 or cnt % 10000 == 0:
         interval_vars["campaign"] = fake.sentence()
         interval_vars["campaign_identifier"] = f'C~{1000000 + cnt}'
+        interval_vars["vndr_nm"] = fake.bs()
     cur_doc["id"] = new_id
     cur_doc["cmnctn_identifier"] = f'{new_id}_{cur_doc["cmnctn_identifier"]}'
+    cur_doc["constituent_identifier"] = interval_vars["constituent_identifier"]
     cur_doc["is_medicaid"] = "N"
     cur_doc["ext_taxonomy_identifier"] = f'{new_id}_{cur_doc["ext_taxonomy_identifier"]}'
     cur_doc["taxonomy_identifier"] = f'{new_id}_{cur_doc["taxonomy_identifier"]}'
@@ -263,11 +271,13 @@ def process_message(doc_template, new_id, cnt, stype, topic):
     cur_doc["load_year"] = year
     cur_doc["campaign_name"] = interval_vars["campaign"]
     cur_doc["campaign_identifier"] = interval_vars["campaign_identifier"]
-    cur_doc["taxonomy_cmnctn_format"] = random.choice(["Email", "SMS", "Call", "Popup", "DirectMail"])
+    cur_doc["taxonomy_cmnctn_format"] = random.choice(["Email", "SMS", "Call", "Popup", "DirectMail","notification"])
     cur_doc["taxonomy_cmnctn_content_topic"] = fake.bs()
     cur_doc["taxonomy_portfolio"] = random.choice(["Behavior Change/Next Best Action","Marketing Inquiry","Survey","Post-call quality check"])
-    cur_doc["version"] = "1.4"
-    cur_doc["archive_date"] = msgdt.strftime(dformat)
+    cur_doc["vndr_nm"] = interval_vars["vndr_nm"]
+    cur_doc["version"] = settings["version"]
+    cur_doc["archive_date"] = datetime.datetime.now() if stype == "direct" else datetime.datetime.now().strftime(dformat)
+    cur_doc["create_date"] = datetime.datetime.now() if stype == "direct" else datetime.datetime.now().strftime(dformat)
     cur_doc["type"] = "comm_summary"
     if topic == "comm-detail":
         build_detail(cur_doc, new_id)
@@ -468,7 +478,6 @@ def bulk_writer(collection, bulk_arr):
     except BulkWriteError as bwe:
         print("An exception occurred ::", bwe.details)
 
-
 #------------------------------------------------------------------#
 #     MAIN
 #------------------------------------------------------------------#
@@ -509,54 +518,5 @@ if __name__ == "__main__":
     #conn.close()
 
 '''
-#---- Data Load ---------------------#
-python3 claimcache.py action=customer_load
-python3 claimcache.py action=recommendations_load
-python3 claimcache_pbm.py action=load_claim_updates test=true size=10
 
-{"user.user_id" : {$in: ["PROF1000083","PROF1000107","PROF1000123","PROF1000244","PROF1000255","PROF1000702"]}}
-
-python3 commtracker.py action=publish_direct > output9-11.txt 2>&1 &
-
-INdexes:
-db.comm_summary.createIndex({
-    cmnctn_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
-})
-db.comm_detail.createIndex({
-    cmnctn_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
-})
-cmnctn_identifier, cmnctn_activity_dts, taxonomy_cmnctn_format
-
-#------------------------#
-#  Data API
-https://data.mongodb-api.com/app/data-gseer/endpoint/data/v1
-API-Key
-bb-poc-api/ aNB1gCJZU0R8T4HQKlpVXclJysY9sX2JcwAaXGwPnXCDymKc2bKzThL71JjyY8Wt
-
-curl --location --request POST 'https://data.mongodb-api.com/app/data-gseer/endpoint/data/v1/action/findOne' \
---header 'Content-Type: application/json' \
---header 'Access-Control-Request-Headers: *' \
---header 'api-key: aNB1gCJZU0R8T4HQKlpVXclJysY9sX2JcwAaXGwPnXCDymKc2bKzThL71JjyY8Wt' \
---data-raw '{
-    "collection":"<COLLECTION_NAME>",
-    "database":"<DATABASE_NAME>",
-    "dataSource":"CommsTracker",
-    "projection": {"_id": 1}
-}'
-
-https://data.mongodb-api.com/app/data-gseer/endpoint/data/v1/action/findOne
-{
-    "collection":"comm_summary",
-    "database":"commtracker",
-    "dataSource":"CommsTracker",
-    "projection": {"_id": 1}
-}
-
-https://data.mongodb-api.com/app/data-gseer/endpoint/data/v1/action/findOne
-{
-    "collection":"comm_summary",
-    "database":"commtracker",
-    "dataSource":"CommsTracker",
-    "filter": {"cmnctn_identifier": {"$regex" : "^}}
-}
 '''
