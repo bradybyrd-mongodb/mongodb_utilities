@@ -5,35 +5,8 @@ import os
 import sys
 import subprocess
 import pprint
-#from cryptography.fernet import Fernet
+import base64
 
-'''
-Crypto
-https://analyticsindiamag.com/implementing-encryption-and-decryption-of-data-in-python/
-pip install cryptography
-
-from cryptography.fernet import Fernet
-
-        # Generating the key and writing it to a file
-    def genwrite_key(self):
-        key = Fernet.generate_key()
-        with open("bbpass.key", "wb") as key_file:
-            key_file.write(key)
-    def call_key():
-        return open("pass.key", "rb").read()
-
-key = call_key()
-slogan = "Hello!! Welcome to AIM!!".encode()
-a = Fernet(key)
-coded_slogan = a.encrypt(slogan)
-print(coded_slogan)
-
-key = call_key()
-b = Fernet(key)
-decoded_slogan = b.decrypt(coded_slogan)
-print(decoded_slogan)
-
-'''
 class Util:
     def __init__(self, details = {}):
         self.secrets = []
@@ -179,3 +152,20 @@ class Util:
         stamp = f"{cur_date}|I> "
         with open(self.logfilename, 'a') as lgr:
             lgr.write(f'{stamp}{content}\n')
+
+    def desecret(self,txt):
+        #message_bytes = txt.replace(self.cypher,"")[::-1].encode('ascii')
+        message_bytes = txt.encode('utf-8')
+        bytesdecode = base64.b64decode(message_bytes)
+        message = bytesdecode.decode('utf-8')
+        #print(message)
+        #return(message.replace(f'{self.cypher}xx',''))
+        return(message)
+
+    def secret(self,txt):
+        #message_bytes = f'{self.cypher}xx{txt}'.encode('ascii')
+        message_bytes = txt.encode('utf-8')
+        base64_bytes = base64.b64encode(message_bytes)
+        message = base64_bytes.decode('utf-8')
+        #return(f'{message[::-1]}{self.cypher}')
+        return(message)

@@ -1,6 +1,7 @@
 {
-  "basuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+  "nuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
   "uri" : "mongodb+srv://commstracker.mhsdb.mongodb.net",
+  "oouri" : "mongodb+srv://commsharded.mhsdb.mongodb.net",
   "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
   "locluri" : "mongodb://localhost:27017",
   "database" : "commtracker",
@@ -9,17 +10,22 @@
   "history_collection" : "activity_raw",
   "username" : "main_admin",
   "password" : "bugsyBoo",
-  "version" : "1.0",
+  "version" : "2.2st",
   "process_count" : 2,
-  "batch_size" : 50,
+  "batch_size" : 1000,
+  "sample_time" : 60,
   "import_path" : "updatecsv",
   "batches" : 1,
   "base_counter" : 1000000,
-  "num_records" : 100000,
+  "num_records" : 1000000,
   "num_updates" : 0.1,
   "num_csvupdates" : 0.25,
   "messages_per_profile" : 100,
+  "kafka_async" : "Y",
   "topics" : {
+    "comm-summary" : "speed_test"
+  },
+  "hottopics" : {
     "comm-detail" : "comm_detail",
     "comm-summary" : "comm_summary"
   },

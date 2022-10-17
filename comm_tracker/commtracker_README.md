@@ -11,6 +11,9 @@ mongosh "mongodb+srv://commstracker.mhsdb.mongodb.net/commtracker" --apiVersion 
 
 APIkey: qzllcgrg:37c9c00b-21c0-43e9-b097-36426f700142
 
+python3 commtracker.py action=publish_direct > output-09-14-22.txt 2>&1 &
+python3 commtracker.py action=publish_kafka > output-09-16-22.txt 2>&1 &
+
 # --- Sharded Cluster --- #
 mongosh "mongodb+srv://commsharded.mhsdb.mongodb.net/commtracker" --apiVersion 1 --username main_admin --password bugsyBoo
 M40 3 shards, 500Gb, 3 region
@@ -47,11 +50,14 @@ Atlas [mongos] commtracker> sh.shardCollection("commtracker.comm_detail", { cons
 
 # ----------------------------------------- #
 #  Index Creation
+
+db.createCollection("comm_summary")
+db.createCollection("comm_detail")
 db.comm_summary.createIndex({
-    cmnctn_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
+    constituent_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
 })
 db.comm_detail.createIndex({
-    cmnctn_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
+    constituent_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
 })
 
 db.comm_detail.createIndex({
@@ -62,6 +68,14 @@ db.comm_detail.createIndex({
 db.comm_summary.createIndex({
   "is_medicaid": 1,
   "version": 1
+})
+
+db.comm_summary.createIndex({
+  "constituent_identifier": "hashed"
+})
+
+db.comm_detail.createIndex({
+  "constituent_identifier": "hashed"
 })
 
 180 days = 86400*180
@@ -69,21 +83,27 @@ db.comm_summary.createIndex({
   "archive_date": 1
 },{expireAfterSeconds: 15552000})
 
-Atlas [mongos] commtracker> db.comm_summary.deleteMany({})
-{ acknowledged: true, deletedCount: 62000 }
-Atlas [mongos] commtracker> sh.shardCollection("commtracker.comm_summary", { constituent_indentifier: 1 } )
-{
-  collectionsharded: 'commtracker.comm_summary',
-  ok: 1,
-  '$clusterTime': {
-    clusterTime: Timestamp({ t: 1663187377, i: 7 }),
-    signature: {
-      hash: Binary(Buffer.from("02bda7dd12f3b2bd986a504aa20fe91e3af67a02", "hex"), 0),
-      keyId: Long("7143073664617938948")
-    }
-  },
-  operationTime: Timestamp({ t: 1663187377, i: 2 })
-}
+
+db.comm_detail.createIndex({
+  "archive_date": 1
+},{expireAfterSeconds: 15552000})
+
+db.comm_summary.reindex({})
+sh.shardCollection("commtracker.comm_summary", { constituent_identifier: "hashed"}, {numInitialChunks: 3125 } )
+sh.shardCollection("commtracker.comm_detail", { constituent_identifier: "hashed"}, {numInitialChunks: 3125 } )
+
+python3 commtracker.py action=publish_direct > output-09-14-22.txt 2>&1 &
+
+db.comm_summary.getShardDistribution()
+
+# --------------------------------------- #
+#  Speed Test
+version: 2.2st
+db.comm_detail.createIndex({
+    constituent_identifier: 1, taxonomy_cmnctn_format: 1, cmnctn_activity_dts: 1
+})
+
+
 
 # ----------------------------------------- #
 #  Data API

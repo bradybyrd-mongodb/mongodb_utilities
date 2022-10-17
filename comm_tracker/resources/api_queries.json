@@ -262,6 +262,47 @@
     }}
  ]
 
+
+ # 2.	Search With MemberId: 42~ MECFFVHS , Channel: SMS , and Keyword: site
+[
+  {
+   "$search":{
+      "compound":{
+         "filter":[
+            {"text":{
+                  "path" : "constituentidentifier",
+                  "query" : {"regex" : "42~MECFFVHS.*"}
+            }
+         ],
+         "must":[
+            {"text":{
+                  "path" : "cmnctnchnltypecd",
+                  "query" : "SMS"}
+            },
+            {"text": {
+               "query": "site",
+               "path": {
+                 "wildcard": "*"
+               }
+             }
+            },
+            {"range":{
+               "taxonomycmnctnsentdt":{
+                  "lte":"2022-08-18",
+                  "gte":"2021-08-18"
+               }}
+            }
+         ]
+      }
+   },
+   {"$sort": {
+      "taxonomycmnctnsentdt" : -1
+      }
+   },
+   {"$limit" : 50},
+   {"$skip" : 0}
+] 
+
  # Translatedm-R Kauffmann
  {
    "query": {

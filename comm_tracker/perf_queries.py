@@ -58,15 +58,15 @@ class PerfQueries:
         if query_params["type"] == "agg":
             cursor = self.db[coll].aggregate(pipe)
         if query_params["type"] == "find":
-            if "limit" in query_params:
-                cursor = self.db[coll].find(pipe).limit(query_params["limit"])
-            elif "project" in query_params:
+            if "project" in query_params:
                 self.bb.logit(f'Query: {pipe}')
                 self.bb.logit(f'Project: {query_params["project"]}')
                 if "limit" in query_params:
                     cursor = self.db[coll].find(pipe,query_params["project"]).limit(query_params["limit"])
                 else:
                     cursor = self.db[coll].find(pipe,query_params["project"])
+            elif "limit" in query_params:
+                cursor = self.db[coll].find(pipe).limit(query_params["limit"])
             elif "count" in query_params:
                 cursor = self.db[coll].count_documents(pipe)
             else:
@@ -75,6 +75,7 @@ class PerfQueries:
 
     def query_list(self, items):
         #self.bb.logit(f'Performing: {item}')
+        result = []
         for item in items:
             start = datetime.datetime.now()
             if not item in qq.queries:
@@ -107,16 +108,21 @@ class PerfQueries:
 
             end = datetime.datetime.now()
             elapsed = end - start
+            cur_date = end.strftime("%m/%d/%Y %H:%M:%S")
             secs = (elapsed.seconds) + elapsed.microseconds * .000001
             self.bb.logit(f"Performing {item} - Elapsed: {format(secs,'f')} - Docs: {docs}")
             self.bb.logit(f'Operation: {details["type"]}, Query:')
             self.bb.logit(details["query"])
+            result.append(f"{cur_date},{item},{format(secs,'f')},{docs}\n")
+                
             self.bb.logit("------------------------------------")
+        return(result)
 
     def perf_stats(self):
         iters = 1
         self.bb.message_box("Query Performance", "title")
         start_time = datetime.datetime.now()
+        logfilename = "perflog.txt"
         items = [
             "simple"
         ]
@@ -125,9 +131,14 @@ class PerfQueries:
             items = qq.batches[batch]
         if "iters" in self.args:
             iters = int(self.args["iters"])
-
-        for k in range(iters):
-            self.query_list(items)
+        with open(logfilename, 'a') as lgr:
+            lgr.write("#------------------------------- Performance Run Log -----------------------------#\n")
+            lgr.write("Date,Name,elapsed,num_docs\n")
+            for k in range(iters):
+                result = self.query_list(items)
+                for line in result:
+                    lgr.write(line)
+            
         end_time = datetime.datetime.now()
         time_diff = (end_time - start_time)
         execution_time = time_diff.total_seconds()

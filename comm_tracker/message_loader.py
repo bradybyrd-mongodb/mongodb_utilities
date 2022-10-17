@@ -6,11 +6,11 @@ import datetime
 import json
 import os
 import sys
-from google.cloud import pubsub_v1
+#from google.cloud import pubsub_v1
 from concurrent.futures import TimeoutError
 import os
 import time
-from confluent_kafka import Producer
+#from confluent_kafka import Producer
 import socket
 import json
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,10 +30,16 @@ class MessageLoader:
         self.project = self.settings["gcp"]["pub_sub_project"]
         # self.topic = self.settings["gcp"]["pub_sub_topic"]
         self.timeout = self.settings["gcp"]["pub_sub_timeout"]
-        # self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
-
         self.topic = topic
-        self.producer = Producer(self.settings["confluent"])
+        # self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
+        if self.settings["kafka_async"] == "N":
+            self.flushmsg = True
+            kmode = "Sync"
+        else:
+            self.flushmsg = False
+            kmode = "Async"
+        self.logit(f"Kafka {kmode} - Topic: {self.topic}")
+        self.producer = None #Producer(self.settings["confluent"])
 
 
 # Best practice for higher availability in librdkafka clients prior to 1.7
@@ -62,10 +68,13 @@ class MessageLoader:
 
     def add_kafka(self, payload):
         data = json.dumps(payload).encode("utf-8")
-        self.producer.produce(self.topic, data, callback=self.delivery_callback)
-        self.producer.poll()
-        # self.producer.flush()
-        
+        if self.flushmsg:
+            self.producer.produce(self.topic, data)
+            self.producer.flush()
+        else:
+            self.producer.produce(self.topic, data, callback=self.delivery_callback)
+            self.producer.poll()
+    
     def delivery_callback(self, err, msg):
         if err:
             print('ERROR: Message failed delivery: {}'.format(err))

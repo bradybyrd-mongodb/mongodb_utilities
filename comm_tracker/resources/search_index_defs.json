@@ -48,6 +48,7 @@
     "dynamic": false,
     "fields": {
       "cmnctn_identifier" : {"type" : "string"},
+      "constituent_identifier" : {"type" : "string"},
       "taxonomy_identifier" : {"type" : "string"},
       "cmnctn_activity_dts" : {"type" : "date"},
       "taxonomy_cmnctn_format" : {"type" : "string"},
@@ -58,6 +59,7 @@
       "ext_taxonomy_identifier" : {"type" : "string"},
       "campaign_identifier" : {"type" : "string"},
       "campaign_name" : {"type" : "string"},
+      "vndr_nm" : {"type" : "string"},
       "vndr_job_id" : {"type" : "string"},
       "vndr_job_name" : {"type" : "string"},
       "cmnctn_mgr_name" : {"type" : "string"},
@@ -88,7 +90,7 @@ taxonomy_cmnctn_content_topic
             }
           }
         },
-                    "TeamId": {
+          "TeamId": {
           "type": "string",
           "analyzer": "lucene.keyword",
           "multi": {

@@ -22,7 +22,7 @@ from pymongo import UpdateOne
 from pymongo import ReplaceOne
 from pymongo.errors import BulkWriteError
 from faker import Faker
-from google.cloud import pubsub_v1
+#from google.cloud import pubsub_v1
 from concurrent.futures import TimeoutError
 base_dir = os.path.dirname(os.path.abspath(__file__))
 # apppend parent folder to path
@@ -143,12 +143,6 @@ def message_publisher(stream):
                 target=worker_message_generate, args=(item, stream, topics[topic_id]))
             jobs.append(p)
             p.start()
-<<<<<<< HEAD
-
-            
-
-=======
->>>>>>> b4f42691ca4add9247d9e7afd5b0126515ad4b15
             time.sleep(1)
             inc += 1
 
@@ -185,6 +179,7 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
     base_counter = settings["base_counter"]
     batch_size = settings["batch_size"]
     num_records = settings["num_records"]
+    interval = settings["sample_time"]
     base_counter = base_counter + num_records * proc_num
     summary_template = settings["summary_template"]
     num_iterations = int(num_records/batch_size)
@@ -218,19 +213,22 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
                 if len(bulk_docs) == batch_size:
                     flush_direct(conn, topic, bulk_docs)
                     bulk_docs = []
+                    if interval > 0:
+                        time.sleep(interval)
                 bulk_docs.append(new_doc)
             else:
                 loader.add(new_doc)
-            if icnt % 1000 == 0:
+            if icnt % (batch_size * 5) == 0:
                 end_time = datetime.datetime.now()
                 time_diff = (end_time - istart_time)
                 execution_time = time_diff.microseconds * 0.000001
                 istart_time = datetime.datetime.now()
-                print(f'[{cur_process.name}] {icnt} msgs, speed: {1000/execution_time} msgs/sec')
+                bb.logit(f'[{cur_process.name}] {icnt} msgs, speed: {(batch_size * 5)/execution_time} msgs/sec')
             elif icnt % 20 == 0:
                 #print(".", end="", flush=True)
                 doo = "not"
             icnt += 1
+
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.microseconds * 0.000001
@@ -433,6 +431,163 @@ def perf_stats():
     cc = PerfQueries({"args" : ARGS, "settings" : settings, "db" : db})
     cc.perf_stats()
 
+def indexing_stats():
+    num_to_do = 10
+    prefix = "TEST1"
+    base = "PerfTest"
+    topic = "comm-summary"
+    summary_template = settings["summary_template"]
+    base_counter = settings["base_counter"]
+    global interval_vars
+    interval_vars = {}
+    conn = client_connection()
+    db = conn[settings["database"]]
+    coll = "comm_summary" 
+    loader = MessageLoader(topic, {"settings": settings})
+    IDGEN.set({"seed" : base_counter, "size" : num_to_do, "prefix" : prefix})
+    base_id = int(IDGEN.get(prefix, num_to_do).replace(prefix,""))
+    istart_time = datetime.datetime.now()
+    start_time = datetime.datetime.now()
+    for inc in range(num_to_do):
+
+        new_doc = process_message(summary_template, base_id + inc, inc, "kafka", topic, "p-1")
+        new_doc["vndr_nm"] = f'{base}-{inc}'
+        loader.add_kafka(new_doc)
+        if (inc + 1) % 10 == 0:
+            end_time = datetime.datetime.now()
+            time_diff = (end_time - istart_time)
+            execution_time = time_diff.microseconds * 0.000001
+            istart_time = datetime.datetime.now()
+            bb.logit(f'Processed: {inc + 1}, ToDo: {num_to_do}, elapsed: {execution_time}')
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - start_time)
+    execution_time = time_diff.microseconds * 0.000001
+    bb.logit(f'LoadComplete: {inc + 1}, ToDo: {num_to_do}, elapsed: {execution_time}')
+    # Now check for records in index
+    pipe = [
+        {"$search" : {
+            "compound" : {
+                "must" : [
+                    {"regex" : {"query" : f"{base}.*", "path" : "vndr_nm", "allowAnalyzedField": True}}
+                ]
+            }
+        }},
+        {"$project" : {
+            "vendor_name" : 1, "last_modified_at": 1, "constituent_identifier" : 1
+        }},
+        {"$sort" : {
+            "_id" : 1
+        }},
+        {"$count" : "numrecords"}
+    ]
+    start_time = datetime.datetime.now()
+    for k in range(1000):
+        #new_pipe = pipe.append({"$count" : "numrecords"})
+        result = db[coll].aggregate(pipe)
+        found = 0
+        for k in result:
+            if "numrecords" in k:
+                found = k["numrecords"]
+        bb.logit(f'Found: {k["numrecords"]}')
+        if found == num_to_do:
+            end_time = datetime.datetime.now()
+            time_diff = (end_time - start_time)
+            execution_time = time_diff.microseconds * 0.000001
+            bb.logit(f'IndexingComplete: {num_to_do} found, elapsed: {execution_time}')
+            pipe.pop(3)
+            result = db[coll].aggregate(pipe)
+            cnt = 0
+            for rec in result:
+                bb.logit(f'[{cnt}] vend: {rec["vendor_name"]}, ts: {rec["last_modified_at"].strftime("%H:%M:%s")}')
+                cnt += 1
+            break
+        time.sleep(0.01)
+
+def indexing_latency():
+    num_to_do = 1000
+    iters = 5
+    prefix = "TEST1"
+    base = "LatencyTest"
+    topic = "comm-summary"
+    summary_template = settings["summary_template"]
+    base_counter = settings["base_counter"]
+    global interval_vars
+    interval_vars = {}
+    conn = client_connection()
+    db = conn[settings["database"]]
+    coll = "comm_summary" 
+    loader = MessageLoader(topic, {"settings": settings})
+    IDGEN.set({"seed" : base_counter, "size" : num_to_do, "prefix" : prefix})
+    base_id = int(IDGEN.get(prefix, num_to_do).replace(prefix,""))
+    bulk_docs = []
+    counter = 0
+    istart_time = datetime.datetime.now()
+    start_time = datetime.datetime.now()
+    for iter in range(iters):
+        bb.message_box(f'[iter: {iter}] - Processing {num_to_do} messages')
+        for inc in range(num_to_do):
+            new_doc = process_message(summary_template, base_id + inc, inc, "direct", topic, "p-1")
+            new_doc["cmnctn_identifier"] = f'{base}{iter}-{counter}'
+            bulk_docs.append(new_doc)
+            counter += 1        
+        flush_direct(conn, topic, bulk_docs)
+        bulk_docs = []
+        end_time = datetime.datetime.now()
+        time_diff = (end_time - istart_time)
+        execution_time = time_diff.microseconds * 0.000001
+        istart_time = datetime.datetime.now()
+        bb.logit(f'{num_to_do} msgs, speed: {(num_to_do)/execution_time} msgs/sec')
+        wait_latency(f'{base}{iter}', num_to_do, db[coll]) 
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - start_time)
+    execution_time = time_diff.microseconds * 0.000001
+    bb.logit(f'LoadComplete: {inc + 1}, ToDo: {num_to_do * iters}, elapsed: {execution_time}')
+ 
+ 
+def wait_latency(base, isize, coll):
+    # Now check for records in index
+    pipe = [
+        {"$search" : {
+            "index" : "limited",
+            "compound" : {
+                "must" : [
+                    {"regex" : {"query" : f"{base}.*", "path" : "cmnctn_identifier", "allowAnalyzedField": True}}
+                ]
+            }
+        }},
+        {"$project" : {
+            "cmnctn_identifier" : 1, "create_date": 1, "constituent_identifier" : 1
+        }},
+        {"$sort" : {
+            "_id" : 1
+        }},
+        {"$count" : "numrecords"}
+    ]
+    start_time = datetime.datetime.now()
+    for k in range(1000):
+        #new_pipe = pipe.append({"$count" : "numrecords"})
+        result = coll.aggregate(pipe)
+        found = 0
+        for k in result:
+            if "numrecords" in k:
+                found = k["numrecords"]
+        bb.logit(f'Found: {found}')
+        if found == isize:
+            end_time = datetime.datetime.now()
+            time_diff = (end_time - start_time)
+            execution_time = time_diff.microseconds * 0.000001
+            bb.logit(f'IndexingComplete: {isize} found, elapsed: {execution_time}')
+            pipe.pop(3)
+            result = coll.aggregate(pipe)
+            cnt = 0
+            for rec in result:
+                if cnt > 50:
+                    break
+                bb.logit(f'[{cnt}] key: {rec["cmnctn_identifier"]}, ts: {rec["create_date"].strftime("%H:%M:%s")}')
+                cnt += 1
+            break
+        time.sleep(0.01)
+        
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
@@ -519,6 +674,10 @@ if __name__ == "__main__":
     elif ARGS["action"] == "perf":
         # python3 commtracker_kafka.py action=perf batch=simple_match iters=20000
         perf_stats()
+    elif ARGS["action"] == "index_stats":    
+        indexing_stats()
+    elif ARGS["action"] == "index_latency":    
+        indexing_latency()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()
