@@ -8,7 +8,7 @@
         "uri" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
         "noturi" : "mongodb+srv://realmdemo.vmwqj.mongodb.net",
         "username" : "main_admin",
-        "password" : "bugsyBoo",
+        "password" : "********",
         "key" : "bWFpbl9hZG1pbjpidWdzeUJvbw==",
         "database" :  "monitorstats"
     },
@@ -17,18 +17,8 @@
         "shuri" : "mongodb+srv://commsharded.mhsdb.mongodb.net",
         "uri" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
         "username" : "main_admin",
-        "password" : "bugsyBoo",
+        "password" : "*********",
         "odatabase" : "foodie",
         "database" :  "commtracker"
-    },
-    "alerts" : {
-        "uri" : "datadog webhook uri",
-        "api_key" : "967880f4c28b3bf790de19a2fd13b37c",
-        "app_key" : "cd89ef98a0e18facc8c9147f3f0b5df74d64948d",
-        "critical" : {
-            "growth" : 0.2,
-            "size" : 1000,
-            "criticality" : 6
-        }
     }
 }
