@@ -15,7 +15,7 @@ import time
 import re
 import multiprocessing
 import pprint
-import faker
+from faker import Faker
 from pymongo import MongoClient
 from contextlib import redirect_stdout
 from bson.objectid import ObjectId
@@ -26,6 +26,7 @@ from bbutil import Util
 settings_file = "perf_test_settings.json"
 
 first_time = True
+fake = Faker()
 
 def coll_stats(counter, cur_colls, db):
     #  get colls stats on list of collections
@@ -378,6 +379,209 @@ def send_alert(msg):
     # send message to data dog
     boo = "boo"
 
+#-------------------------------------------------------------#
+#  Transactions Performance
+#-------------------------------------------------------------#
+'''
+  Use the data from healthcare db
+    load will add a subdoc
+    Tests:
+        Isolation:
+        Atomicity:
+        Multi-document:
+
+'''
+def xaction_params():
+    conn = client_connection()
+    database = settings["database"]
+    db = conn[database]
+    return db
+
+def xaction_products(save = "n"):
+    conn = client_connection()
+    database = settings["database"]
+    db = conn[database]
+    if save == "y":
+        docs = []
+        for k in range(200):
+            prod = fake.bs()
+            doc = {"_id" : f'P-{k}', "name" : prod, "quantity" : random.randint(500,5000), "updated_at" : datetime.datetime.now()}
+            docs.append(doc)
+        db["products"].insert_many(docs)
+    else:
+        docs = list(db["products"].find({}))
+    conn.close()
+    return(docs)
+
+def xaction_datagen():
+    db = xaction_params()
+    coll = "orders"
+    docs = []
+    products = xaction_products("y")
+    for k in range(100):
+        bb.logit(f"Adding Inventory doc {k}")
+        prod = products[random.randint(0,200)]
+        doc = {
+            "ordered_at" : datetime.datetime.now(),
+            "customer" : fake.name(),
+            "name" : f"Order-{k}",
+            "product" : prod["name"],
+            "product_id" : prod["_id"],
+            "quantity" : random.randint(1,5)
+        }
+        docs.append(doc)
+    db[coll].insert_many(docs)
+
+def xaction_isolation():
+    conn = client_connection()
+    database = settings["database"]
+    db = conn[database]
+    coll = "orders"
+    products = xaction_products()
+    try:
+        with conn.start_session() as session:
+            with session.start_transaction():
+                prod = products[random.randint(0,200)]
+                doc = {
+                    "ordered_at" : datetime.datetime.now(),
+                    "customer" : fake.name(),
+                    "name" : f"Order-test",
+                    "product" : prod["name"],
+                    "product_id" : prod["_id"],
+                    "quantity" : random.randint(1,5)
+                }
+                db[coll].insert_one(doc, session=session)
+                bb.logit(f'Order for: {prod["_id"]} - {prod["name"]}, qty: {doc["quantity"]}')
+                ans = input("Enter to continue: ")
+                if ans == "fail":
+                    raise ValueError('Transaction canceled')
+                db["products"].update_one({"_id" : prod["_id"]},[
+                    {"$set" : {"quantity" : {"$subtract" : ["$quantity", doc["quantity"]]}, "updated_at" : datetime.datetime.now()}}
+                ], session=session)
+                bb.logit("comitted")
+    except (ValueError):
+        bb.logit("Transaction canceled")
+    conn.close()
+
+#-------------------------------------------------------------#
+#  Trigger Performance
+#-------------------------------------------------------------#
+
+def trigger_performance():
+    # make data changes at accelerating rate
+    # update documents with a serial number and a total
+    # trigger copies the number to a diff part of document
+    # then track the performance of the trigger to keep up
+    # using aggregation and sums
+    bb.message_box("Trigger Performance", "title")
+    bb.logit(f'# Settings from: {settings_file}')
+    # Spawn processes
+    num_procs = 2 #settings["process_count"]
+    jobs = []
+    inc = 0
+    multiprocessing.set_start_method("fork", force=True)
+    for item in range(num_procs):
+        if item == 0:
+            p = multiprocessing.Process(target=trigger_doc_update, args = (item,))
+        elif item == 1:
+            p = multiprocessing.Process(target=trigger_checker, args = (item,))
+        jobs.append(p)
+        p.start()
+        time.sleep(1)
+        inc += 1
+
+    main_process = multiprocessing.current_process()
+    bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
+    for i in jobs:
+        i.join()
+
+def trigger_doc_update(pcnt = 0):
+    conn = client_connection()
+    database = settings["database"]
+    db = conn[database]
+    coll = settings["collection"]
+    interval = 0
+    rate = 0
+    if "interval" in ARGS:
+        interval = float(ARGS["interval"])
+    # Update Cycle
+    if interval != 0:
+        rate = 1/interval
+    start_time = datetime.datetime.now()
+    bb.logit(f"[p{pcnt}] Processing changes at {rate}/sec")
+    for k in range(100):
+        db[coll].update_one({"counter" : k},{"$set" : {"version" : "1.1"}})
+        if interval > 0:
+            time.sleep(interval)
+        bb.logit(f"[p{pcnt}] Updater - processed: {k}")
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - start_time)
+    execution_time = time_diff.total_seconds()
+    bb.logit(f"[p{pcnt}] - Bulk Load took {execution_time} seconds")
+
+def trigger_checker(pcnt = 0):
+    #  Reads file and finds values
+    bb.message_box(f"[p{pcnt}] Checking Trigger perf")
+    conn = client_connection()
+    database = settings["database"]
+    db = conn[database]
+    coll = settings["collection"]
+    interval = 0.1
+    cur_process = multiprocessing.current_process()
+    pipe = [
+        {'$match': {"updated" : {"$exists" : True}}},
+        {'$count' : "numrecords"}
+    ]
+    pipe2 = [
+        {'$match': {"version" :"1.2"}},
+        {'$count' : "numrecords"}
+    ]
+    while True:
+        recs = db[coll].aggregate(pipe)
+        for it in recs:
+            bb.logit(f'[p{pcnt}] Total modified: {it["numrecords"]}')
+        time.sleep(interval)
+    
+
+def trigger_datagen():
+    conn = client_connection()
+    database = settings["database"]
+    db = conn[database]
+    coll = settings["collection"]
+    interval = 0.1
+    tally = 0
+    docs = []
+    for k in range(1000):
+        bb.logit(f"Adding doc {k}")
+        doc = {
+            "updated_at" : datetime.datetime.now(),
+            "name" : f"{k} - Sample document",
+            "version" : "1.0",
+            "counter" : k,
+            "tally" : tally
+        }
+        docs.append(doc)
+        tally += k
+    db[coll].insert_many(docs)
+
+    '''
+        For trigger:
+exports = function(changeEvent) {
+    const fullDoc = changeEvent.fullDocument;
+    var changeType = changeEvent.operationType;
+    // get Handle to collections more
+    const gColl = context.services.get("MigrateDemo2").db("healthcare").collection("updater_temp");
+    const updateDescription = changeEvent.updateDescription;
+    console.log("Change: " + fullDoc["name"])
+    if(!("updated" in fullDoc)){
+      change_doc = {"counter" : fullDoc.counter + 100000, "tally" : fullDoc.tally + 100000 }
+      gColl.updateOne({"counter" : fullDoc.counter},{
+              $set : {"updated" : change_doc}
+          });  
+    }
+};
+    '''
+
 
 #-----------------------------------------------------------#
 #  Utility Code
@@ -514,6 +718,17 @@ if __name__ == "__main__":
     elif ARGS["action"] == "fail":
         # > python3 perf_stats.py action=fail retry=true
         failover()
+    elif ARGS["action"] == "trigger_load":
+        trigger_datagen()
+    elif ARGS["action"] == "trigger_perf":
+        trigger_performance()
+    elif ARGS["action"] == "xaction_load":
+        xaction_datagen()
+    elif ARGS["action"] == "xaction_test":
+        xaction_isolation()
+    else:
+        bb.logit(f'ERROR: {ARGS["action"]} not recognized')
+
 '''
 Aggregation:
 - create a merged collection
@@ -672,11 +887,4 @@ db.monitoring_coll.updateMany({ns: "commtracker.comm_summary"},{$set: {meta: {"c
 db.monitoring_coll.updateMany({ns: "commtracker.comm_detail"},{$set: {meta: {"criticality": 7, "busyness": 52}}})
 db.monitoring_coll.updateMany({ns: "commtracker.messages"},{$set: {meta: {"criticality": 4, "busyness": 22}}})
 db.monitoring_coll.updateMany({ns: "commtracker.messages1"},{$set: {meta: {"criticality": 3, "busyness": 90}}})
-
-#-------------------------------#
-#  DataDog
-mdb email / h4
-API key: 967880f4c28b3bf790de19a2fd13b37c
-Application Key
-bbExport: cd89ef98a0e18facc8c9147f3f0b5df74d64948d
 '''

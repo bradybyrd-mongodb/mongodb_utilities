@@ -198,7 +198,10 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
     elif stream == "pubsub":
         loader.add = loader.add_pubsub
     elif stream == "direct":
-        conn = client_connection()
+        meth = "uri"
+        if "cosmos" in ARGS:
+            meth = "cosmos"
+        conn = client_connection(meth)
     icnt = 0
     bulk_docs = []
     start_time = datetime.datetime.now()
@@ -320,6 +323,50 @@ def flush_direct(conn,topic, docs):
     ans = db[coll].insert_many(docs)
     bb.logit(f"Loading batch: {len(docs)}")
     docs = []
+
+# --------------------------------------------------------- #
+#  Cosmos Compare
+
+def basic_compare():
+    base_counter = 1000000
+    num_records = 10000
+    prefix = "MDB"
+    global interval_vars
+    interval_vars = {}
+    database = settings["database"]
+    collection = "summary"
+    summary_template = settings["summary_template"]
+    meth = "uri"
+    if "cosmos" in ARGS:
+        meth = "cosmos"
+        prefix = "COSMOS"
+        collection = collection + meth
+    conn = client_connection(meth)
+    db = conn[database]
+    IDGEN.set({"seed" : base_counter, "size" : num_records, "prefix" : prefix})
+    icnt = 0
+    start_time = datetime.datetime.now()
+    istart_time = datetime.datetime.now()
+    base_id = int(IDGEN.get(prefix, num_records).replace(prefix,""))
+    for k in range(num_records):
+        new_id = f'{prefix}{base_id + icnt}'
+        new_doc = process_message(summary_template, new_id, icnt, "direct", "summary", "p1")
+        db[collection].insert_one(new_doc)
+        if icnt % 1000 == 0:
+            end_time = datetime.datetime.now()
+            time_diff = (end_time - istart_time)
+            execution_time = time_diff.microseconds * 0.000001
+            istart_time = datetime.datetime.now()
+            bb.logit(f'#--- Partial 1000 msgs, speed: {(1000)/execution_time} msgs/sec')
+        if icnt % 10 == 0:
+            bb.logit(f'Recs - {k} of {num_records}')
+        icnt += 1
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - start_time)
+    execution_time = time_diff.microseconds * 0.000001
+    bb.logit(f'#--- Complete {icnt} msgs, speed: {(icnt)/execution_time} msgs/sec')
+ 
+
 
 # --------------------------------------------------------- #
 #  Pub Sub Subscription
@@ -599,7 +646,8 @@ def client_connection(type = "uri", details = {}):
     if "username" in details:
         username = details["username"]
         password = details["password"]
-    mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
+    if not "@" in mdb_conn:
+        mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
     bb.logit(f'Connecting: {mdb_conn}')
     if "readPreference" in details:
         client = MongoClient(mdb_conn, readPreference=details["readPreference"]) #&w=majority
@@ -678,6 +726,8 @@ if __name__ == "__main__":
         indexing_stats()
     elif ARGS["action"] == "index_latency":    
         indexing_latency()
+    elif ARGS["action"] == "compare":    
+        basic_compare()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()

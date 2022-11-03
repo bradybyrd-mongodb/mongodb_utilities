@@ -5,10 +5,10 @@
     "base_counter" : 100000,
     "sample_time" : 60,
     "logger" : {
-        "uri" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
-        "noturi" : "mongodb+srv://realmdemo.vmwqj.mongodb.net",
+        "noturi" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
+        "uri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
         "username" : "main_admin",
-        "password" : "********",
+        "password" : "bugsyBoo",
         "key" : "bWFpbl9hZG1pbjpidWdzeUJvbw==",
         "database" :  "monitorstats"
     },
@@ -17,8 +17,14 @@
         "shuri" : "mongodb+srv://commsharded.mhsdb.mongodb.net",
         "uri" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
         "username" : "main_admin",
-        "password" : "*********",
+        "password" : "bugsyBoo",
         "odatabase" : "foodie",
         "database" :  "commtracker"
-    }
+    },
+    "noturi" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+    "uri" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
+        "database" : "healthcare",
+    "collection" : "updater_temp",
+    "username" : "main_admin",
+    "password" : "bugsyBoo"
 }

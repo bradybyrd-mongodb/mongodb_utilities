@@ -143,8 +143,8 @@ def build_csv_data():
             bulk_docs.append({"sku" : item["sku"],"product_name" : item["product_name"], "short_name" : item["short_name"], "purchased_at": buy_at, "rank" : icnt})
         
             doc = {headers[0]: row[0], headers[1]: row[1], headers[2]: row[2], headers[3]: row[3]}
-                #append_customer_info(doc)
-                bulk_docs.append(doc)
+            #append_customer_info(doc)
+            bulk_docs.append(doc)
             icnt += 1
         # get the leftovers
         db[collection].insert_many(bulk_docs)
@@ -329,6 +329,162 @@ def get_recent_purchases(coll, isShelf = False):
     else:
         return result
 
+#-----------------------------------------------------------------------#
+#  POC Data Analysis
+#-----------------------------------------------------------------------#
+def build_recommendation_data():
+    products = []
+    count = 1000000
+    conn = client_connection()
+    db = conn[settings["database"]]
+    base_counter = settings["base_counter"]
+    batch_size = 500
+    collection = 'sku_attributes'
+    prefix = "PROD"
+    segments = market_segments(batch_size)
+    IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
+    base_id = int(IDGEN.get(prefix, batch_size).replace(prefix,""))
+    for item in range(batch_size):
+        new_id = f'{prefix}{base_id + item}'
+        new_doc = product_doc(new_id, item)
+        new_doc["market_segment_ranks"] = update_segment_ranks(segments, batch_size)
+        products.append(new_doc)
+        bb.logit(f'created {new_doc["product_name"]}')
+    for item in range(batch_size):
+        products[item]["bought_together"] = bought_together(products)
+
+    db[collection].insert_many(products)
+    #  Now xtracard details
+    batch_size = batch_size * 10
+    collection = 'xtra_card'
+    prefix = "XTRA"
+    xtras = []
+    IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
+    base_id = int(IDGEN.get(prefix, batch_size).replace(prefix,""))
+    for item in range(batch_size):
+        new_id = f'{prefix}{base_id + item}'
+        new_doc = xtra_card_doc(new_id, item)
+        mkt_segment = segments[random.randint(1,len(segments)-1)]
+        new_doc["market_segment"] = xtra_market_segment(mkt_segment)
+        new_doc["recommendations"] = recommendations(products)
+        new_doc["coupon_ranks"] = xtra_coupon_rank()
+        xtras.append(new_doc)
+        bb.logit(f'created {new_doc["last_name"]} xtra')
+    db[collection].insert_many(xtras)
+    
+
+def xtra_market_segment(segment):
+    age = random.randint(28,84)
+    year = 2020 - age
+    month = random.randint(1,12)
+    day = random.randint(1,28)
+    xtra_segment = {}
+    xtra_segment["market_cd"] = segment["market_cd"]
+    xtra_segment["earliest_purch_dt"] = datetime.datetime(year - 2,month,day, 10, 45)
+    xtra_segment["latest_purch_dt"] = datetime.datetime(year,month,day, 10, 45)
+    xtra_segment["home_store_nbr"] = random.randint(100000,110000)
+    xtra_segment["last_mod_dt"] = datetime.datetime.now() 
+    return(xtra_segment)
+
+def xtra_coupon_rank():
+    ranks = []
+    for it in range(100):
+        doc = {}
+        rank = random.randint(1,100)
+        pool_id = f'POOL-{random.randint(100000,1000000)}'
+        doc['offer_pool_id'] = pool_id
+        doc['rank_nbr'] = rank
+        doc["last_mod_dt"] = datetime.datetime.now()
+        ranks.append(doc)
+    return(ranks)
+
+def product_doc(idval, seq):     
+    age = random.randint(28,84)
+    year = 2020 - age
+    month = random.randint(1,12)
+    day = random.randint(1,28)
+    name = fake.bs()
+    doc = {}
+    doc['sku_nbr'] = idval
+    doc['product_name'] = name
+    doc["last_mod_dt"] = datetime.datetime(year,month,day, 10, 45)
+    doc['vendor_nbr'] = fake.phone_number()
+    doc["version"] = "1.0"
+    return(doc)
+
+def market_segments(num_prods):
+    segments = []
+    for city in range(100):
+        name = fake.city()
+        doc = {}
+        doc['market_cd'] = name
+        rank = random.randint(1,num_prods)
+        doc['sku_rank_nbr'] = rank
+        doc['sku_rank_score'] = rank/100
+        doc["last_mod_dt"] = datetime.datetime.now()
+        segments.append(doc)
+    bb.logit(f'created 100 market segments')
+    return(segments)
+
+def bought_together(products):
+    siz = len(products) - 1
+    affinities = []
+    for cnt in range(10):
+        doc = {}
+        prod = products[random.randint(1,siz)]
+        doc["sku_nbr"] = prod["sku_nbr"]
+        doc["name"] = prod["product_name"]
+        doc["rank"] = random.randint(1,10)
+        affinities.append(doc)
+    bb.logit(f'created {10} bought-togethers')
+    return(affinities)
+
+def update_segment_ranks(segs, num_prods):
+    for it in range(len(segs)):
+        rank = random.randint(1,num_prods)
+        segs[it]['sku_rank_nbr'] = rank
+        segs[it]['sku_rank_score'] = rank/100
+    return(segs)
+
+def xtra_card_doc(idval, seq):     
+    age = random.randint(28,84)
+    year = 2020 - age
+    month = random.randint(1,12)
+    day = random.randint(1,28)
+    name = fake.name()
+    doc = {}
+    doc['xtra_card_nbr'] = idval
+    doc['first_name'] = name.split(" ")[0]
+    doc['last_name'] = name.split(" ")[1]
+    doc["last_mod_dt"] = datetime.datetime.now()
+    doc["version"] = "1.0"
+
+    return(doc)
+
+def recommendations(products):
+    shelf = 60
+    shelf_no = 0
+    siz = len(products) - 1
+    recommendations = []
+    for cnt in range(shelf):
+        if cnt % 20 == 0:
+            shelf_no += 1
+        doc = {}
+        prod = products[random.randint(1,siz)]
+        doc["shelf_nbr"] = shelf_no
+        doc["sku_nbr"] = prod["sku_nbr"]
+        doc["name"] = prod["product_name"]
+        doc["rank"] = random.randint(1,shelf)
+        doc["rank_type_cd"] = random.choice(["geo", "affinity", "other"])
+        recommendations.append(doc)
+    bb.logit(f'created {shelf} recommendations')
+    return(recommendations)
+
+
+#-----------------------------------------------------------------------#
+#  Utility
+#-----------------------------------------------------------------------#
+
 def increment_version(old_ver):
     parts = old_ver.split(".")
     return(f'{parts[0]}.{int(parts[1]) + 1}')
@@ -451,6 +607,8 @@ if __name__ == "__main__":
         worker_customer_load()
     elif ARGS["action"] == "recommendations_load":
         worker_load_recommendations()
+    elif ARGS["action"] == "poc_load":
+        build_recommendation_data()
     elif ARGS["action"] == "query_mix":
         query_mix()
     else:

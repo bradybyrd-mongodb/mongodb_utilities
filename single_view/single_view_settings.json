@@ -1,6 +1,6 @@
 {
-  "uri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
-  "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+  "noturi" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+  "uri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
   "localuri" : "mongodb://localhost:27017",
   "database" : "master_data",
   "collection" : "party",

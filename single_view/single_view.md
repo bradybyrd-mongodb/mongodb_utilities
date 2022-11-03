@@ -52,7 +52,7 @@ single_view=# \d
   python3 single_view.py action=reset_data
 2. Load the initial provider information, show the doc structure in Compass
   python3 single_view.py action=provider_sync
-2. Start the report
+2. Start the report 
   python3 single_view.py action=microservice
 3. Now add a different data set, show the additional source
   python3 single_view.py action=claim_sync
