@@ -118,7 +118,7 @@ def worker_load(ipos):
     #worker_rx_load(pgcon,tables)
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
-    execution_time = time_diff.total_seconds()
+    execution_time = time_diff.seconds + time_diff.total_seconds()
     #file_log(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
@@ -214,17 +214,17 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
             new_doc = process_message(summary_template, new_id, icnt, stream, topic, cprocess)
             if stream == "direct":
                 if len(bulk_docs) == batch_size:
-                    flush_direct(conn, topic, bulk_docs)
+                    flush_direct(conn, topic, bulk_docs, cprocess)
                     bulk_docs = []
                     if interval > 0:
                         time.sleep(interval)
                 bulk_docs.append(new_doc)
             else:
                 loader.add(new_doc)
-            if icnt % (batch_size * 5) == 0:
+            if icnt > 0 and icnt % (batch_size * 5) == 0:
                 end_time = datetime.datetime.now()
                 time_diff = (end_time - istart_time)
-                execution_time = time_diff.microseconds * 0.000001
+                execution_time = time_diff.seconds + time_diff.microseconds * 0.000001
                 istart_time = datetime.datetime.now()
                 bb.logit(f'[{cur_process.name}] {icnt} msgs, speed: {(batch_size * 5)/execution_time} msgs/sec')
             elif icnt % 20 == 0:
@@ -234,12 +234,12 @@ def worker_message_generate(proc_num, stream, topic = "direct"):
 
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
-    execution_time = time_diff.microseconds * 0.000001
+    execution_time = time_diff.seconds + time_diff.microseconds * 0.000001
     bb.logit(f'[{cur_process.name}] Complete {icnt} msgs, speed: {(batch_size * num_iterations)/execution_time} msgs/sec')
     
     # get the leftovers
     if stream == "direct":
-        flush_direct(conn[settings["database"]],bulk_docs)
+        flush_direct(conn[settings["database"]],bulk_docs, cprocess)
     bb.logit("#-------- COMPLETE -------------#")
     loader = None
 
@@ -278,6 +278,7 @@ def process_message(doc_template, new_id, cnt, stype, topic, cprocess):
     cur_doc["load_year"] = year
     cur_doc["campaign_name"] = interval_vars["campaign"]
     cur_doc["campaign_identifier"] = interval_vars["campaign_identifier"]
+    cur_doc["distribution"] = message_distribution()
     cur_doc["taxonomy_cmnctn_format"] = random.choice(["Email", "SMS", "Call", "Popup", "DirectMail","notification"])
     cur_doc["taxonomy_cmnctn_content_topic"] = fake.bs()
     cur_doc["taxonomy_portfolio"] = random.choice(["Behavior Change/Next Best Action","Marketing Inquiry","Survey","Post-call quality check"])
@@ -317,22 +318,44 @@ def build_detail(doc, id):
     doc["type"] = "comm_detail"
     return doc
 
-def flush_direct(conn,topic, docs):
+def flush_direct(conn,topic, docs, proc = "p0"):
     db = conn[settings["database"]]
     coll = settings["topics"][topic] 
     ans = db[coll].insert_many(docs)
-    bb.logit(f"Loading batch: {len(docs)}")
+    bb.logit(f"[{proc}] Loading batch: {len(docs)}")
     docs = []
+
+def message_distribution():
+    docs = []
+    for it in range(random.randint(1,5)):
+        age = random.randint(0,10)
+        yr = 0
+        month = 9
+        month = month - age
+        if month < 1:
+            month = 12 + month
+            yr = 1
+        year = 2022 - yr
+        day = random.randint(1,28)
+        msgdt = datetime.datetime(year,month,day, 10, 45)
+        new_doc = {}
+        new_doc["stype"] = random.choice(["email","text","mail","banner","linkedin","instagram","facebook","direct_conversation"])
+        new_doc["opened"] = random.choice(["Y","N"])
+        new_doc["delivery_at"] = msgdt
+        new_doc["opened_at"] = datetime.datetime(year,month,day, 16, 45)
+        docs.append(new_doc)
+    return(docs)
 
 # --------------------------------------------------------- #
 #  Cosmos Compare
+# --------------------------------------------------------- #
 
 def basic_compare():
     base_counter = 1000000
     num_records = 10000
-    prefix = "MDB"
     global interval_vars
     interval_vars = {}
+    prefix = "MDB"
     database = settings["database"]
     collection = "summary"
     summary_template = settings["summary_template"]
@@ -355,17 +378,16 @@ def basic_compare():
         if icnt % 1000 == 0:
             end_time = datetime.datetime.now()
             time_diff = (end_time - istart_time)
-            execution_time = time_diff.microseconds * 0.000001
+            execution_time = time_diff.seconds + time_diff.microseconds * 0.000001
             istart_time = datetime.datetime.now()
-            bb.logit(f'#--- Partial 1000 msgs, speed: {(1000)/execution_time} msgs/sec')
-        if icnt % 10 == 0:
+            bb.logit(f'#--- Partial 1000 msgs in {execution_time}, speed: {(1000)/execution_time} msgs/sec')
+        if icnt % 100 == 0:
             bb.logit(f'Recs - {k} of {num_records}')
         icnt += 1
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.microseconds * 0.000001
     bb.logit(f'#--- Complete {icnt} msgs, speed: {(icnt)/execution_time} msgs/sec')
- 
 
 
 # --------------------------------------------------------- #
@@ -508,7 +530,7 @@ def indexing_stats():
             bb.logit(f'Processed: {inc + 1}, ToDo: {num_to_do}, elapsed: {execution_time}')
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
-    execution_time = time_diff.microseconds * 0.000001
+    execution_time = time_diff.seconds + time_diff.microseconds * 0.000001
     bb.logit(f'LoadComplete: {inc + 1}, ToDo: {num_to_do}, elapsed: {execution_time}')
     # Now check for records in index
     pipe = [
@@ -539,7 +561,7 @@ def indexing_stats():
         if found == num_to_do:
             end_time = datetime.datetime.now()
             time_diff = (end_time - start_time)
-            execution_time = time_diff.microseconds * 0.000001
+            execution_time = time_diff.seconds + time_diff.microseconds * 0.000001
             bb.logit(f'IndexingComplete: {num_to_do} found, elapsed: {execution_time}')
             pipe.pop(3)
             result = db[coll].aggregate(pipe)
@@ -581,13 +603,13 @@ def indexing_latency():
         bulk_docs = []
         end_time = datetime.datetime.now()
         time_diff = (end_time - istart_time)
-        execution_time = time_diff.microseconds * 0.000001
+        execution_time = time_diff.seconds + time_diff.microseconds * 0.000001
         istart_time = datetime.datetime.now()
         bb.logit(f'{num_to_do} msgs, speed: {(num_to_do)/execution_time} msgs/sec')
         wait_latency(f'{base}{iter}', num_to_do, db[coll]) 
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
-    execution_time = time_diff.microseconds * 0.000001
+    execution_time = time_diff.seconds + time_diff.microseconds * 0.000001
     bb.logit(f'LoadComplete: {inc + 1}, ToDo: {num_to_do * iters}, elapsed: {execution_time}')
  
  
@@ -622,7 +644,7 @@ def wait_latency(base, isize, coll):
         if found == isize:
             end_time = datetime.datetime.now()
             time_diff = (end_time - start_time)
-            execution_time = time_diff.microseconds * 0.000001
+            execution_time = time_diff.seconds + time_diff.microseconds * 0.000001
             bb.logit(f'IndexingComplete: {isize} found, elapsed: {execution_time}')
             pipe.pop(3)
             result = coll.aggregate(pipe)

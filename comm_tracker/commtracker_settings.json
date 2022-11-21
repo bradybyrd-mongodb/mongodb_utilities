@@ -1,6 +1,8 @@
 {
   "nuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
-  "uri" : "mongodb+srv://commstracker.mhsdb.mongodb.net",
+  "unnri" : "mongodb+srv://commstracker.mhsdb.mongodb.net",
+  "uri" : "mongodb+srv://cvs-retail-extracare-po.gptft.mongodb.net",
+  "cosmos" : "mongodb://bb-cosmos-tracker:XWANAmf8G4druIZxesbq0McX49ZGY3JtQPNwNbxdQFzvVRPSu0x1vM466MM4jJy5N8NbhKlIH3dufZhfOPvdaA==@bb-cosmos-tracker.mongo.cosmos.azure.com:10255/?ssl=true&retrywrites=false&replicaSet=globaldb&maxIdleTimeMS=120000&appName=@bb-cosmos-tracker@",
   "oouri" : "mongodb+srv://commsharded.mhsdb.mongodb.net",
   "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
   "locluri" : "mongodb://localhost:27017",
@@ -11,7 +13,7 @@
   "username" : "main_admin",
   "password" : "bugsyBoo",
   "version" : "2.2st",
-  "process_count" : 2,
+  "process_count" : 4,
   "batch_size" : 1000,
   "sample_time" : 60,
   "import_path" : "updatecsv",

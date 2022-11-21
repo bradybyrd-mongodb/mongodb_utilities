@@ -3,15 +3,22 @@
     "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
     "uri" : "mongodb+srv://cvs-retail-extracare-po.gptft.mongodb.net",
     "localuri" : "mongodb://localhost:27017",
-    "database" : "recommendations",
+    "database" : "extracare",
     "collection" : "profiles",
     "username" : "main_admin",
     "password" : "bugsyBoo",
     "version" : "1.0",
     "import_csv" : "sku_lookup.csv",
-    "process_count" : 1,
+    "process_count" : 3,
     "batch_size" : 2000,
     "base_counter" : 1000000,
-    "num_records" : 100
+    "num_records" : 100,
+    "csv_import" : {
+      "dirs" : {
+        "/cygdrive/f/pocdata/sku_rank_csv" : {"ftype" : "sku_rank"},
+        "/cygdrive/f/pocdata/coupon_csv" : {"ftype" : "mfr_coupon"},
+        "/cygdrive/f/pocdata/market_csv" : {"ftype" : "mkt_segment"}
+      }
+    }
   }
   

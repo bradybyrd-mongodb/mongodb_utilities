@@ -23,7 +23,8 @@ batches = {
         "identifier_std_sh",
         "identifier_search_sh"
     ],
-    "speed" : ["speed_test1","speed_test2","speed_test3"]
+    "speed" : ["speed_test1","speed_test2","speed_test3"],
+    "cosmos" : ["cosmos_compare_arr", "cosmos_compare_regex_idx", "cosmos_compare_grp", "cosmos_compare"]
 }
 
 fillers = ["investment", "citizen", "couple", "management", "husband", "various", "reveal", "without", "continue"]
@@ -244,6 +245,90 @@ queries = {
     },
     "speed_test5": {"type" : "find", "collection": "comm_summary", "project": {"_id" : 0, "cmnctn_identifier":1,"taxonomy_cmnctn_format":1, "cmnctn_activity_dts": 1 }, "limit": 100, "query" :
 {"cmnctn_identifier" : "COMT60007000_41~2650905334^MEA^39483_1000000000012_jjjjjjjjj_COM^67.3^ngtdc commercial non a1a intervention^CT-0000000588^HEE"}
+    },  
+    "cosmos_compare": {"type" : "agg", "collection" : "speed_test","query" :
+    [
+        {
+            '$match': {
+                'taxonomy_cmnctn_format': 'SMS', 
+                '$and': [
+                    {
+                        'cmnctn_last_updated_dt': {
+                            '$gt': datetime.datetime(2022, 3, 6, 5, 0, 0)
+                        }
+                    }, {
+                        'cmnctn_last_updated_dt': {
+                            '$lt': datetime.datetime(2022, 5, 6, 4, 0, 0)
+                        }
+                    }
+                ]
+            }
+        }, {
+            '$sort': {
+                'cmnctn_last_updated_dt': -1
+            }
+        }, {
+            '$count': 'numrecords'
+        }
+    ]  
+    },
+    "cosmos_compare_grp": {"type" : "agg", "collection" : "speed_test","query" :
+    [
+        {
+            '$match': {
+                'vndr_nm': re.compile(r"^enable"),
+                '$and': [
+                    {
+                        'cmnctn_last_updated_dt': {
+                            '$gt': datetime.datetime(2022, 3, 6, 5, 0, 0)
+                        }
+                    }, {
+                        'cmnctn_last_updated_dt': {
+                            '$lt': datetime.datetime(2022, 5, 6, 4, 0, 0)
+                        }
+                    }
+                ]
+            }
+        }, {
+            '$unwind': {
+                'path': '$distribution'
+            }
+        }, {
+            '$group': {
+                '_id': '$distribution.stype', 
+                'total': {
+                    '$sum': 1
+                }
+            }
+        }
+    ] 
+    },
+    "cosmos_compare_regex_idx": {"type" : "agg", "collection" : "speed_test","query" :
+    [
+        {
+            '$match': {
+                'vndr_nm': re.compile(r"^enable")
+            }
+        }, {
+            '$count': 'numrecords'
+        }
+    ]
+    },
+    "cosmos_compare_arr": {"type" : "agg", "collection" : "speed_test","query" :
+    [
+        {
+            '$match': {
+                'taxonomy_cmnctn_format': 'SMS', 
+                'distribution': {
+                    '$elemMatch': {
+                        'stype': 'email', 
+                        'opened': 'Y'
+                    }
+                }
+            }
+        }, {
+            '$count': 'numrecords'
+        }
+    ]
     }
-    
 }
