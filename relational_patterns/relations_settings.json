@@ -17,6 +17,8 @@
     "batch_size" : 2000,
     "batches" : 50,
     "base_counter" : 2500000,
+    "gcp_project_id" : "bradybyrd-poc",
+    "gcp_dataset" : "claims_warehouse",
     "limitdata" : {
       "member" : {"path" : "model-tables/member.csv", "size" : 100, "id_prefix" : "M-", "thumbnail" : [
           {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}

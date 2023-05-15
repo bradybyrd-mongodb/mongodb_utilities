@@ -239,6 +239,8 @@ def table_types(table_info):
 
 def ddl_from_template(action, pgconn, template, domain):
     database = settings["postgres"]["database"]
+    gcp_project_id = settings["gcp_project_id"]
+    gcp_dataset = settings["gcp_dataset"]
     bb.message_box("Generating DDL")
     # Read the csv file and digest
     fields = fields_from_template(template)
@@ -267,7 +269,7 @@ def ddl_from_template(action, pgconn, template, domain):
                 new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
                 flds.append(field_name)
                 schema.append(new_field)
-            table_id = biquery.Table.from_string(f'{gcp_project_id}.{gcp_dataset}.{table}')
+            table_id = bigquery.Table.from_string(f'{gcp_project_id}.{gcp_dataset}.{table}')
 
             tables[table] = {"table_id" : table_id, "schema" : schema, "database" : database, "fields" : flds, "generator" : [row["generator"]], "parent" : row["parent"]}
 
@@ -298,10 +300,10 @@ def clean_field_data(data):
 
 def clean_ddl(tables_obj):
     for tab in tables_obj:
-        ddl = tables_obj[tab]["ddl"]
-        l = len(ddl)
-        ddl = ddl[:l-1] + ")"
-        tables_obj[tab]["ddl"] = ddl
+        #ddl = tables_obj[tab]["ddl"]
+        #l = len(ddl)
+        #ddl = ddl[:l-1] + ")"
+        #tables_obj[tab]["ddl"] = ddl
         fmts = value_codes(tables_obj[tab]["fields"])
         tables_obj[tab]["insert"] = f'insert into {tab} ({",".join(tables_obj[tab]["fields"])}) values ({fmts});'
 
@@ -763,7 +765,11 @@ def sql_action(conn, action, tables):
     cursor = conn.cursor()
     for table_name in tables:
         if action == "create":
-            sql = tables[table_name]['ddl']
+            schema = tables[table_name]['schema']
+            table_id = tables[table_name]["table_id"]
+            table = bigquery.Table(table_id, schema=schema)
+            table = conn.create_table(table)
+            print("Created BigQTable {}.{}.{}".format(table.project, table.dataset_id, table.table_id))
         elif action == "drop":
             sql = f'DROP TABLE {table_name};'
         elif action == "delete":
@@ -772,7 +778,7 @@ def sql_action(conn, action, tables):
             bb.logit(f"Action: {action} {table_name}")
             print(sql)
             cursor.execute(sql)
-        except psycopg2.DatabaseError as err:
+        except Exception as err:
             bb.logit(pprint.pformat(err))
             print(sql)
             conn.commit()
