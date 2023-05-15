@@ -824,8 +824,8 @@ if __name__ == "__main__":
         get_claims()
     elif ARGS["action"] == "foreign_keys":
         create_foreign_keys()
-    elif ARGS["action"] == "microservice":
-        microservice_one()
+    elif ARGS["action"] == "test":
+        test_big_query()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()
