@@ -253,28 +253,29 @@ def ddl_from_template(action, pgconn, template, domain):
             bb.logit(f'Building table: {table}')
             last_table = table
             fkey = ""
-            flds = [field]
+            flds = []
+            schema = []
+
             if len(table.split("_")) > 1:
                 #  Add a parent_id field
-                new_field = f'{row["parent"]}_id'
-                fkey = f'  {new_field} varchar(20) NOT NULL,'
-                flds.append(new_field)
+                field_name = f'{row["parent"]}_id'
+                new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
+                flds.append(field_name)
+                schema.append(new_field)
                 #  Add a self_id field
-                new_field = f'{table}_id'
-                fkey += f'  {new_field} varchar(20) NOT NULL,'
-                flds.append(new_field)
-            ddl = (
-                f'CREATE TABLE {table} ('
-                "  id SERIAL PRIMARY KEY,"
-                f'{fkey}'
-                f'  {field} {ftype},'
-            )
-            tables[table] = {"ddl" : ddl, "database" : database, "fields" : flds, "generator" : [row["generator"]], "parent" : row["parent"]}
+                field_name = f'{table}_id'
+                new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
+                flds.append(field_name)
+                schema.append(new_field)
+            table_id = biquery.Table.from_string(f'{gcp_project_id}.{gcp_dataset}.{table}')
+
+            tables[table] = {"table_id" : table_id, "schema" : schema, "database" : database, "fields" : flds, "generator" : [row["generator"]], "parent" : row["parent"]}
 
         else:
             #bb.logit(f'Adding table data: {table}, {field}')
             if field not in tables[table]["fields"]:
-                tables[table]["ddl"] = tables[table]["ddl"] + f'  {field} {ftype},'
+                new_field = bigquery.SchemaField(field, ftype)
+                tables[table]["schema"].append(new_field)
                 tables[table]["fields"].append(field)
                 tables[table]["generator"].append(row["generator"])
         first = False
@@ -304,8 +305,8 @@ def clean_ddl(tables_obj):
         fmts = value_codes(tables_obj[tab]["fields"])
         tables_obj[tab]["insert"] = f'insert into {tab} ({",".join(tables_obj[tab]["fields"])}) values ({fmts});'
 
-def pg_type(mtype):
-    type_x = {"string" : "varchar(100)","boolean" : "varchar(2)","date" : "timestamp", "integer" : "integer","double" : "real"}
+def gcp_type(mtype):
+    type_x = {"string" : "STRING","boolean" : "BOOL","date" : "DATETIME", "integer" : "INT64","double" : "FLOAT64"}
     ftype = type_x[mtype.lower().strip()]
     return ftype
 
@@ -323,7 +324,7 @@ def fields_from_template(template):
         master = ""
         # support for parent.child.child.field, parent.children().field
         for row in propreader:
-            result = {"name" : "","table" : "", "parent" : "", "type" : pg_type(row[1]),"generator": generator_values(row[3])}
+            result = {"name" : "","table" : "", "parent" : "", "type" : gcp_type(row[1]),"generator": generator_values(row[3])}
             path = row[0].split('.')
             depth = len(path)
             for k in range(depth):
