@@ -1,8 +1,8 @@
 {
-    "perfuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
-    "uri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+    "uri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+    "basicuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
     "database" : "healthcare",
-    "collection" : "members",
+    "collection" : "member",
     "username" : "main_admin",
     "password" : "bugsyBoo",
     "postgres" : {
@@ -14,15 +14,25 @@
     },
     "version" : "1.1",
     "process_count" : 4,
-    "batch_size" : 50,
-    "batches" : 2,
-    "base_counter" : 1000000,
+    "batch_size" : 2000,
+    "batches" : 50,
+    "base_counter" : 2500000,
     "limitdata" : {
       "member" : {"path" : "model-tables/member.csv", "size" : 100, "id_prefix" : "M-", "thumbnail" : [
           {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}
         ]}
     },
     "data" : {
+      "provider" : {"path" : "model-tables/provider.csv", "size" : 5000, "id_prefix" : "P-"},
+      "member" : {"path" : "model-tables/member.csv", "size" : 10000, "id_prefix" : "M-", "thumbnail" : [
+          {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}
+        ]},
+      "claim" : {"path" : "model-tables/claim.csv", "size" : 50000, "id_prefix" : "C-", "thumbnail" : [
+          {"name" : "attendingProvider", "coll" : "provider", "type" : "one", "query" : "{}", "find_query" : "{\"provider_id\" : doc[\"attendingProvider_id\"]}", "fields" : ["lastName","firstName","dateOfBirth","gender","nationalProviderIdentifier"]},
+          {"name": "patientMember", "coll" : "member", "type" : "one", "query" : "{}", "find_query" : "{\"member_id\" : doc[\"patient_id\"]}", "fields" : ["lastName","firstName","dateOfBirth","gender","Communication.0.phoneNumber"]}
+        ]}
+    },
+    "rxdata" : {
       "provider" : {"path" : "model-tables/provider.csv", "size" : 50, "id_prefix" : "P-"},
       "member" : {"path" : "model-tables/member.csv", "size" : 100, "id_prefix" : "M-", "thumbnail" : [
           {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}

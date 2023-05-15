@@ -18,7 +18,9 @@ from bbutil import Util
 from id_generator import Id_generator
 import datetime
 from pymongo import MongoClient
-
+from pymongo.errors import BulkWriteError
+from pymongo import UpdateOne
+from pymongo import UpdateMany
 from faker import Faker
 
 fake = Faker()
@@ -43,7 +45,7 @@ def synth_data_load():
     passed_args = {"ddl_action" : "info"}
     if "template" in ARGS:
         template = ARGS["template"]
-        passed_args["template" : template]
+        passed_args["template"] = template
     elif "data" in settings:
         goodtogo = True
     else:
@@ -89,7 +91,7 @@ def worker_load(ipos, args):
     if "template" in args:
         template = args["template"]
         master_table = master_from_file(template)
-        job_info = {master_table : {"path" : template, "size" : settings["batches"] * settings["batch_size"]}, "id_prefix" : f'{master_table[0].upper()}-'}
+        job_info = {master_table : {"path" : template, "size" : settings["batches"] * settings["batch_size"], "id_prefix" : f'{master_table[0].upper()}-'}}
     else:
         job_info = settings["data"]
     # Loop through collection files
@@ -119,7 +121,7 @@ def worker_load(ipos, args):
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
 def build_batch_from_template(cur_coll, details = {}):
-    template_file = details["template"]
+    template_file = details["path"]
     batch_size = settings["batch_size"]
     cnt = 0
     records = []
@@ -132,18 +134,32 @@ def build_batch_from_template(cur_coll, details = {}):
         counts = defaultdict(lambda: random.randint(1, 5))
         data = {}
         with open(template_file) as csvfile:
-            propreader = csv.reader(itertools.islice(csvfile, 1, None))
+            propreader = csv.reader(csvfile)
+            icnt = 0
             for row in propreader:
+                islist = "n"
+                if icnt == 0:
+                    icnt += 1
+                    continue
                 path = row[0].split('.')
+                if path[-2].endswith('()'):
+                    islist = "Y"
+                else:
+                    counts = defaultdict(lambda: random.randint(1, 5))
                 partial = procpath(path, counts, row[3]) # Note, later version of files may not include required field
-                #print(partial)
+                #print(f'{row[0]}-{islist}: {partial}')
                 # Merge partial trees.
                 data = merger.merge(data, partial)
+                icnt += 1
+                
         data = list(data.values())[0]
         cnt += 1
         records.append(data)
     #bb.logit(f'{batch_size} {cur_coll} batch complete')
     return(records)
+
+def master_from_file(file_name):
+    return file_name.split("/")[-1].split(".")[0]
 
 def check_file(type = "delete"):
     #  file loader.ctl
@@ -297,8 +313,134 @@ def add_primary_provider_ids():
                 db["member"].update_one({"_id" : item["_id"]},{"$set" : prov_doc, "$unset" : {"primaryProvider_id": ""}})
         #print(sql)
         bb.logit(f'Update: {item["member_id"]}')
-            
 
+def update_phi():
+    # Adds phi fields and client_id for redaction scenario
+    num_provs = 200
+    base_val = 1000000
+    query = {}
+    conn = client_connection()
+    bb.message_box(f" PHI Updater", "title")
+    db = conn[settings["database"]]
+    recs = db["member"].find(query)
+    for item in recs:
+        #print(f'item: {item}')
+        #pid = f'P-{random.randint(base_val, base_val + num_provs)}'
+        if "primaryProvider_id" in item:
+            pid = item["primaryProvider_id"]
+            prov = db["provider"].find_one({"provider_id" : pid})
+            if prov is not None:
+                prov_doc = {"primaryProvider" : {"provider_id" : pid, "nationalProviderIdentifier" : prov["nationalProviderIdentifier"], "firstName" : prov["firstName"], "lastName": prov["lastName"], "dateOfBirth": prov["dateOfBirth"], "gender" : prov["gender"]}}
+                db["member"].update_one({"_id" : item["_id"]},{"$set" : prov_doc, "$unset" : {"primaryProvider_id": ""}})
+        #print(sql)
+        bb.logit(f'Update: {item["member_id"]}')
+
+def update_member_ids():
+    bb.message_box("MemberID alignment","title")
+    conn = client_connection()
+    bb.message_box(f" PHI Updater", "title")
+    db = conn[settings["database"]]
+    batch_size = 2000
+    member_ratio = 10
+    totdocs = 350000
+    num_batches = int(totdocs/(batch_size * member_ratio))
+    pipe = [
+        {"$sample" : {"size" : batch_size * member_ratio}},
+        {"$project": {"patient_id": 1}}
+    ]
+    inc = 0
+    settings["batch_size"] = batch_size
+    m_ids = []
+    get_list = 0
+    g_cnt = 0
+    tcnt = 0
+    for curbatch in range(num_batches):
+        if get_list == 0 or get_list == member_ratio - 1:
+            bb.logit(f'Getting {batch_size * member_ratio} claim_ids')
+            claims = list(db["claim_phi"].aggregate(pipe))
+            m_ids = []
+            get_list = 0    
+        recs = build_batch_from_template("member", {"path" : "model-tables/member_phi.csv"})
+        for icnt in range(batch_size):
+            try:
+                recs[icnt]["member_id"] = claims[icnt]["patient_id"]
+                recs[icnt]["version"] = "1.5"
+                m_ids.append(claims[icnt]["patient_id"])
+                tcnt += 1
+            except Exception as e:
+                print(f'ERROR - {icnt}, recs: {len(recs)}')
+                print(e)
+                exit(1)
+        db["member"].insert_many(recs)
+        bb.logit(f"Saving batch (member) [{batch_size}] - total: {tcnt}")
+        
+        bulk_updates = []
+        totcnt = 0
+        for k in range(member_ratio):
+            for icnt in range(batch_size):
+                bulk_updates.append(
+                    UpdateOne({"_id" : claims[totcnt]["_id"]},{"$set": {"patient_id": m_ids[icnt]}})
+                )
+                totcnt += 1
+            if k > 0:
+                bulk_writer(db["claim_phi"], bulk_updates)
+                bb.logit(f'Updating claim-member_id [{batch_size}] - total: {totcnt}, grandTotal: {g_cnt}')
+            bulk_updates = []
+        get_list += 1
+        g_cnt += totcnt
+    bb.logit(f"All done - {inc} completed")
+
+def update_member_thumbnail():
+    bb.message_box("MemberID de-norm","title")
+    conn = client_connection()
+    db = conn[settings["database"]]
+    batch_size = 2000
+    batches = 5
+    pipe = [
+        {"$match" : {"version" : "1.6"}},
+        {"$sample" : {"size" : batch_size}}
+    ]
+    inc = 0
+    tcnt = 0
+    bulk_updates = []
+    for k in range(batches):
+        members = db["member"].aggregate(pipe)
+        for curdoc in members:
+            #pprint.pprint(curdoc)
+            newdoc = {"member_id" : curdoc["member_id"], "firstName" : curdoc["phi"]["firstName"], "lastName" : curdoc["phi"]["lastName"], "birthDate" : curdoc["phi"]["dateOfBirth"], "gender": curdoc["gender"]}
+            bulk_updates.append(
+                UpdateMany({"patient_id" : curdoc["member_id"]},{"$set": {"patient": newdoc}})
+            )
+            tcnt += 1
+        
+        bb.logit(f"Saving batch (member) [{batch_size}] - total: {tcnt}")
+        bulk_writer(db["claim_phi"], bulk_updates)
+        bulk_updates = []
+    bb.logit(f"All done - {inc} completed")
+
+def update_birthdate():
+    bb.message_box("Birthday alignment","title")
+    conn = client_connection()
+    db = conn[settings["database"]]
+    batch_size = 2000
+    settings["batch_size"] = batch_size
+    peeps = list(db["member"].find({"version": "1.6"},{"phi.dateOfBirth": 1}))
+    bulk_updates = []
+    numtodo = len(peeps)
+    for icnt in range(numtodo - 1):
+        year = 2023 - random.randint(16,87)
+        month = random.randint(1,12)
+        day = random.randint(1,28)
+        new_date = datetime.datetime(year,month,day, 10, 45)
+        bulk_updates.append(
+            UpdateOne({"_id" : peeps[icnt]["_id"]},{"$set": {"phi.dateOfBirth": new_date}})
+        )
+        if icnt > 0 and icnt % batch_size == 0:
+            bulk_writer(db["member"], bulk_updates)
+            bb.logit(f'Updating member birthday [{batch_size}] - total: {icnt}')
+            bulk_updates = []
+
+    bb.logit(f"All done - {numtodo} completed")
 
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
@@ -342,6 +484,17 @@ def local_geo():
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
+def bulk_writer(collection, bulk_arr, msg = ""):
+    try:
+        result = collection.bulk_write(bulk_arr, ordered=False)
+        ## result = db.test.bulk_write(bulkArr, ordered=False)
+        # Opt for above if you want to proceed on all dictionaries to be updated, even though an error occured in between for one dict
+        #pprint.pprint(result.bulk_api_result)
+        note = f'BulkWrite - mod: {result.bulk_api_result["nModified"]} {msg}'
+        #file_log(note,locker,hfile)
+        print(note)
+    except BulkWriteError as bwe:
+        print("An exception occurred ::", bwe.details)
 
 def fix_member_id():
     conn = client_connection()
@@ -459,8 +612,16 @@ if __name__ == "__main__":
         synth_data_load()
     elif ARGS["action"] == "update_relations":
         synth_data_update()
+    elif ARGS["action"] == "update_member_ids":
+        update_member_ids()
+    elif ARGS["action"] == "update_members":
+        update_member_thumbnail()
     elif ARGS["action"] == "update_provider":
         add_primary_provider_ids()
+    elif ARGS["action"] == "update_birthdate":
+        update_birthdate()
+    elif ARGS["action"] == "update_phi":
+        add_phi_data()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()

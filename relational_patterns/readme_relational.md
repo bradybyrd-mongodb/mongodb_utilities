@@ -94,8 +94,12 @@ select c.*, m.firstname, m.lastname, m.dateofbirth, m.gender, cl.*, ap.firstname
   INNER JOIN provider op on cl.orderingprovider_id = op.provider_id 
   INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id 
   INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id 
-  where c.patient_id IN ('M-1000004','M-1000005','M-1000006','M-1000095','M-1000105')
+  where c.patient_id = 'M-1000004'
 
+db.claim.findOne({patient_id: "M-1000567"})
+
+
+db.claim.find({age: {$gt: 41}})
 
 {patient_id : {$in : ['M-1000004','M-1000005','M-1000006','M-1000095','M-1000105']}}
 
@@ -125,3 +129,122 @@ curl --request POST \
     "dataSource":"M10BasicAgain",
     "projection": {"_id": 1}
 }'
+
+# ----------------------------------------------------------#
+#  Presciption Model
+#  1/6/23
+
+Patient / Presciption / Provider
+
+Same as Member/Provider
+Just need prescription
+
+# ----------------------------------------------------------#
+#  Cliam-Member phi lookup
+#  1/23/23
+
+pipe = [
+  {$match : {placeOfService: "School"}},
+  {'$lookup': {
+        'from': 'member', 
+        'localField': 'patient_id', 
+        'foreignField': 'member_id',  
+        'as': 'member_details'
+    }
+  },
+  {$unwind: {path: "member_details"}} 
+]
+
+pipe = [
+  {$match : {version: "1.6"}},
+  {$limit: 100},
+  {'$lookup': {
+        'from': 'claim_phi', 
+        'localField': 'member_id', 
+        'foreignField': 'patient_id',
+        'pipeline': [
+            {'$project': {'_id': 0, claim_id: 1, 'attendingProvider_id': 1, claimStatus: 1, claimStatusDate: 1, claimType: 1, placeOfService: 1, serviceFromDate: 1}}
+        ],
+        'as': 'recent_claims'
+    }
+  } 
+]
+# ----------------------------- #
+[
+  {$match: {version: '1.5', claimType: 'Dental'}},
+  {$lookup: {
+    from: 'member',
+    localField: 'patient_id',
+    foreignField: 'member_id',
+    pipeline: [
+      {$limit: 1}
+    ],
+    as: 'member'
+  }}, 
+  {$unwind: {path: '$member'}}, 
+  {$project: {
+    claimStatus: 1,
+    claim_id: 1,
+    placeOfService: 1,
+    serviceFromDate: 1,
+    age: {
+      $dateDiff: {
+      startDate: '$member.phi.dateOfBirth',
+      endDate: '$$NOW',
+      unit: 'year'
+      }
+    },
+    claim_age: {
+      $dateDiff: {
+      startDate: '$serviceFromDate',
+      endDate: '$$NOW',
+      unit: 'day'
+      }
+    }
+  }}, 
+  {$group: {
+    _id: '$placeOfService',
+    avg_age: {$avg: '$age'},
+    claim_age: {$avg: '$claim_age'}
+  }}
+]
+
+[
+  {$match: {version: '1.5'}},
+  {$lookup: {
+    from: 'member',
+    localField: 'patient_id',
+    foreignField: 'member_id',
+    pipeline: [
+      {$limit: 1}
+    ],
+    as: 'member'
+  }}, 
+  {$unwind: {path: '$member'}}
+]
+  {$project: {
+    claimStatus: 1,
+    claim_id: 1,
+    placeOfService: 1,
+    serviceFromDate: 1,
+    age: {
+      $dateDiff: {
+      startDate: '$member.phi.dateOfBirth',
+      endDate: '$$NOW',
+      unit: 'year'
+      }
+    },
+    claim_age: {
+      $dateDiff: {
+      startDate: '$serviceFromDate',
+      endDate: '$$NOW',
+      unit: 'day'
+      }
+    }
+  }}, 
+  {$group: {
+    _id: '$placeOfService',
+    avg_age: {$avg: '$age'},
+    claim_age: {$avg: '$claim_age'}
+  }}
+]

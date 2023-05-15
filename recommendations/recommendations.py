@@ -10,7 +10,9 @@ import time
 import re
 import multiprocessing
 import pprint
-import getopt
+import pandas as pd
+#from threading import Thread
+#from threading import Lock
 import bson
 from bson.objectid import ObjectId
 from bson.json_util import dumps
@@ -46,7 +48,6 @@ Load lookup for product recommendations
     create product dataset
     create new shelfs of recommendations - embed in customer doc    
 '''
-settings_file = "recommendations_settings.json"
 
 def load_recommendations_data():
     # read settings and echo back
@@ -58,7 +59,7 @@ def load_recommendations_data():
     inc = 0
     multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
-        p = multiprocessing.Process(target=worker_load, args = (item,))
+        p = multiprocessing.Process(target=worker_load, args = (item,params))
         jobs.append(p)
         p.start()
         time.sleep(1)
@@ -245,14 +246,6 @@ def worker_sku_update():
     # get the leftovers
     bulk_writer(db[collection], bulk_docs)
 
-def bulk_writer(collection, bulk_arr):
-    try:
-        result = collection.bulk_write(bulk_arr)
-        ## result = db.test.bulk_write(bulkArr, ordered=False)
-        # Opt for above if you want to proceed on all dictionaries to be updated, even though an error occured in between for one dict
-        pprint.pprint(result.bulk_api_result)
-    except BulkWriteError as bwe:
-        print("An exception occurred ::", bwe.details)
 
 def worker_load_recommendations(justShelf = 0):
     #  Build recommendatino shelfs for user
@@ -434,7 +427,7 @@ def bought_together(products):
         doc = {}
         prod = products[random.randint(1,siz)]
         doc["sku_nbr"] = prod["sku_nbr"]
-        doc["name"] = prod["product_name"]
+        doc["name"] = prod["name"]
         doc["rank"] = random.randint(1,10)
         affinities.append(doc)
     bb.logit(f'created {10} bought-togethers')
@@ -481,6 +474,23 @@ def recommendations(products):
     bb.logit(f'created {shelf} recommendations')
     return(recommendations)
 
+def update_bought():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    bb.logit("Update Bought")
+    collection = 'product_skus'
+    cur = db[collection].find({},{"_id": 1, "sku_nbr" : 1, "name": 1})
+    products = list(cur)
+    cnt = 0
+    for item in products:
+        cur_id = item["_id"]
+        ans = bought_together(products)
+        if cnt % 10 == 0:
+            bb.logit(f'Updating: {cnt}')
+        db[collection].update_one({"_id" : cur_id},{"$set" : {"bought_together" : ans}})
+        cnt += 1
+
+
 #-----------------------------------------------------------------------#
 #  Building combined extracard data
 #-----------------------------------------------------------------------#
@@ -494,9 +504,10 @@ def load_enriched_data():
     jobs = []
     seed_id = 8000000
     inc = 0
+    params = {"file_lock" : g_lock, "file_handle": g_logger}
     #multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
-        p = multiprocessing.Process(target=xtracard_merger_all, args = (item,seed_id,num_procs,))
+        p = multiprocessing.Process(target=xtracard_merger_all, args = (item,seed_id,num_procs,params))
         jobs.append(p)
         p.start()
         time.sleep(1)
@@ -507,7 +518,7 @@ def load_enriched_data():
     for i in jobs:
         i.join()
 
-def xtracard_merger_all(procseq, seed_id, num_procs):
+def xtracard_merger_all(procseq, seed_id, num_procs, details):
     #  Reads csv file and finds values
     settings_file = "recommendations_settings.json"
     collection = 'extra_card_new'
@@ -517,6 +528,8 @@ def xtracard_merger_all(procseq, seed_id, num_procs):
     key = "XTRA_CARD_NBR"
     bb = Util()
     settings = bb.read_json(settings_file)
+    locker = details["file_lock"]
+    hfile = details["file_handle"]
     cur_process = multiprocessing.current_process()
     procid = cur_process.name.replace("Process", "p")
     tstart_time = datetime.datetime.now()
@@ -530,7 +543,7 @@ def xtracard_merger_all(procseq, seed_id, num_procs):
     base_card_limit = seed_id + (procseq + 1) * increment
     batch_size = 1000
     msg = f'[{procid}] Starting - from {base_card_nbr} to {base_card_limit}'
-    file_log(msg)
+    file_log(msg,locker,hfile)
     bb.message_box(msg)
     totcnt = 0
     cnt = 0
@@ -578,7 +591,7 @@ def xtracard_merger_all(procseq, seed_id, num_procs):
         bb.logit("Saving last records")
         db[collection].insert_many(bulk_docs)
     msg = f'[{procid}] Completed batch: {base_card_nbr} - {base_card_limit}, {cnt} cards'
-    file_log(msg)
+    file_log(msg, locker, hfile)
     bb.logit(msg)
     timer(tstart_time, False)
     bb.logit(f"[{procid}] # -------------- COMPLETE ------------------- #")
@@ -636,7 +649,9 @@ def update_file():
         "source_file" : "../../../customers/CVS/extraCare/poc_data/sku_rank/mongo_poc_xtra_card_sku_rank.dat.gz.partaa",
         #"file_type" : "market_segment"
         "file_type" : "sku_rank",
-        "update_format" : "array"
+        "update_format" : "array",
+        "file_lock" : g_lock, 
+        "file_handle": g_logger
     }
     if "file" in ARGS:
         params["source_file"] = ARGS["file"]
@@ -647,11 +662,18 @@ def update_file():
     jobs = []
     proc_cnt = 0
     fsize = int(os.path.getsize(params["source_file"])/(1024*1024))
-    bb.message_box(f'FileUpdater: {fsize} Mb, size: {chunk_size}',"title")
+    msg = f'FileUpdater: {fsize} Mb, size: {chunk_size}'
+    bb.message_box(msg,"title")
+    file_log(msg,g_lock,g_logger)
     bb.logit(f'  File: {params["source_file"]}')
+    file_log(f'  File: {params["source_file"]}',g_lock,g_logger)
     #create jobs
     num_procs = settings["process_count"]
     jobs = []
+    chunk_count = 0
+    chunk_sum = 0
+    chunk_pos = 0
+    inc = 0
     #multiprocessing.set_start_method("fork", force=True)
     for chunk_start,chunk_size in file_chunkify(params["source_file"], chunk_size):
         p = multiprocessing.Process(target=extra_card_merger_update, args = (proc_cnt, chunk_start, chunk_size, params))
@@ -659,7 +681,14 @@ def update_file():
         p.start()
         time.sleep(1)
         proc_cnt += 1
-
+        chunk_count += 1
+        chunk_sum += chunk_size
+        chunk_pos = chunk_start
+        inc += 1
+        if inc == 100:
+            msg = f'Progress chunks: {chunk_count}, totalbytes: {chunk_sum}, filepos: {chunk_pos}'
+            file_log(msg,locker,hfile)
+            inc = 0
     main_process = multiprocessing.current_process()
     bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
     for i in jobs:
@@ -699,11 +728,13 @@ def extra_card_merger_update(proc_seq, chunk_start, chunk_size, details):
     '''
     #  Reads csv file and finds values
     settings_file = "recommendations_settings.json"
-    collection = 'extra_card_full'
+    collection = 'xtra_card'
     file_type = details["file_type"]
     is_array = False
     if details["update_format"] == "array":
         is_array = True
+    locker = details["file_lock"]
+    hfile = details["file_handle"]
     key = "XTRA_CARD_NBR"
     bb = Util()
     settings = bb.read_json(settings_file)
@@ -722,9 +753,9 @@ def extra_card_merger_update(proc_seq, chunk_start, chunk_size, details):
     if is_array:
         oper = "$addToSet"               
     msg = f'[{procid}] #--------------------- Starting ------------------------#'
-    file_log(msg)            
+    file_log(msg,locker,hfile)           
     msg = f'[{procid}] Starting batch ({batch_size}) total {totcnt}'
-    file_log(msg)
+    file_log(msg,locker,hfile)
     bb.message_box(msg)
     bulk_updates = []
     with open(details["source_file"]) as f:
@@ -732,16 +763,16 @@ def extra_card_merger_update(proc_seq, chunk_start, chunk_size, details):
         lines = f.read(chunk_size).splitlines()
         for line in lines:
             sub_doc = {"version" : "1.1"}
-            row = line.split("|")
+            row = line.split(",") #line.split("|")
             card_id = int(row[0])
             sub_doc = process_file_row(sub_doc, row, file_type)
             bulk_updates.append(
-                    UpdateOne({key : card_id},{oper: {file_type : sub_doc}, "$set" : {"updated_at" : datetime.datetime.now(), "updated_by" : f'sku_rank-{procid}'}})
-                )
+                UpdateOne({key : card_id},{oper: {file_type : sub_doc}, "$set" : {"updated_at" : datetime.datetime.now(), "updated_by" : f'sku_rank-{procid}'}})
+            )
             cnt += 1
             totcnt += 1
             if cnt == batch_size:
-                bulk_writer(db[collection], bulk_updates)
+                bulk_writer(db[collection], bulk_updates, f'[{procid}] lastId: {card_id}')
                 bb.logit(f"[{procid}] Processed: {totcnt} batch: {b_cnt} - in {timer(bstart_time)} secs")
                 b_cnt += 1
                 bstart_time = datetime.datetime.now()
@@ -753,10 +784,169 @@ def extra_card_merger_update(proc_seq, chunk_start, chunk_size, details):
             bulk_writer(db[collection], bulk_updates)
             bb.logit(f'Final batch {len(bulk_updates)} to process')
     msg = f'[{procid}] Completed batch: {b_cnt} - {totcnt} cards'
-    file_log(msg)
+    file_log(msg,locker,hfile)
     bb.logit(msg)
     timer(tstart_time, False)
     bb.logit("# -------------- COMPLETE ------------------- #")
+
+# -------------------------------------------------------------------- #
+# -------  Multi_threaded Export 11/29/22
+    
+def export_filer():
+    params = {
+        "export_file" : "sku_rank_exp",
+        "export_dir" : "../export",
+        "num_procs" : 20,
+        "chunks" : 1000,
+        "omax_id" : 520000000,
+        "max_id" : 100000000,
+        "min_id" : 50000000,
+        "last" : "n",
+        "collection" : "xtra_card_sku_rank"
+    }
+    if "export_params" in settings:
+        params = settings["export_params"]
+    if "file" in ARGS:
+        params["source_file"] = ARGS["file"]
+    params["file_lock"] = g_lock
+    params["file_handle"] = g_logger
+    params["chunk_size"] = int((params["max_id"] - params["min_id"])/params["chunks"])
+    jobs = []
+    proc_cnt = 0
+    msg = f'Starting Exporter: size: {params["chunk_size"]}, Files: {params["num_procs"]}'
+    bb.message_box(msg,"title")
+    file_log(msg, g_lock, g_logger)
+    #create jobs
+    num_procs = params["num_procs"] #settings["process_count"]
+    jobs = []
+    inc = 0
+    for item in range(num_procs):
+        if item == num_procs - 1:
+            params["last"] = "y"
+        p = multiprocessing.Process(target=export_processor, args = (proc_cnt, params))
+        jobs.append(p)
+        p.start()
+        time.sleep(1)
+        proc_cnt += 1
+    main_process = multiprocessing.current_process()
+    msg = '#----------------------------- All Complete ---------------------------------#'
+    file_log(msg, g_lock, g_logger)
+    msg = f'Finish Exporter: size: {params["min_id"]}-{params["max_id"]}, Procs: {params["num_procs"]}, Chunks: {params["chunks"]}'
+    file_log(msg, g_lock, g_logger)
+    bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
+    g_logger.close()
+    for i in jobs:
+        i.join()
+
+
+
+def bought_toghter():
+    ans = db.collection.find({sku: 23456})
+    return(ans["bought_together"])
+
+
+
+def chunk_range(min,max,chunk_size, chunk_num):
+    min = chunk_num * chunk_size
+    max = min + chunk_size
+    return min, max   
+
+
+def export_processor(proc_seq, details):
+    '''
+        Look through chunks appending to file
+        see: https://gist.github.com/mieitza/5d35d0a4f2671127f7120c75c8764385
+    '''
+    settings_file = "recommendations_settings.json"
+    bb = Util()
+    settings = bb.read_json(settings_file)
+    cur_process = multiprocessing.current_process()
+    procid = cur_process.name.replace("Process", "p")
+    collection = details["collection"]
+    minid = details["min_id"]
+    maxid = details["max_id"]
+    tot_chunks = details["chunks"]
+    chunk_size = details["chunk_size"]
+    num_chunks = int(tot_chunks/details["num_procs"])
+    locker = details["file_lock"]
+    hfile = details["file_handle"]
+    if details["last"] == "y":
+        num_chunks = num_chunks + 0
+    filename = f'{details["export_dir"]}/{details["export_file"]}_{procid}.csv'
+    tstart_time = datetime.datetime.now()
+    bstart_time = datetime.datetime.now()
+    conn = client_connection("uri", settings)
+    db = conn[settings["database"]]
+    base_chunk = proc_seq * num_chunks
+    end_chunk = base_chunk + num_chunks
+    totcnt = 0
+    cnt = 0
+    b_cnt = 0
+    msg = f'[{procid}] #--------------------- Starting ------------------------#'
+    file_log(msg,locker,hfile)          
+    msg = f'[{procid}] Starting: {num_chunks} to do of size: {chunk_size} - total {totcnt}'
+    file_log(msg,locker,hfile)
+    bb.message_box(msg)
+    bulk_updates = []
+    with open(filename, "a") as fil:
+        for chunk in range(base_chunk, end_chunk):
+            start_id = minid + chunk * chunk_size
+            end_id = start_id + chunk_size
+            if chunk == end_chunk and details["last"] == "y":
+                end_id = maxid
+            cursor = db[collection].find({"$and": [{"XTRA_CARD_NBR": {"$gt": start_id}}, {"XTRA_CARD_NBR": {"$lte": end_id}}]})
+            df =  pd.DataFrame(list(cursor))
+            csize = len(df)
+            msg = f'[{procid}] Batch: {chunk} - rows: {csize}, range: {start_id}-{end_id}, total: {totcnt}'
+            bb.logit(msg)
+            file_log(msg,locker,hfile)
+            if csize > 0:
+                del df['_id']
+                df.to_csv(filename, mode='a', index=False)
+                totcnt += csize
+            lst = [df]
+            del df
+            del lst
+    msg = f'[{procid}] Completed process: {totcnt} items'
+    file_log(msg,locker,hfile)
+    bb.logit(msg)
+    timer(tstart_time, False)
+    bb.logit("# -------------- COMPLETE ------------------- #")
+
+#------------------------------------------------------------#
+#-------------------------------------------------------------#
+# From : python3 recommendations.py action=file_restart from=4122,80942344 file=../sku_rank_csv/mongo_poc_xtra_card_sku_rank.datai.csv
+def file_restart():
+    if "file" in ARGS:
+        fname = ARGS["file"]
+    if "from" in ARGS:
+        frompt = ARGS["from"]
+    it = frompt.split(",")
+    stop_chunk = int(it[0])
+    card_id = int(it[1])
+    fileEnd = os.path.getsize(fname)
+    est_pos = 1024*1024*stop_chunk
+    num_chunks = 0
+    bb.logit(f"Restarting from chunk: {stop_chunk} card_nbr: {card_id}")
+    with open(fname,'rb') as f:
+        chunk_end = f.tell()
+        found = ""
+        f.seek(est_pos,1)
+        line = f.readline()
+        print(f'exact: {line}')
+        f.seek(est_pos - 1024,1)
+        for inc in range(100):
+            line = f.readline()
+            items = line.split(',')
+            cur_card = int(items[0])
+            if card_id == cur_card:
+                found = "-found!"
+            print(f'Found({inc}):{cur_card} - {line}')
+            chunk_end = f.tell()
+        
+        
+
+#------------------------------------------------------------------------#
 
 def process_file_row(doc,row,ftype):
     if ftype == "market_segment":
@@ -993,121 +1183,6 @@ def build_skus():
     bb.logit("# -------------- COMPLETE ------------------- #")
     timer(tstart_time, False)
 
-#------------------------------------------------------------------#
-#     Aggregation Data Load 11/18/22
-#------------------------------------------------------------------#
-'''
-    Divide xtra_card_ids into 1000-ish batches
-
-    Index load time on sku_rank and coupon kills performance on this
-'''
-def update_master():
-    jobs = []
-    proc_cnt = 4
-    max = 520000000
-    min = 0
-    num_chunks = 200
-    chunk_cnt = int(num_chunks/proc_cnt)
-    chunk_size = int(max/num_chunks)
-    num_procs = settings["process_count"]
-    jobs = []
-    #multiprocessing.set_start_method("fork", force=True)
-    for procid in range(proc_cnt):
-        cur_min = procid * (max/proc_cnt)
-        cur_max = (procid + 1) * (max/proc_cnt)
-        params = {"min" : cur_min, "max": cur_max, "chunk_size" : chunk_size, "num_chunks" : chunk_cnt, "num_procs" : proc_cnt, "cur_process" : procid}
-    
-        p = multiprocessing.Process(target=aggregatorator, args = (params,))
-        jobs.append(p)
-        p.start()
-        time.sleep(1)
-        proc_cnt += 1
-
-    main_process = multiprocessing.current_process()
-    bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
-    for i in jobs:
-        i.join()
-
-def aggregatorator(params):
-    '''
-        Prep:
-        db.createCollection("xtra_card_full")
-        db.xtra_card_full.createIndex({"XTRA_CARD_NBR" : 1})
-    '''
-    tgt_coll = 'extra_card_full'
-    cur_process = multiprocessing.current_process()
-    procid = cur_process.name.replace("Process", "p")
-    tstart_time = datetime.datetime.now()
-    bstart_time = datetime.datetime.now()
-    batch_size = 1000
-    conn = client_connection("uri", settings)
-    db = conn[settings["database"]]
-    bb.logit(f'[{procid}] #--------------------- Starting ------------------------#')
-    max = params["max"]
-    min = params["min"]
-    tot_records = max - min
-    iterations = params["num_chunks"]
-    chunk_size = params["chunk_size"]
-    batches = 10
-    batch_size = chunk_size/batches
-    bb.logit(f'[{procid}] Range-{min}-{max} in {iterations} starting at: {min}')
-    for iter in range(iterations):
-        bb.logit(f'Batch {iter} ids: {tot_records/(batches*iterations)}')
-        imin = iter * chunk_size
-        imax = imin + chunk_size
-        for batch in range(batches):
-            skipper = batch * batch_size
-            get_pipeline({"min" : imin, "max" : imax, "skip" : skipper, "limit" : batch_size})
-            totcnt += 1
-    bb.logit("# -------------- COMPLETE ------------------- #")
-    timer(tstart_time, False)
-
-def get_pipeline(limits):
-    sku_coll = 'xtra_card_sku_rank'
-    mkt_coll = 'xtra_card_mkt_sgmt'
-    coupon_coll = 'xtra_card_mfr_coupon_rank'
-    pipe = [
-        {"$match" : {"$and": [{"XTRA_CARD_NBR": {"$gt": limits["min"]}},{"XTRA_CARD_NBR": {"$lte": limits["max"]}}]}},
-        {"$skip" : limits["skip"]},
-        {"$limit" : limits["limit"]},
-        {"$lookup" : {
-            "from": sku_coll,
-            "localField": 'XTRA_CARD_NBR',
-            "foreignField": 'XTRA_CARD_NBR',
-            "pipeline" : [
-                {"$project" : {"_id" : 0,"XTRA_CARD_NBR": 0}}
-            ],
-            "as": 'sku_rank'
-        }},
-        {"$lookup" : {
-            "from": mkt_coll,
-            "localField": 'XTRA_CARD_NBR',
-            "foreignField": 'XTRA_CARD_NBR',
-            "pipeline" : [
-                {"$project" : {"_id" : 0,"XTRA_CARD_NBR": 0}},
-                {"$limit" : 1}
-            ],
-            "as": 'mkt_sgmt'
-        }},
-        {"$unwind" : "$mkt_sgmt"},
-        {"$lookup" : {
-            "from": coupon_coll,
-            "localField": 'XTRA_CARD_NBR',
-            "foreignField": 'XTRA_CARD_NBR',
-            "pipeline" : [
-                {"$project" : {"_id" : 0,"XTRA_CARD_NBR": 0}},
-                {"$limit" : 1}
-            ],
-            "as": 'mfr_coupon_rank'
-        }}
-    ]
-    return(pipe)
-
-def card_nbrs(params, icnt):
-    spread = params["max"] - params["min"]
-    block_size = int(spread/params["num_chunks"])
-    return {"min" : block_size * params["cur_process"] * icnt, "max" : block_size * (icnt+1) * (params["cur_process"] + 1)} 
-
 #-----------------------------------------------------------------------#
 #  Utility
 #-----------------------------------------------------------------------#
@@ -1121,14 +1196,6 @@ def timer(t_start, quiet = True):
         procid = cur_process.name.replace("process", "p")
         print(f"{procid} - Bulk Load took {'{:.3f}'.format(execution_time)} seconds")
     return execution_time
-
-def in_list(curlist, item):
-    result = 0
-    try:
-        result = curlist.index(item)
-    except:
-        result = 0
-    return result
 
 def basictest():
     source_coll = 'xtra_card'
@@ -1145,6 +1212,17 @@ def basictest():
     #for k in cur:
     #    print(k["XTRA_CARD_NBR"])
 
+def bulk_writer(collection, bulk_arr, msg = ""):
+    try:
+        result = collection.bulk_write(bulk_arr, ordered=False)
+        ## result = db.test.bulk_write(bulkArr, ordered=False)
+        # Opt for above if you want to proceed on all dictionaries to be updated, even though an error occured in between for one dict
+        #pprint.pprint(result.bulk_api_result)
+        note = f'BulkWrite - mod: {result.bulk_api_result["nModified"]} {msg}'
+        #file_log(note,locker,hfile)
+        print(note)
+    except BulkWriteError as bwe:
+        print("An exception occurred ::", bwe.details)
 
 def increment_version(old_ver):
     parts = old_ver.split(".")
@@ -1160,70 +1238,181 @@ def check_file(type = "delete"):
             result = False
     return(result)
 
-def file_log(msg):
-    ctl_file = "run_log.txt"
+def file_log(msg, locker = None, logger = None):
+    cur_process = multiprocessing.current_process()
+    procid = cur_process.name.replace("Process", "p")
+    ctl_file = f"{procid}_run_log.txt"
+    #if msg == "init":
+    #    logger = open(ctl_file, "a")
+    #    msg = "# -------------------------- Initializing Log ---------------------------#"
     cur_date = datetime.datetime.now().strftime("%m/%d/%Y %H:%M:%S")
     stamp = f"{cur_date}|I> "
-    with open(ctl_file, 'a') as lgr:
-        lgr.write(f'{stamp}{msg}\n')
+    with open(ctl_file, 'a') as logger:
+    #with locker:
+        logger.write(f'{stamp}{msg}\n')
+    return logger
 
-def print_stats(start_t, docs = 0):
+def print_stats(start_t, msg = ""):
     end = datetime.datetime.now()
     elapsed = end - start_t
     secs = (elapsed.seconds) + elapsed.microseconds * .000001
-    bb.logit(f"Elapsed: {secs} - Docs: {docs}")
+    bb.logit(f'Elapsed: {"{:.3f}".format(secs)} - {msg}')
 
 def query_mix():
     # mixed query
     conn = client_connection()
     db = conn[settings["database"]]
-    mix = ARGS["mix"]
-    pipe = [
-    {
-        '$sample': {
-            'size': 20
-        }
-    }, {
-        '$unwind': {
-            'path': '$recommendations'
-        }
-    }, {
-        '$match': {
-            'recommendations.category': 'pharmacy'
-        }
-    }, {
-        '$project': {
-            'profile_id': 1, 
-            'first_name': 1, 
-            'last_name': 1, 
-            'shelfDate': '$recommendations.created_at', 
-            'items': '$recommendations.items'
-        }
-    }
-    ]
-    rtot = 0
-    wtot = 0
-    for k in range(20):
+    start = datetime.datetime.now()
+    limits = [0,1000000]
+    if "limits" in ARGS:
+        limits = ARGS["limits"].split(',')
+    inc = 5000
+    count = 2
+    if "inc" in ARGS:
+        inc = int(ARGS["inc"])
+    if "count" in ARGS:
+        count = int(ARGS["count"])
+    min =int(limits[0])
+    max = min + inc #int(limits[1])
+    for k in range(count):
         start = datetime.datetime.now()
-        if mix == "high":
-            inum = 40
-        elif mix == "low":
-            inum = 10
-        else:
-            inum = 20
-        worker_load_recommendations(inum)
-        for k in range(20):
-            db.profiles.aggregate(pipe)
-        print_stats(start, inum + 20)
+        res = db.xtra_card.aggregate(q_pipe(min,max))
+        inum = 0
+        for it in res:
+            inum = it["num_records"]
+        print_stats(start, f'max={max}, docs={inum}')
+        max += inc
+        min += inc
 
+def find_mix():
+    # mixed query
+    conn = client_connection()
+    db = conn[settings["database"]]
+    start = datetime.datetime.now()
+    bb.message_box("Performing find mix")
+    q_find(db["xtra_card_full"])
+
+def q_find(coll):
+    card_ids = [120702671,56382424,129324067,393666906,302201229,63036879,96910041,122701609,157212897,444088055,922638,32920017,396113799,477765478,470238382,1472441,478653700,305760436,129218422,508015378,392387025,13275126,168168817,415788351,498557897,86958999,93752174,211511893,119900651,435422817,302728693,489566082,33854685,216098120,46351162,43697406,502330516,100004740,152734467,488069720,52546437,454190859,509518802,58722957,230316401,41629451,36970911,466305554,36086319,428234452,513888050,495327085,95372017,461352724,388840335,172528559,410519384,59355645,257707349,125608003,317981502,305490606,471842135,481464459,54104661,390757679,120030189,397122881,317714954,484045745,343698675,27610331,296038748,100028469,472564041,159863658,37214494,191105762,429271628,419021463,123762459,31432850,491877218,94208476,339017440,74275982,55295226,330207587,188945370,40750873,133522635,37455824]
+    if "agg" in ARGS:
+        bb.logit("Using lookup aggregation")
+    else:
+        bb.logit("Using simple find")
+    for it in card_ids:
+        start = datetime.datetime.now()
+        if "agg" in ARGS:
+            res = coll.aggregate(q_pipe_lookup(it))
+        elif "coupon" in ARGS:
+            res = coll.aggregate(q_pipe_lookup_coupon(it))
+        else:
+            res = coll.find_one({"XTRA_CARD_NBR" : it}) #,{"_id": 0,"XTRA_CARD_NBR":1}
+        print(list(res)[0])
+        print_stats(start, f" - id: {it}")
+    
+def q_pipe(min,max):
+    pipe = [
+        {'$match': {
+                '$and': [{'XTRA_CARD_NBR': {'$gt': min}}, {'XTRA_CARD_NBR': {'$lte': max}}]
+        }}, 
+        #{'$skip': 0}, 
+        #{'$limit': 100}, 
+        {'$lookup': {
+                'from': 'xtra_card_sku_rank', 
+                'localField': 'XTRA_CARD_NBR', 
+                'foreignField': 'XTRA_CARD_NBR', 
+                'pipeline': [
+                    {'$project': {'_id': 0, 'XTRA_CARD_NBR': 0}}
+                ], 
+                'as': 'sku_rank'
+            }
+        }, 
+        {'$lookup': {
+                'from': 'xtra_card_mkt_sgmt', 
+                'localField': 'XTRA_CARD_NBR', 
+                'foreignField': 'XTRA_CARD_NBR', 
+                'pipeline': [
+                    {'$project': {'_id': 0, 'XTRA_CARD_NBR': 0}}
+                ], 
+                'as': 'mkt_sgmt'
+            }
+        }, 
+        {'$unwind': {'path': '$mkt_sgmt'}
+        }, 
+        {'$count': 'num_records'}
+    ]
+    return(pipe)
+
+def q_pipe_lookup(card_id):
+    pipe = [
+        {'$match': {
+                'XTRA_CARD_NBR': card_id}
+        }, 
+        {'$lookup': {
+                'from': 'xtra_card_sku_rank', 
+                'localField': 'XTRA_CARD_NBR', 
+                'foreignField': 'XTRA_CARD_NBR', 
+                'pipeline': [
+                    {'$project': {'_id': 0, 'XTRA_CARD_NBR': 0}}
+                ], 
+                'as': 'sku_rank'
+            }
+        }, 
+        {'$lookup': {
+                'from': 'xtra_card_mkt_sgmt', 
+                'localField': 'XTRA_CARD_NBR', 
+                'foreignField': 'XTRA_CARD_NBR', 
+                'pipeline': [
+                    {'$project': {'_id': 0, 'XTRA_CARD_NBR': 0}}
+                ], 
+                'as': 'mkt_sgmt'
+            }
+        }, 
+        {'$unwind': {'path': '$mkt_sgmt'}
+        } 
+        #{'$count': 'num_records'}
+    ]
+    return(pipe)
+
+def q_pipe_lookup_coupon(card_id):
+    pipe = [
+        {'$match': {
+                'XTRA_CARD_NBR': card_id}
+        }, 
+        {'$lookup': {
+                'from': 'xtra_card_mfr_coupon_rank', 
+                'localField': 'XTRA_CARD_NBR', 
+                'foreignField': 'XTRA_CARD_NBR', 
+                'pipeline': [
+                    {'$project': {'_id': 0, 'XTRA_CARD_NBR': 0}}
+                ], 
+                'as': 'coupon_rank'
+            }
+        }, 
+        {'$lookup': {
+                'from': 'xtra_card_mkt_sgmt', 
+                'localField': 'XTRA_CARD_NBR', 
+                'foreignField': 'XTRA_CARD_NBR', 
+                'pipeline': [
+                    {'$project': {'_id': 0, 'XTRA_CARD_NBR': 0}}
+                ], 
+                'as': 'mkt_sgmt'
+            }
+        }, 
+        {'$unwind': {'path': '$mkt_sgmt'}
+        } 
+        #{'$count': 'num_records'}
+    ]
+    return(pipe)
 
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
 
 def client_connection(type = "uri", details = {}):
-    if not 'settings' in locals():
+    global settings
+    if not 'settings' in locals() and not 'settings' in globals():
         settings = details
+    #pprint.pprint(settings)
     mdb_conn = settings[type]
     username = settings["username"]
     password = settings["password"]
@@ -1242,12 +1431,15 @@ def client_connection(type = "uri", details = {}):
 #     MAIN
 #------------------------------------------------------------------#
 if __name__ == "__main__":
+    global ARGS, settings
+    settings_file = "recommendations_settings.json"
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
+    g_lock = "" #Lock()
+    g_logger = file_log("init", g_lock)
     base_counter = settings["base_counter"]
     IDGEN = Id_generator({"seed" : base_counter})
-    
     MASTER_CUSTOMERS = []
     if "wait" in ARGS:
         interval = int(ARGS["wait"])
@@ -1274,84 +1466,25 @@ if __name__ == "__main__":
         xtracard_merger_all()
     elif ARGS["action"] == "query_mix":
         query_mix()
+    elif ARGS["action"] == "find_mix":
+        find_mix()
     elif ARGS["action"] == "test":
         basictest()
     elif ARGS["action"] == "mergemulti":
         load_enriched_data()
     elif ARGS["action"] == "file_update":
         update_file()
+    elif ARGS["action"] == "file_restart":
+        file_restart()
+    elif ARGS["action"] == "export":
+        export_filer()
     elif ARGS["action"] == "build_skus":
         build_skus()
     elif ARGS["action"] == "update_skus":
         update_sku_master()
+    elif ARGS["action"] == "update_bought":
+        update_bought()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()
 
-'''
-[
-    {
-        '$group': {
-            '_id': '$MASKED_XCC', 
-            'CustId': {
-                '$first': '$MASKED_XCC'
-            }, 
-            'count': {
-                '$sum': 1
-            }
-        }
-    }, {
-        '$sort': {
-            'count': -1
-        }
-    }
-]
-
-
-#  POC Use Case
-- recs from geo
-[
-    {
-        '$match': {
-            'market_segment_ranks.market_cd': 'Beltranhaven'
-        }
-    }, {
-        '$unwind': {
-            'path': '$market_segment_ranks'
-        }
-    }, {
-        '$sort': {
-            'market_segment_ranks.sku_rank_nbr': 1
-        }
-    }, {
-        '$limit': 50
-    }
-]
-
-- recommendations
-[
-    {
-        '$match': {
-            'xtra_card_nbr': 'XTRA1000518'
-        }
-    }, {
-        '$unwind': {
-            'path': '$recommendations'
-        }
-    }, {
-        '$project': {
-            'xtra_card_nbr': 1, 
-            'sku_nbr': '$recommendations.sku_nbr', 
-            'product': '$recommendations.name', 
-            'rank': '$recommendations.rank'
-        }
-    }, {
-        '$sort': {
-            'rank': 1
-        }
-    }
-]
-
-- recommendations from xtracard geo
-    
-'''
