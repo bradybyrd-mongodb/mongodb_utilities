@@ -13,19 +13,19 @@
       "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
     },
     "version" : "1.1",
-    "process_count" : 1,
-    "batch_size" : 20,
-    "batches" : 2,
+    "process_count" : 4,
+    "batch_size" : 2000,
+    "batches" : 20,
     "base_counter" : 2500000,
     "gcp_project_id" : "bradybyrd-poc",
     "gcp_dataset" : "claims_warehouse",
     "limitdata" : {
-      "member" : {"path" : "model-tables/member.csv", "size" : 100, "id_prefix" : "M-", "thumbnail" : [
+      "member" : {"path" : "model-tables/member.csv", "size" : 10000, "id_prefix" : "M-", "thumbnail" : [
           {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}
         ]}
     },
     "data" : {
-      "provider" : {"path" : "model-tables/provider.csv", "size" : 5000, "id_prefix" : "P-"},
+      "provider" : {"path" : "model-tables/provider.csv", "size" : 1000, "id_prefix" : "P-"},
       "member" : {"path" : "model-tables/member.csv", "size" : 10000, "id_prefix" : "M-", "thumbnail" : [
           {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}
         ]},

@@ -218,8 +218,8 @@ def build_sql_batch_from_template(tables, details = {}):
             idpos += 1
             cnt += 1
             recs.append(hsh)
-        print("# ----------- Data ---------------------- #")
-        pprint.pprint(recs)
+        #print("# ----------- Data ---------------------- #")
+        #pprint.pprint(recs)
         record_loader(tables,cur_table,recs,details["connection"])
         bb.logit(f'{batch_size} {cur_table} batch complete (tot = {cnt})')
     bb.logit(f'{cnt} records for {database} complete')
