@@ -19,7 +19,7 @@ Claim.payment.patientResponsibilityAmount,double,,"fake.random_int(min=0, max=10
 Claim.payment.payerPaidAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
 Claim.placeOfService,String,,"fake.random_element(('Pharmacy', 'Telehhealth', 'School', 'Homeless Shelter', 'Indian Health', 'Correctional Facility', 'Office', 'Home', 'Assisted Living Facility', 'Group Home', 'Mobile Unit', 'Walk-In Retail Health Clinic', 'Worksite', 'Urgent Care Facility', 'Unassigned', 'Inpatient Hospital', 'Emergency Room', 'Birthing Center', 'Military Treatment Facility', 'Nursing Facility', 'Hospice', 'Psychiatric Facility', 'Community Mental Health', 'Residential Substance Abuse Treatment Facility', 'Public Health Clinic', 'Independant Laboratory', 'Other Place of Service'))",,,,,,,,
 Claim.principalDiagnosis,String,,"str(fake.random_int(min=1, max=50000))",,,,,,,,
-Claim.priorAuthorization,String,,fake.boolean(),,,,,,,,
+Claim.priorAuthorization,boolean,,fake.boolean(),,,,,,,,
 Claim.receivedDate,Date,,fake.past_datetime(),,,,,,,,
 Claim.renderingProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
 Claim.serviceEndDate,Date,,fake.future_datetime(),,,,,,,,

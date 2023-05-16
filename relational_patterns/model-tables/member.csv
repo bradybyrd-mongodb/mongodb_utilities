@@ -48,7 +48,7 @@ Member.Guardian().Address.country,String,Optional,fake.country(),US,,,,Approved,
 Member.Guardian().Address.type,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old",,,,Approved,,,,7.21
 Member.Guardian().Address.effectiveDate,date,Optional,fake.past_datetime(),Random,,,,Approved,,,,7.21
 Member.Guardian().Address.endDate,date,Optional,"fake.future_datetime(end_date=""+3y"")",Random,,,,Approved,,,,7.21
-Member.Guardian().Address.wheelchairAccess,Boolean,Optional,fake.boolean(chance_of_getting_true=75),"True, False",,,,Approved,,,,7.21
+Member.Guardian().Address.wheelchairAccess,boolean,Optional,fake.boolean(chance_of_getting_true=75),"True, False",,,,Approved,,,,7.21
 Member.EffectiveDate,Date,Optional,fake.past_datetime(),Random,,effective date for this instance of the member data,,Approved,,,,7.21
 Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+10y"")",Random,,end date for this instance of the member data,,Approved,,,,7.21
 Member.SitusState,String,Optional,"fake.state_abbr()",Random,,Member situs state,,Approved,,,,7.21
