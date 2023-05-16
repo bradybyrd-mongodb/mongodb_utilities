@@ -263,13 +263,13 @@ def ddl_from_template(action, pgconn, template, domain):
             schema = []
 
             #  Add a self_id field
-            field_name = f'{table}_id'
+            field_name = f'{table}_id'.lower()
             new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
             flds.append(field_name)
             schema.append(new_field)
             if len(table.split("_")) > 1:
                 #  Add a parent_id field
-                field_name = f'{row["parent"]}_id'
+                field_name = f'{row["parent"]}_id'.lower()
                 new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
                 flds.append(field_name)
                 schema.append(new_field)
@@ -765,9 +765,11 @@ def sql_action(conn, action, tables):
             table = conn.create_table(table)
             print("Created BigQTable {}.{}.{}".format(table.project, table.dataset_id, table.table_id))
         elif action == "drop":
-            sql = f'DROP TABLE {table_name};'
+            conn.delete_table(tables[table_name]["table_id"], not_found_ok=True)
+            print(f'Deleted: {table_name}')
         elif action == "delete":
             sql = f'delete from {table_name};'
+            
         '''
         try:
             bb.logit(f"Action: {action} {table_name}")
