@@ -273,6 +273,9 @@ def ddl_from_template(action, pgconn, template, domain):
                 new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
                 flds.append(field_name)
                 schema.append(new_field)
+            new_field = bigquery.SchemaField(field, ftype)
+            flds.append(field)
+            schema.append(new_field)
             table_id = bigquery.Table.from_string(f'{gcp_project_id}.{gcp_dataset}.{table}')
 
             tables[table] = {"table_id" : table_id, "schema" : schema, "database" : database, "fields" : flds, "generator" : [row["generator"]], "parent" : row["parent"]}
