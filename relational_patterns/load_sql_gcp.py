@@ -262,14 +262,14 @@ def ddl_from_template(action, pgconn, template, domain):
             flds = []
             schema = []
 
+            #  Add a self_id field
+            field_name = f'{table}_id'
+            new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
+            flds.append(field_name)
+            schema.append(new_field)
             if len(table.split("_")) > 1:
                 #  Add a parent_id field
                 field_name = f'{row["parent"]}_id'
-                new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
-                flds.append(field_name)
-                schema.append(new_field)
-                #  Add a self_id field
-                field_name = f'{table}_id'
                 new_field = bigquery.SchemaField(field_name, "STRING", mode="REQUIRED")
                 flds.append(field_name)
                 schema.append(new_field)
