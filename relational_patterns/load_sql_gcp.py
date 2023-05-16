@@ -105,7 +105,7 @@ def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
     cur_process = multiprocessing.current_process()
     bb.message_box(f'({cur_process.name}) Loading Synth Data in SQL', "title")
-    pgconn = pg_connection()
+    pgconn = bigquery_connection()
     settings = bb.read_json(settings_file)
     batches = settings["batches"]
     batch_size = settings["batch_size"]
@@ -209,8 +209,8 @@ def build_sql_batch_from_template(tables, details = {}):
                         cur_val = f'{prefx}{random.randint(1000,1000000)}'
                 else:
                     cur_val = eval(attrs["generator"][fld_cnt])
-                    if type(cur_val) is bool:
-                        cur_val = 'T' if cur_val == True else "F"
+                    #if type(cur_val) is bool:
+                    #    cur_val = 'T' if cur_val == True else "F"
                     fld_cnt += 1
                 hsh[cur_field.lower()] = cur_val
             idpos += 1
@@ -647,46 +647,36 @@ def record_loader(tables, table, recs, nconn = False):
     # insert_into table fields () values ();
     if nconn:
         conn = nconn
-    else:
-        conn = pg_connection('postgres', tables[table]['database'])
-    cur = conn.cursor()
     fields = list(recs[0])
-    sql = tables[table]['insert']
+    table_id = tables[table]['table_id']
     vals = []
-    for record in recs:
-        stg = list()
-        for k in record:
-            stg.append(record[k])
-        vals.append(tuple(stg))
+    #for record in recs:
+    #    stg = list()
+    #    for k in record:
+    #        stg.append(record[k])
+    #    vals.append(tuple(stg))
     #print(sql)
     #print(vals)
     try:
-        cur.executemany(sql, vals)
-        conn.commit()
-        bb.logit(f'{cur.rowcount} inserted')
-    except psycopg2.DatabaseError as err:
+        errors = nconn.insert_rows_json(table_id, recs)
+        if errors == []:
+            bb.logit(f'{len(recs)} inserted')
+        else:
+            bb.logit("Encountered errors while inserting rows: {}".format(errors))
+    except Exception as err:
         bb.logit(f'{table} - {err}')
-    cur.close()
-    if not nconn:
-        conn.close()
-
+    
 def sql_query(database, sql, nconn = False):
     # insert_into table fields () values ();
-    if nconn:
-        conn = nconn
-    else:
-        conn = pg_connection('postgres', database)
-    cur = conn.cursor()
-    #print(sql)
+    
     try:
-        cur.execute(sql)
+        nconn.execute(sql)
         bb.logit(f'{cur.rowcount} records')
-    except psycopg2.DatabaseError as err:
+    except Exception as err:
         bb.logit(f'{sql} - {err}')
-    result = cur.fetchall()
-    cur.close()
+    result = nconn.fetchall()
     if not nconn:
-        conn.close()
+        nconn.close()
     return result
 
 def value_codes(flds, special = {}):
@@ -762,7 +752,7 @@ def sql_action(conn, action, tables):
     if action == "none":
         return("no action")
     sql = ""
-    cursor = conn.cursor()
+    #cursor = conn.cursor()
     for table_name in tables:
         if action == "create":
             schema = tables[table_name]['schema']
@@ -774,6 +764,7 @@ def sql_action(conn, action, tables):
             sql = f'DROP TABLE {table_name};'
         elif action == "delete":
             sql = f'delete from {table_name};'
+        '''
         try:
             bb.logit(f"Action: {action} {table_name}")
             print(sql)
@@ -787,6 +778,7 @@ def sql_action(conn, action, tables):
             print("OK")
             conn.commit()
     cursor.close()
+    '''
     return("success")
 
 def bigquery_connection(type = "bigquery", sdb = 'none'):
