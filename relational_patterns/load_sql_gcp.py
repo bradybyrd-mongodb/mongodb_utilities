@@ -209,8 +209,8 @@ def build_sql_batch_from_template(tables, details = {}):
                         cur_val = f'{prefx}{random.randint(1000,1000000)}'
                 else:
                     cur_val = eval(attrs["generator"][fld_cnt])
-                    if type(cur_val) is bool:
-                        cur_val = 'T' if cur_val == True else "F"
+                    #if type(cur_val) is bool:
+                    #    cur_val = 'T' if cur_val == True else "F"
                     if type(cur_val) is datetime.datetime:
                         cur_val = cur_val.strftime("%Y-%m-%d %H:%M:%S")
                     fld_cnt += 1
