@@ -25,7 +25,7 @@
         ]}
     },
     "data" : {
-      "provider" : {"path" : "model-tables/provider.csv", "size" : 1000, "id_prefix" : "P-"},
+      "provider" : {"path" : "model-tables/provider.csv", "size" : 2000, "id_prefix" : "P-"},
       "member" : {"path" : "model-tables/member.csv", "size" : 10000, "id_prefix" : "M-", "thumbnail" : [
           {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}
         ]},

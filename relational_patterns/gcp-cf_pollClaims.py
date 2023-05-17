@@ -1,0 +1,59 @@
+from google.cloud import bigquery 
+from flask import Response
+import os
+import time
+from pymongo import MongoClient
+
+#GCP Cloud Function!
+def claim_polling_trigger(request):
+    """Responds to any HTTP request.
+    Args:
+        request (flask.Request): HTTP request object.
+    Runs every 5 seeconds - triggerd buu scheduler
+    Calls big query
+    loop through results and send to confluent
+    """
+    client = bigquery.Client()
+    print("Logging request: ")
+    request_json = request.get_json()
+    print(request_json)
+    #  Reject if token doesnt match
+    if "token" in request_json:
+        if request_json["token"] == "sdfjlhag;JH98Hiudhf65HiNug!!":
+            print("Token match - success")
+        else:
+            return Response({'message': 'Authorization token failed'}, status=403, mimetype='application/json')
+    else:
+        return Response({'message': 'Authorization token failed'}, status=403, mimetype='application/json')
+    
+    last_check = '2023-05-16 14:30:21'
+    warehouse_db = "bradybyrd-poc.claims_warehouse.Member"
+    mdb_cred = "mongodb+srv://main_admin:bugsyBoo@claims-demo.vmwqj.mongodb.net"
+    mdbconn = MongoClient(mdb_cred)
+    ans = mdbconn["claim_demo"]["preferences"].find_one({"doc_type" : "last_check"})
+    last_checked_at = ans["checked_at"]
+    last_check = last_checked_at.strftime("%Y-%m-%d %H:%M:%S")
+    # Timer will trigger every 2 minutes, for 10 sec operation run 12 times
+    for iter in range(10):
+        query =   f"""
+        select * from `{warehouse_db}` 
+        where modified_at > datetime({last_check}) 
+        order by modified_at DESC 
+        limit 100"""
+
+        query_job = client.query(query)
+
+        results = query_job.result()  # Waits for job to complete.
+        ids = []
+        print("#---------------- RESULTS ---------------#")
+        print(f"  run: {last_check}")
+        for item in results:
+            ids.append(item["member_id"])
+        answer = ",".join(ids)
+        print(answer)
+        time.sleep(10)
+        last_check_at = last_check_at + datetime.timedelta(seconds=10)
+        last_check = last_checked_at.strftime("%Y-%m-%d %H:%M:%S")
+    return Response({'message': 'successfully connected'}, status=200, mimetype='application/json')
+
+
