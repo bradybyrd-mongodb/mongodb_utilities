@@ -11,8 +11,7 @@
       "password" : "bugsyBoo",
       "database" : "healthcare",
       "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
-    }
-    
+    },
     "postgres" : {
       "host" : "34.172.34.239",
       "username" : "postgres",
