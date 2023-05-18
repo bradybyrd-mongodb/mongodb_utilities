@@ -255,6 +255,12 @@ def ddl_from_template(action, pgconn, template, domain):
     for row in fields:
         table, field, ftype = clean_field_data(row)
         if table not in tables:
+            if last_table != "zzzzz":
+                # Add modified to each table:
+                new_field = bigquery.SchemaField("modified_at", "DATETIME")
+                tables[last_table]["schema"].append(new_field)
+                tables[last_table]["fields"].append(field)
+                tables[last_table]["generator"].append("datetime.datetime.now()")
             #bb.logit("#--------------------------------------#")
             bb.logit(f'Building table: {table}')
             last_table = table
