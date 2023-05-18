@@ -264,7 +264,7 @@ def ddl_from_template(action, pgconn, template, domain):
                 flds.append(new_field)
                 #  Add a parent_id field
                 new_field = f'{row["parent"]}_id'.lower()
-                fkey = f'  {new_field} varchar(20) NOT NULL,'
+                fkey += f'  {new_field} varchar(20) NOT NULL,'
                 flds.append(new_field)
             flds.append(field)
             ddl = (
