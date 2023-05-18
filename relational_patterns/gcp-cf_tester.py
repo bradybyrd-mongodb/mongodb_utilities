@@ -34,10 +34,11 @@ def claim_polling_trigger(request):
     db = mdbconn["claim_demo"]
     ans = db["preferences"].find_one({"doc_type" : "last_check"})
     last_checked_at = ans["checked_at"]
-    start_check_at = last_checked_at
+    orig_checked_at = last_checked_at
     last_check = last_checked_at.strftime("%Y-%m-%d %H:%M:%S")
     tot_processed = 0
     new_recs = []
+    max_time = orig_checked_at
     # Timer will trigger every 2 minutes, for 10 sec operation run 12 times
     for iter in range(3):
         query =   f"""
@@ -54,6 +55,8 @@ def claim_polling_trigger(request):
         print("#---------------- RESULTS ---------------#")
         print(f"  run: {last_check}")
         for item in results:
+            if item["modified_at"] > max_time:
+                max_time = item["modified_at"]
             doc = dict(item)
             doc["doc_type"] = "provider_change"
             print(doc)
@@ -63,7 +66,7 @@ def claim_polling_trigger(request):
         answer = ",".join(ids)
         print(answer)
         time.sleep(10)
-        last_checked_at = last_checked_at + datetime.timedelta(seconds=10)
+        last_checked_at = datetime.datetime.now() #last_checked_at + datetime.timedelta(seconds=10)
         last_check = last_checked_at.strftime("%Y-%m-%d %H:%M:%S")
         db["change_activity"].insert_many(new_recs)
     db["preferences"].update_one({"doc_type" : "last_check"},{"$set" : {"checked_at" : last_checked_at}})
