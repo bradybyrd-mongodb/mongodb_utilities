@@ -56,8 +56,9 @@ def claim_polling_trigger(request):
         for item in results:
             doc = dict(item)
             doc["doc_type"] = "provider_change"
+            print(doc)
             new_recs.append(doc)
-            ids.append(item["member_id"])
+            ids.append(item["provider_id"])
             tot_processed += 1
         answer = ",".join(ids)
         print(answer)
