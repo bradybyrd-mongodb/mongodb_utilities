@@ -359,6 +359,7 @@ def execute_ddl(ddl_action = "info"):
         sys.exit(1)
     if "task" in ARGS:
         ddl_action = ARGS["task"]
+    bb.logit("# --------- Creating DDL --------- #")
     mycon = pg_connection()
     if "template" in ARGS:
         master_table = master_from_file(template)
