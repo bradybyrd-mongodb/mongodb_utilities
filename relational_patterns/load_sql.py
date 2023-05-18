@@ -249,23 +249,24 @@ def ddl_from_template(action, pgconn, template, domain):
             if last_table != "zzzzz":
                 # Add modified to each table:
                 new_field = "modified_at"
-                tables[last_table]["ddl"] = tables[table]["ddl"] + f'  {new_field} timestamp,'
+                tables[last_table]["ddl"] = tables[last_table]["ddl"] + f'  {new_field} timestamp,'
                 tables[last_table]["fields"].append(new_field)
                 tables[last_table]["generator"].append("datetime.datetime.now()")
             #bb.logit("#--------------------------------------#")
             bb.logit(f'Building table: {table}')
             last_table = table
             fkey = ""
-            flds = [field]
+            flds = []
             if len(table.split("_")) > 1:
-                #  Add a parent_id field
-                new_field = f'{row["parent"]}_id'
-                fkey = f'  {new_field} varchar(20) NOT NULL,'
-                flds.append(new_field)
                 #  Add a self_id field
-                new_field = f'{table}_id'
+                new_field = f'{table}_id'.lower()
                 fkey += f'  {new_field} varchar(20) NOT NULL,'
                 flds.append(new_field)
+                #  Add a parent_id field
+                new_field = f'{row["parent"]}_id'.lower()
+                fkey = f'  {new_field} varchar(20) NOT NULL,'
+                flds.append(new_field)
+            flds.append(field)
             ddl = (
                 f'CREATE TABLE {table} ('
                 "  id SERIAL PRIMARY KEY,"
