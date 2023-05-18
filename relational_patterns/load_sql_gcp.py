@@ -259,7 +259,7 @@ def ddl_from_template(action, pgconn, template, domain):
                 # Add modified to each table:
                 new_field = bigquery.SchemaField("modified_at", "DATETIME")
                 tables[last_table]["schema"].append(new_field)
-                tables[last_table]["fields"].append(field)
+                tables[last_table]["fields"].append("modified_at")
                 tables[last_table]["generator"].append("datetime.datetime.now()")
             #bb.logit("#--------------------------------------#")
             bb.logit(f'Building table: {table}')
