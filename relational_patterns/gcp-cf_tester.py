@@ -68,7 +68,9 @@ def claim_polling_trigger(request):
         time.sleep(10)
         last_checked_at = datetime.datetime.now() #last_checked_at + datetime.timedelta(seconds=10)
         last_check = last_checked_at.strftime("%Y-%m-%d %H:%M:%S")
-        db["change_activity"].insert_many(new_recs)
+        if len(new_recs) > 0:
+            db["change_activity"].insert_many(new_recs)
+            new_recs = []
     db["preferences"].update_one({"doc_type" : "last_check"},{"$set" : {"checked_at" : last_checked_at}})
     db["activity_log"].insert_one({"activity" : "data polling", "checked_at": orig_checked_at, "processed" : tot_processed})
     return Response({'message': 'successfully connected'}, status=200, mimetype='application/json')
