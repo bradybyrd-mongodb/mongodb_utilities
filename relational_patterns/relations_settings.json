@@ -5,10 +5,18 @@
     "collection" : "member",
     "username" : "main_admin",
     "password" : "bugsyBoo",
-    "postgres" : {
+    "postgres_local" : {
       "host" : "localhost",
       "username" : "bbadmin",
       "password" : "bugsyBoo",
+      "database" : "healthcare",
+      "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+    }
+    
+    "postgres" : {
+      "host" : "34.172.34.239",
+      "username" : "postgres",
+      "password" : "bugsyBoo!",
       "database" : "healthcare",
       "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
     },
@@ -16,7 +24,7 @@
     "process_count" : 4,
     "batch_size" : 2000,
     "batches" : 20,
-    "base_counter" : 2500000,
+    "base_counter" : 2000000,
     "gcp_project_id" : "bradybyrd-poc",
     "gcp_dataset" : "claims_warehouse",
     "limitdata" : {
