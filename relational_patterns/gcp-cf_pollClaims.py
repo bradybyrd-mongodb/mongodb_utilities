@@ -34,7 +34,8 @@ def claim_polling_trigger(request):
     db = mdbconn["claim_demo"]
     ans = db["preferences"].find_one({"doc_type" : "last_check"})
     last_checked_at = ans["checked_at"]
-    start_check_at = last_checked_at
+    max_time = last_checked_at
+    orig_checked_at = last_checked_at
     last_check = last_checked_at.strftime("%Y-%m-%d %H:%M:%S")
     tot_processed = 0
     new_recs = []
@@ -45,25 +46,32 @@ def claim_polling_trigger(request):
         where modified_at > datetime("{last_check}") 
         order by modified_at DESC 
         limit 100"""
-        print(query)
+        #print(query)
 
         query_job = client.query(query)
-
+        curt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         results = query_job.result()  # Waits for job to complete.
         ids = []
         print("#---------------- RESULTS ---------------#")
-        print(f"  run: {last_check}")
+        print(f"{curt}  Run: {last_check}")
         for item in results:
-            item["doc_type"] = "provider_change"
-            new_recs.append(item)
-            ids.append(item["member_id"])
+            if item["modified_at"] > max_time:
+                max_time = item["modified_at"]
+            doc = dict(item)
+            doc["doc_type"] = "provider_change"
+            print(doc)
+            new_recs.append(doc)
+            ids.append(item["provider_id"])
             tot_processed += 1
         answer = ",".join(ids)
         print(answer)
         time.sleep(10)
-        last_checked_at = last_checked_at + datetime.timedelta(seconds=10)
+        last_checked_at = datetime.datetime.now() #last_checked_at + datetime.timedelta(seconds=10)
         last_check = last_checked_at.strftime("%Y-%m-%d %H:%M:%S")
-        db["change_activity"].insert_many(new_recs)
+        if len(new_recs) > 0:
+            print(f'{tot_processed} records processed')
+            db["change_activity"].insert_many(new_recs)
+            new_recs = []
     db["preferences"].update_one({"doc_type" : "last_check"},{"$set" : {"checked_at" : last_checked_at}})
     db["activity_log"].insert_one({"activity" : "data polling", "checked_at": orig_checked_at, "processed" : tot_processed})
     return Response({'message': 'successfully connected'}, status=200, mimetype='application/json')
