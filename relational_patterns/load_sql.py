@@ -669,7 +669,7 @@ def microservice_one():
                 print(f'Update claim: {cur_id}')
                 c_update = f"update claim set servicefacility_id = 'bb_change' where claim_id = '{cur_id}'"
                 res = newsql_query(c_update, conn, False)
-                print("\n...")
+                #print("\n...")
                 time.sleep(5)
             cur.close()
             
@@ -739,6 +739,7 @@ def newsql_query(sql, conn, query = True):
     cur = conn.cursor()
     #print(sql)
     try:
+        print(f'Executing: {sql}')
         cur.execute(sql)
         if query:
             row_count = cur.rowcount
@@ -748,6 +749,7 @@ def newsql_query(sql, conn, query = True):
     if query:
         result = {"num_records" : row_count, "data" : cur.fetchall()}
     else:
+        conn.commit()
         result = {"num_records" : 0, "data" : {"update_query" : "yes"}}
     cur.close()
     return result
