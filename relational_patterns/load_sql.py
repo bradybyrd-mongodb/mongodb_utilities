@@ -644,6 +644,35 @@ def local_geo():
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
+# Runs a loop checking only v1.0 records
+def microservice_one():
+    conn = pg_connection()
+    bb.message_box("Legacy System Changes", "title")
+    cur = conn.cursor()
+    sql_c = "select * from claim TABLESAMPLE BERNOULLI(5)"
+    keep_going = True
+    icnt = 0
+    while keep_going:
+        bb.logit("Claim modifications")
+        this_batch = []
+        for i in range(5):
+            try:
+                cur.execute(sql)
+                bb.logit(f'{cur.rowcount} records')
+            except psycopg2.DatabaseError as err:
+                bb.logit(f'{sql} - {err}')
+            result = cur.fetchall()
+            # update claims
+            for rec in result:
+                cur_id = rec["claim_id"]
+                cl_update = f"update claim_claimlines set quantity = 'bb_clchange' where claim_id = '{cur_id}'"
+                cur.execute(cl_update)
+                c_update = f"update claim set servicefacility_id = 'bb_change' where claim_id = '{cur_id}'"
+                cur.execute(c_update)
+            cur.close()
+            print("\n...")
+            time.sleep(5)
+    print("Operation completed successfully!!!")
 
 def record_loader(tables, table, recs, nconn = False):
     # insert_into table fields () values ();
