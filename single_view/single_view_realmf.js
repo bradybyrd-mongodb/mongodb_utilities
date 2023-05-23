@@ -122,3 +122,133 @@ exports = function(changeEvent) {
     }
   }
 };
+
+/*     Claim from Kafka   
+  Claim change source data handler
+    fires on update/insert in claim_raw collection
+    takes full document, creates embedded claimlines
+
+    Plan:
+      Receive change:
+        is claimline - does claim exist?
+          yes - update it - mark as processed
+          no - ignore
+        is claim - does exist?
+          yes - update it - mark as processed
+          no - create it - look for claimlines, embed
+*/
+exports = function(changeEvent) {
+  const fullDoc = changeEvent.fullDocument;
+  var changeType = changeEvent.operationType;
+  var isProcessed = false;
+  // get Handle to collections
+  const gSourceColl = context.services.get("Claims-demo").db("claim_demo").collection("claims_raw");
+  const gClaimColl = context.services.get("Claims-demo").db("claim_demo").collection("claim");
+  const updateDescription = changeEvent.updateDescription;
+  var isFound = false;
+  console.log("ClaimChange: " + fullDoc["claim_id"]);
+  //gLogColl.insertOne(changeEvent);
+  if(fullDoc.hasOwnProperty('claim_claimline_id')){ // is a claimline
+    var cl_id = fullDoc["claim_claimline_id"];
+    console.log("Is a Claimline");
+    var result = gClaimColl.findOne({"claimlines.claim_claimline_id" : cl_id});
+    if( result.hasOwnProperty("claim_id")) {
+      // Claim Exists
+      console.log("Claimline - claim exists - " + result.claim_id);
+      gClaimColl.updateOne(
+        {_id: result._id, "claimlines.claim_claimline_id" : cl_id},
+        {$set: {"claimlines.$" : fullDoc}}
+      );
+      isProcessed = true;
+    }else{
+      // Claim does not exist - ignore
+      console.log("Claimline - no claim - Ignore " + fullDoc.claim_id);
+    }
+  }else{ // its a claim
+    var c_id = fullDoc["claim_id"];
+    var result = gClaimColl.findOne({claim_id : c_id});
+    var newDoc = fullDoc;
+    if( result.hasOwnProperty("claim_id")) {
+      // Claim Exists
+      console.log("Claim - claim exists - " + result.claim_id);
+      if ( result.hasOwnProperty("claimlines")){
+        newDoc.claimlines = result.claimlines;
+      }else{
+        var claimlines = [];
+        var cl_result = gSourceColl.find({claim_id: c_id, processed_at: {$exists : false}, claim_claimline_id: {$exists : true}});
+        for( let doc of cl_result ){
+          claimlines.push(doc);
+        }
+        newDoc.claimlines = claimlines;
+      } 
+      gClaimColl.replaceOne(
+        {_id: result._id},
+        newDoc
+      );
+      isProcessed = true;
+    }else{ 
+      // New Claim
+      console.log("Claim - New - " + fullDoc.claim_id);
+      var claimlines = [];
+      var result = gSourceColl.find({claim_id: c_id, processed_at: {$exists : false}, claim_claimline_id: {$exists : true}})
+      console.log(typeof result)
+      while (result.hasNext()) {
+        claimlines.push(result.next());
+      }
+      /*for( let doc of cl_result ){
+        claimlines.push(doc);
+      };*/
+      newDoc.claimlines = claimlines;
+      gClaimColl.insertOne(newDoc);
+      isProcessed = true;
+    }
+  };
+  if ( isProcessed ){
+    gSourceColl.updateOne({_id: fullDoc._id}, {$set: {processed_at: new Date()}});
+  }
+};
+
+
+
+// #---------------------------------------------------------- #
+exports = function(changeEvent) {
+  /*
+    A Database Trigger will always call a function with a changeEvent.
+    Documentation on ChangeEvents: https://docs.mongodb.com/manual/reference/change-events/
+
+    Access the _id of the changed document:
+    const docId = changeEvent.documentKey._id;
+
+    Access the latest version of the changed document
+    (with Full Document enabled for Insert, Update, and Replace operations):
+    const fullDocument = changeEvent.fullDocument;
+
+    const updateDescription = changeEvent.updateDescription;
+
+    See which fields were changed (if any):
+    if (updateDescription) {
+      const updatedFields = updateDescription.updatedFields; // A document containing updated fields
+    }
+
+    See which fields were removed (if any):
+    if (updateDescription) {
+      const removedFields = updateDescription.removedFields; // An array of removed fields
+    }
+
+    Functions run by Triggers are run as System users and have full access to Services, Functions, and MongoDB Data.
+
+    Access a mongodb service:
+    const collection = context.services.get(<SERVICE_NAME>).db("db_name").collection("coll_name");
+    const doc = collection.findOne({ name: "mongodb" });
+
+    Note: In Atlas Triggers, the service name is defaulted to the cluster name.
+
+    Call other named functions if they are defined in your application:
+    const result = context.functions.execute("function_name", arg1, arg2);
+
+    Access the default http client and execute a GET request:
+    const response = context.http.get({ url: <URL> })
+
+    Learn more about http client here: https://www.mongodb.com/docs/atlas/app-services/functions/context/#std-label-context-http
+  */
+};
