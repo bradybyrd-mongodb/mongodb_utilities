@@ -649,7 +649,7 @@ def microservice_one():
     conn = pg_connection()
     bb.message_box("Legacy System Changes", "title")
     cur = conn.cursor()
-    sql_c = "select * from claim TABLESAMPLE BERNOULLI(5)"
+    sql_c = "select * from claim TABLESAMPLE BERNOULLI(1)"
     keep_going = True
     icnt = 0
     while keep_going:
@@ -657,21 +657,21 @@ def microservice_one():
         this_batch = []
         for i in range(5):
             try:
-                cur.execute(sql_c)
-                bb.logit(f'{cur.rowcount} records')
+                result = newsql_query(sql_c, conn)
+                bb.logit(f'{result["num_records"]} records')
             except psycopg2.DatabaseError as err:
                 bb.logit(f'{sql_c} - {err}')
-            result = cur.fetchall()
             # update claims
-            for rec in result:
-                cur_id = rec["claim_id"]
+            for rec in result["data"]:
+                cur_id = rec[1]
                 cl_update = f"update claim_claimlines set quantity = 'bb_clchange' where claim_id = '{cur_id}'"
                 cur.execute(cl_update)
                 c_update = f"update claim set servicefacility_id = 'bb_change' where claim_id = '{cur_id}'"
                 cur.execute(c_update)
+                print("\n...")
+                time.sleep(5)
             cur.close()
-            print("\n...")
-            time.sleep(5)
+            
     print("Operation completed successfully!!!")
 
 def record_loader(tables, table, recs, nconn = False):
