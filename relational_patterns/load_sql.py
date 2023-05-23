@@ -664,7 +664,7 @@ def microservice_one():
             # update claims
             for rec in result["data"]:
                 cur_id = rec[1]
-                cl_update = f"update claim_claimlines set quantity = 'bb_clchange' where claim_id = '{cur_id}'"
+                cl_update = f"update claim_claimline set quantity = 'bb_clchange' where claim_id = '{cur_id}'"
                 cur.execute(cl_update)
                 c_update = f"update claim set servicefacility_id = 'bb_change' where claim_id = '{cur_id}'"
                 cur.execute(c_update)
