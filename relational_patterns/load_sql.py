@@ -665,9 +665,10 @@ def microservice_one():
             for rec in result["data"]:
                 cur_id = rec[1]
                 cl_update = f"update claim_claimline set quantity = 'bb_clchange' where claim_id = '{cur_id}'"
-                cur.execute(cl_update)
+                res = newsql_query(cl_update, conn, False)
+                print(f'Update claim: {cur_id}')
                 c_update = f"update claim set servicefacility_id = 'bb_change' where claim_id = '{cur_id}'"
-                cur.execute(c_update)
+                res = newsql_query(c_update, conn, False)
                 print("\n...")
                 time.sleep(5)
             cur.close()
@@ -733,17 +734,21 @@ def value_codes(flds, special = {}):
             result += f', {fmt}'
     return(result)
 
-def newsql_query(sql, conn):
+def newsql_query(sql, conn, query = True):
     # Simple query executor
     cur = conn.cursor()
     #print(sql)
     try:
         cur.execute(sql)
-        row_count = cur.rowcount
-        print(f'{row_count} records')
+        if query:
+            row_count = cur.rowcount
+            print(f'{row_count} records')
     except psycopg2.DatabaseError as err:
         print(f'{sql} - {err}')
-    result = {"num_records" : row_count, "data" : cur.fetchall()}
+    if query:
+        result = {"num_records" : row_count, "data" : cur.fetchall()}
+    else:
+        result = {"num_records" : 0, "data" : {"update_query" : "yes"}}
     cur.close()
     return result
 
