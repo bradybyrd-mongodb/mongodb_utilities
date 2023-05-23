@@ -657,10 +657,10 @@ def microservice_one():
         this_batch = []
         for i in range(5):
             try:
-                cur.execute(sql)
+                cur.execute(sql_c)
                 bb.logit(f'{cur.rowcount} records')
             except psycopg2.DatabaseError as err:
-                bb.logit(f'{sql} - {err}')
+                bb.logit(f'{sql_c} - {err}')
             result = cur.fetchall()
             # update claims
             for rec in result:
