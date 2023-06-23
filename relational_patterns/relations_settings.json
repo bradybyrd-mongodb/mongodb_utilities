@@ -1,6 +1,7 @@
 {
-    "uri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+    "miguri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
     "basicuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+    "uri" : "mongodb+srv://claims-demo.vmwqj.mongodb.net",
     "database" : "healthcare",
     "collection" : "member",
     "username" : "main_admin",

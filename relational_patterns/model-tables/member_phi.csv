@@ -1,0 +1,61 @@
+Resource.Property,Property Type,Optional/Required,Generator,Sample Data
+Member.member_id,String,Required,"IDGEN.get(""M-"")","""M-"" + Incremental 1- 65 million"
+Member.phi.lastName,String,Required,fake.last_name(),Random
+Member.phi.firstName,String,Optional,fake.first_name(),Random
+Member.phi.middleName,String,Optional,fake.first_name(),Random
+Member.phi.suffix,String,Optional,fake.suffix(),Random
+Member.phi.SSN,String,Optional,fake.ssn(),Random
+Member.phi.dateOfBirth,date,Required,"fake.past_datetime() - datetime.timedelta(365*20)",Random
+Member.phi.Address().name,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old",,1 Member can have many addresses. eg: school this would be School Name,,Approved,,,,7.21
+Member.phi.Address().addressLine1,String,Optional,fake.street_address(),Random
+Member.phi.Address().addressLine2,String,Optional,fake.secondary_address(),Random
+Member.phi.Address().city,String,Optional,fake.city(),Random
+Member.phi.Address().state,String,Optional,fake.state_abbr(),Random
+Member.phi.Address().postalCode,String,Optional,fake.postcode(),Random
+Member.phi.Address().country,String,Optional,fake.country(),US
+Member.phi.Address().type,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old"
+Member.phi.Address().effectiveDate,date,Optional,fake.past_datetime(),Random
+Member.phi.Address().endDate,date,Optional,"fake.future_datetime(end_date=""+3y"")",Random
+Member.phi.Address().wheelchairAccess,boolean,Optional,fake.boolean(chance_of_getting_true=10),"True, False"
+Member.phi.Communication().phoneNumber,String,Optional,fake.phone_number(),Random
+Member.phi.Communication().phonetype,String,Optional,"fake.random_element(('Home', 'Work', 'Cell', 'Fax', 'Pager'))","Home, Work, Cell, Fax, Pager"
+Member.phi.Communication().emailAddress,String,Optional,fake.email(),Random
+Member.phi.Communication().emailtype,String,Optional,"fake.random_element(('Home', 'Work'))","Home, Work"
+Member.phi.Communication().SocialMediaID,String,Optional,fake.user_name(),Random
+Member.phi.Communication().SocialMediaType,String,Optional,"fake.random_element(('Facebook', 'Academia.edu', 'Bebo', 'CaringBridge', 'GoodReads', 'DailyStrength', 'Google+'))","Facebook, Academia.edu, Bebo, CaringBridge, GoodReads, DailyStrength, Google+"
+Member.gender,String,Required,"fake.random_element(('Male', 'Female', 'Other'))","Male, Female, Other"
+Member.ethnicity,String,Optional,"fake.random_element(('White', 'American Indian', 'Asian', 'Hispanic', 'African American'))","White, American Indian, Asian, Hispanic, African American"
+Member.maritialStatus,String,Optional,"fake.random_element(('Married', 'Widow', 'Single'))","Married, Widow, Single"
+Member.primaryProvider_id,String,Optional,"IDGEN.random_value(""P-"")",
+Member.EffectiveDate,Date,Optional,fake.past_datetime(),Random
+Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+8y"")",Random
+Member.languages().language,String,Optional,"fake.random_element(('Albanian', 'Farsi', 'Hindi', 'Korean', 'Polish', 'Spanish', 'Arabic', 'French', 'Hmong', 'Laotian', 'Portuguese', 'Tagalog', 'Armenian', 'German', 'Italian', 'Lithuanian', 'Punjabi', 'Thai', 'Bengali', 'Greek', 'Japanese', 'Malay', 'Romanian', 'Turkish', 'Burmese', 'Haitian Creole'))","Albanian,Farsi,Hindi,,Korean,Polish,Spanish,Arabic,French,Hmong,Laotian,Portuguese,Tagalog,Armenian,German,Italian,Lithuanian,Punjabi,Thai,Bengali,Greek,Japanese,Malay,Romanian,Turkish,Burmese,Haitian Creole",,Member can have many Languages and each Language can have many usages,,Approved,,,,7.21
+Member.languages().Usage,String,Optional,"fake.random_element(('Spoken', 'Reading', 'Writing', 'Native'))","Spoken, Reading, Writing, Native",,"Usage is: Indicator for Language Spoken, Language Reading, Language Writing, Language Native",,Approved,,,,7.21
+Member.CitizenshipStatusCode,String,Optional,"fake.random_element(('Native', 'Naturalised', 'Alien Permanent', 'Alien Temporary', 'Citizen', 'Foreign Worker', 'Permanent Resident', 'Foreigh ID Card Holder'))","Native, Naturalised, Alien Permanent, Alien Temporary, Citizen, Foreign Worker, Permanent Resident, Foreigh ID Card Holder",,Member citizenship status code,,Approved,,,,7.21
+Member.Disability().DisabilityPeriodStartDate,date,Optional,fake.past_datetime(),Random,,1 Member can have many disabilities,,Approved,,,,7.21
+Member.Disability().DisabilityPeriodEndDate,date,Optional,"fake.future_datetime(end_date=""+3y"")",Random
+Member.Disability().DisabilityTypeCode,String ,Optional,"fake.random_element(('Autism', 'Emotional Disability', 'Hearing Impairement', 'Intellectual Disability', 'Other Health Imparement', 'Traumatic Brain Injury', 'Visual Imparement'))","Autism, Emotional Disability, Hearing Imparement, Intellectual Disability, Other Health Imparement, Traumatic Brain Injury, Visual Imparement"
+Member.phi.guardian.LastName,String ,Optional,fake.last_name(),Random,,1 Member can have many Guardians. Guardian can be person or a State can be traditional Guardian or Durable Power of Attorney,,Approved,,,,7.21
+Member.phi.guardian.FirstName,String ,Optional,fake.first_name(),Random
+Member.phi.guardian.Type,String ,Optional,"fake.random_element(('Natural', 'Legal', 'Medical', 'Custodial'))","Natural, Legal, Medical, Custodial"
+Member.phi.guardian.Address.name,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old"
+Member.phi.guardian.Address.addressLine1,String,Optional,fake.street_address(),Random,,Only Primary Address,,Approved,,,,7.21
+Member.phi.guardian.Address.addressLine2,String,Optional,fake.secondary_address(),Random
+Member.phi.guardian.Address.city,String,Optional,fake.city(),Random
+Member.phi.guardian.Address.state,String,Optional,fake.state_abbr(),Random
+Member.phi.guardian.Address.postalCode,String,Optional,fake.postcode(),Random
+Member.phi.guardian.Address.country,String,Optional,fake.country(),US
+Member.phi.guardian.Address.type,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old"
+Member.phi.guardian.Address.effectiveDate,date,Optional,fake.past_datetime(),Random
+Member.phi.guardian.Address.endDate,date,Optional,"fake.future_datetime(end_date=""+3y"")",Random
+Member.phi.guardian.Address.wheelchairAccess,Boolean,Optional,fake.boolean(chance_of_getting_true=75),"True, False"
+Member.EffectiveDate,Date,Optional,fake.past_datetime(),Random,,effective date for this instance of the member data,,Approved,,,,7.21
+Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+10y"")",Random,,end date for this instance of the member data,,Approved,,,,7.21
+Member.SitusState,String,Optional,"fake.state_abbr()",Random,,Member situs state,,Approved,,,,7.21
+Member.phi.BankAccount.BankName,String ,Optional,"fake.company()",Random,,"Only Primary Bank Account Recommend name change from Bank Account Information to Bank Acccount. This is not a change to Cigna",,Approved,,,,7.21
+Member.phi.BankAccount.BankAccountHolderName,String ,Optional,fake.name(),Random
+Member.phi.BankAccount.BankAccountNumber,String ,Optional,fake.iban(),Random
+Member.phi.BankAccount.BankAccountType,String ,Optional,"fake.random_element(('Checking', 'Savings'))",Random
+Member.phi.BankAccount.BankRoutingNumber,String ,Optional,"fake.iban()",Random
+Member.phi.Employment().EmployeeIdentificationNumber,String,Optional,"fake.ssn()",Random,,"1 Member can have many Employments
+Member.Weight,Integer,Optional,"fake.random_int(min=1, max=400)",1 - 400,,Member weight,,Approved,,,,7.21
