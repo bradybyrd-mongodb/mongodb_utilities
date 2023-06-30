@@ -1,0 +1,24 @@
+{
+    "nuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+    "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+    "uri" : "mongodb+srv://cvs-retail-extracare-po.gptft.mongodb.net",
+    "huri" : "mongodb+srv://hedisUsr:qUYr24vihYGpP5nX@clusterqmepoc.nsuydan.mongodb.net",
+    "localuri" : "mongodb://localhost:27017",
+    "database" : "extracare",
+    "collection" : "profiles",
+    "username" : "main_admin",
+    "password" : "bugsyBoo",
+    "version" : "1.0",
+    "import_csv" : "sku_lookup.csv",
+    "process_count" : 3,
+    "batch_size" : 2000,
+    "base_counter" : 1000000,
+    "num_records" : 100,
+    "models" : [
+        {"model" : "cif", "prefix" : "CIF", "count" : 100000, "collection" : "master_cif"},
+        {"model" : "member", "prefix" : "MEM", "count" : 1000, "collection" : "member"},
+        {"model" : "claim", "prefix" : "CLM", "count" : 1000, "collection" : "claim"}
+    
+    ]
+  }
+  
