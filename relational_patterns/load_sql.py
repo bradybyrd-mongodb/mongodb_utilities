@@ -55,7 +55,10 @@ providers = ["cigna","aetna","anthem","bscbsma","kaiser"]
 # Startup Env:
     Atlas M10BasicAgain
     PostgreSQL
-      brew services start/stop postgresql@14
+      export PATH="/usr/local/opt/postgresql@9.6/bin:$PATH"
+      pg_ctl -D /usr/local/var/postgresql@9.6 start
+      create database single_view with owner bbadmin;
+      psql --username bbadmin single_view
 '''
 settings_file = "relations_settings.json"
 
@@ -243,27 +246,20 @@ def ddl_from_template(action, pgconn, template, domain):
     for row in fields:
         table, field, ftype = clean_field_data(row)
         if table not in tables:
-            if last_table != "zzzzz":
-                # Add modified to each table:
-                new_field = "modified_at"
-                tables[last_table]["ddl"] = tables[last_table]["ddl"] + f'  {new_field} timestamp,'
-                tables[last_table]["fields"].append(new_field)
-                tables[last_table]["generator"].append("datetime.datetime.now()")
             #bb.logit("#--------------------------------------#")
             bb.logit(f'Building table: {table}')
             last_table = table
             fkey = ""
-            flds = []
+            flds = [field]
             if len(table.split("_")) > 1:
-                #  Add a self_id field
-                new_field = f'{table}_id'.lower()
-                fkey += f'  {new_field} varchar(20) NOT NULL,'
-                flds.append(new_field)
                 #  Add a parent_id field
-                new_field = f'{row["parent"]}_id'.lower()
+                new_field = f'{row["parent"]}_id'
+                fkey = f'  {new_field} varchar(20) NOT NULL,'
+                flds.append(new_field)
+                #  Add a self_id field
+                new_field = f'{table}_id'
                 fkey += f'  {new_field} varchar(20) NOT NULL,'
                 flds.append(new_field)
-            flds.append(field)
             ddl = (
                 f'CREATE TABLE {table} ('
                 "  id SERIAL PRIMARY KEY,"
@@ -357,7 +353,6 @@ def execute_ddl(ddl_action = "info"):
         sys.exit(1)
     if "task" in ARGS:
         ddl_action = ARGS["task"]
-    bb.logit("# --------- Creating DDL --------- #")
     mycon = pg_connection()
     if "template" in ARGS:
         master_table = master_from_file(template)
@@ -536,7 +531,7 @@ def member_api():
 def get_claims(conn = ''):
     conn = pg_connection()
     sql = "select * from claim"
-    query_result = sql_query(sql,conn)
+    query_result = newsql_query(sql,conn)
     num_results = query_result["num_records"]
     print(f'Claims: {num_results}')
     ids = []
@@ -563,7 +558,7 @@ def get_claimlines(conn,claim_ids):
     sql += f'WHERE c.claim_id IN (\'{ids_list}\') '
     sql += "order by c.claim_id"
     #query_result = sql_helper.sql_query(sql, conn)
-    query_result = sql_query(sql,conn)
+    query_result = newsql_query(sql,conn)
     num_results = query_result["num_records"]
     #claimline_fields = sql_helper.column_names("claim_claimline", conn)
     claimline_fields = column_names("claim_claimline", conn)
@@ -641,83 +636,6 @@ def local_geo():
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
-# Runs a loop checking only v1.0 records
-def microservice_one():
-    conn = pg_connection()
-    bb.message_box("Legacy System Changes", "title")
-    cur = conn.cursor()
-    sql_c = "select * from claim TABLESAMPLE BERNOULLI(1)"
-    keep_going = True
-    icnt = 0
-    while keep_going:
-        bb.logit("Claim modifications")
-        this_batch = []
-        for i in range(5):
-            try:
-                result = sql_query(sql_c, conn)
-                bb.logit(f'{result["num_records"]} records')
-            except psycopg2.DatabaseError as err:
-                bb.logit(f'{sql_c} - {err}')
-            # update claims
-            for rec in result["data"]:
-                cur_id = rec[1]
-                cl_update = f"update claim_claimline set quantity = 'bb_clchange' where claim_id = '{cur_id}'"
-                res = sql_query(cl_update, conn, False)
-                print(f'Update claim: {cur_id}')
-                c_update = f"update claim set servicefacility_id = 'bb_change' where claim_id = '{cur_id}'"
-                res = sql_query(c_update, conn, False)
-                #print("\n...")
-                time.sleep(5)
-            cur.close()
-            
-    print("Operation completed successfully!!!")
-
-def offload_simulator():
-    num_to_do = 1000
-    batch_size = 100
-    conn = pg_connection()
-    mdb = client_connection()
-    db = mdb[settings["database"]]
-    target_coll = "claims_raw"
-    tables = {"claim" : {"factor" : 1, "dependent" : "claim_claimline", "d_factor" : 3}, 
-              "member" : {"factor" : 0.25, "dependent" : "member_address", "d_factor" : 2},
-              "provider" : {"factor" : 0.1, "dependent" : "provider_hospitaladmittingprivileges", "d_factor" : 5}
-    }
-    for looper in range(1):
-        ids = []
-        for item in tables:
-            table = item
-            details = tables[item]
-            bb.logit(f'Table: {table}')
-            xtra = {"add_field" : ["source_table",table], "idcol" : 1}
-            sql = f'select * from {table} TABLESAMPLE BERNOULLI(3) limit {batch_size * details["factor"]}'
-            result = sql_query_json(sql, table, conn, xtra)
-            db[target_coll].insert_many(result["data"])
-            ids = result["ids"]
-            idcol = f'{table}_id'
-            # dependent
-            table = details["dependent"]
-            xtra = {"add_field" : ["source_table",table], "idcol" : 2}
-            bb.logit(f'Table: {table}')
-            id_arr = "'" + "','".join(ids) + "'"
-            sql = f'select * from {table} where {idcol} IN ({id_arr})'
-            result = sql_query_json(sql, table, conn, xtra)
-            db[target_coll].insert_many(result["data"])
-        bb.logit("# ---- Complete ---- #")
-
-def fix_provider():
-    bb.message_box("Provider Update", "title")
-    provider_collection = "provider_raw"
-    num_to_do = 1000
-    batch_size = 100
-    mdb = client_connection()
-    db = mdb["claim_demo"]
-    result = db[provider_collection].find({}).limit(100)
-    for prov in result:
-        doc = {"nationalprovideridentifier" : prov["nationalprovideridentifier"], "name" : prov["lastname"], "type" : prov["type"]}
-        db["claim"].update_many({"attendingprovider_id" : prov["provider_id"]},{"$set": {"provider" : doc}})
-        bb.logit(f'Updating claims for provider: {prov["provider_id"]}')
-
 
 def record_loader(tables, table, recs, nconn = False):
     # insert_into table fields () values ();
@@ -746,6 +664,25 @@ def record_loader(tables, table, recs, nconn = False):
     if not nconn:
         conn.close()
 
+def sql_query(database, sql, nconn = False):
+    # insert_into table fields () values ();
+    if nconn:
+        conn = nconn
+    else:
+        conn = pg_connection('postgres', database)
+    cur = conn.cursor()
+    #print(sql)
+    try:
+        cur.execute(sql)
+        bb.logit(f'{cur.rowcount} records')
+    except psycopg2.DatabaseError as err:
+        bb.logit(f'{sql} - {err}')
+    result = cur.fetchall()
+    cur.close()
+    if not nconn:
+        conn.close()
+    return result
+
 def value_codes(flds, special = {}):
     result = ""
 
@@ -759,41 +696,17 @@ def value_codes(flds, special = {}):
             result += f', {fmt}'
     return(result)
 
-def sql_query_json(sql, table, conn, details):
-    cols = column_names(table, conn)
-    result = sql_query(sql, conn)
-    answer = {}
-    data = []
-    ids = []
-    for item in result["data"]:
-        row = {}
-        idx = 0
-        for col in cols:
-            row[col] = item[idx]
-            idx += 1
-        if "add_field" in details:
-            row[details["add_field"][0]] = details["add_field"][1]
-        ids.append(item[details["idcol"]])
-        data.append(row)
-    return {"data" : data, "numrecords" : result["num_records"], "ids" : ids}
-    
-def sql_query(sql, conn, query = True):
+def newsql_query(sql, conn):
     # Simple query executor
     cur = conn.cursor()
     #print(sql)
     try:
-        print(f'Executing: {sql}')
         cur.execute(sql)
-        if query:
-            row_count = cur.rowcount
-            print(f'{row_count} records')
+        row_count = cur.rowcount
+        print(f'{row_count} records')
     except psycopg2.DatabaseError as err:
         print(f'{sql} - {err}')
-    if query:
-        result = {"num_records" : row_count, "data" : cur.fetchall()}
-    else:
-        conn.commit()
-        result = {"num_records" : 0, "data" : {"update_query" : "yes"}}
+    result = {"num_records" : row_count, "data" : cur.fetchall()}
     cur.close()
     return result
 
@@ -862,26 +775,6 @@ def pg_connection(type = "postgres", sdb = 'none'):
     )
     return conn
 
-def client_connection(type = "uri", details = {}):
-    global settings
-    if not 'settings' in locals() and not 'settings' in globals():
-        settings = details
-    #pprint.pprint(settings)
-    mdb_conn = settings[type]
-    username = settings["username"]
-    password = settings["password"]
-    if not "@" in mdb_conn:
-        if "username" in details:
-            username = details["username"]
-            password = details["password"]
-        mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
-    #bb.logit(f'Connecting: {mdb_conn}')
-    if "readPreference" in details:
-        client = MongoClient(mdb_conn, readPreference=details["readPreference"]) #&w=majority
-    else:
-        client = MongoClient(mdb_conn)
-    return client
-
 #------------------------------------------------------------------#
 #     MAIN
 #------------------------------------------------------------------#
@@ -921,10 +814,6 @@ if __name__ == "__main__":
         create_foreign_keys()
     elif ARGS["action"] == "microservice":
         microservice_one()
-    elif ARGS["action"] == "offload":
-        offload_simulator()
-    elif ARGS["action"] == "provider":
-        fix_provider()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()
