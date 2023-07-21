@@ -1,69 +1,135 @@
 {
-    "miguri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
-    "basicuri" : "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
-    "uri" : "mongodb+srv://claims-demo.vmwqj.mongodb.net",
-    "database" : "healthcare",
-    "collection" : "member",
-    "username" : "main_admin",
-    "password" : "bugsyBoo",
-    "postgres_local" : {
-      "host" : "localhost",
-      "username" : "bbadmin",
-      "password" : "bugsyBoo",
-      "database" : "healthcare",
-      "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+  "miguri": "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+  "basicuri": "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
+  "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+  "database": "healthcare",
+  "collection": "member",
+  "username": "main_admin",
+  "password": "bugsyBoo",
+  "postgres_local": {
+    "host": "localhost",
+    "username": "bbadmin",
+    "password": "bugsyBoo",
+    "database": "healthcare",
+    "notes": "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+  },
+  "postgres": {
+    "host": "34.172.34.239",
+    "username": "postgres",
+    "password": "bugsyBoo!",
+    "database": "healthcare",
+    "notes": "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+  },
+  "redis_local": {
+    "host": "localhost"
+  },
+  "redis": {
+    "host": "10.213.30.107"
+  },
+  "version": "1.1",
+  "process_count": 4,
+  "batch_size": 2000,
+  "batches": 20,
+  "base_counter": 2000000,
+  "gcp_project_id": "bradybyrd-poc",
+  "gcp_dataset": "claims_warehouse",
+  "limitdata": {
+    "member": {
+      "path": "model-tables/member.csv",
+      "size": 10000,
+      "id_prefix": "M-",
+      "thumbnail": [{
+        "name": "recentClaims",
+        "coll": "claim",
+        "type": "many",
+        "query": "{}",
+        "find_query": "{\"patient_id\" : doc[\"member_id\"]}",
+        "fields": ["claim_id", "claimType", "claimStatus", "serviceEndDate", "attendingProvider_id", "placeOfService"]
+      }]
+    }
+  },
+  "data": {
+    "provider": {
+      "path": "model-tables/provider.csv",
+      "size": 2000,
+      "id_prefix": "P-"
     },
-    "postgres" : {
-      "host" : "34.172.34.239",
-      "username" : "postgres",
-      "password" : "bugsyBoo!",
-      "database" : "healthcare",
-      "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+    "member": {
+      "path": "model-tables/member.csv",
+      "size": 10000,
+      "id_prefix": "M-",
+      "thumbnail": [{
+        "name": "recentClaims",
+        "coll": "claim",
+        "type": "many",
+        "query": "{}",
+        "find_query": "{\"patient_id\" : doc[\"member_id\"]}",
+        "fields": ["claim_id", "claimType", "claimStatus", "serviceEndDate", "attendingProvider_id", "placeOfService"]
+      }]
     },
-    "redis_local" : {
-      "host" : "34.172.34.239",
-      "username" : "postgres",
-      "password" : "bugsyBoo!",
-      "database" : "healthcare",
-      "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+    "claim": {
+      "path": "model-tables/claim.csv",
+      "size": 50000,
+      "id_prefix": "C-",
+      "thumbnail": [{
+          "name": "attendingProvider",
+          "coll": "provider",
+          "type": "one",
+          "query": "{}",
+          "find_query": "{\"provider_id\" : doc[\"attendingProvider_id\"]}",
+          "fields": ["lastName", "firstName", "dateOfBirth", "gender", "nationalProviderIdentifier"]
+        },
+        {
+          "name": "patientMember",
+          "coll": "member",
+          "type": "one",
+          "query": "{}",
+          "find_query": "{\"member_id\" : doc[\"patient_id\"]}",
+          "fields": ["lastName", "firstName", "dateOfBirth", "gender", "Communication.0.phoneNumber"]
+        }
+      ]
+    }
+  },
+  "rxdata": {
+    "provider": {
+      "path": "model-tables/provider.csv",
+      "size": 50,
+      "id_prefix": "P-"
     },
-    "redis" : {
-      "host" : "34.172.34.239",
-      "username" : "postgres",
-      "password" : "bugsyBoo!",
-      "database" : "healthcare",
-      "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+    "member": {
+      "path": "model-tables/member.csv",
+      "size": 100,
+      "id_prefix": "M-",
+      "thumbnail": [{
+        "name": "recentClaims",
+        "coll": "claim",
+        "type": "many",
+        "query": "{}",
+        "find_query": "{\"patient_id\" : doc[\"member_id\"]}",
+        "fields": ["claim_id", "claimType", "claimStatus", "serviceEndDate", "attendingProvider_id", "placeOfService"]
+      }]
     },
-    "version" : "1.1",
-    "process_count" : 4,
-    "batch_size" : 2000,
-    "batches" : 20,
-    "base_counter" : 2000000,
-    "gcp_project_id" : "bradybyrd-poc",
-    "gcp_dataset" : "claims_warehouse",
-    "limitdata" : {
-      "member" : {"path" : "model-tables/member.csv", "size" : 10000, "id_prefix" : "M-", "thumbnail" : [
-          {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}
-        ]}
-    },
-    "data" : {
-      "provider" : {"path" : "model-tables/provider.csv", "size" : 2000, "id_prefix" : "P-"},
-      "member" : {"path" : "model-tables/member.csv", "size" : 10000, "id_prefix" : "M-", "thumbnail" : [
-          {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}
-        ]},
-      "claim" : {"path" : "model-tables/claim.csv", "size" : 50000, "id_prefix" : "C-", "thumbnail" : [
-          {"name" : "attendingProvider", "coll" : "provider", "type" : "one", "query" : "{}", "find_query" : "{\"provider_id\" : doc[\"attendingProvider_id\"]}", "fields" : ["lastName","firstName","dateOfBirth","gender","nationalProviderIdentifier"]},
-          {"name": "patientMember", "coll" : "member", "type" : "one", "query" : "{}", "find_query" : "{\"member_id\" : doc[\"patient_id\"]}", "fields" : ["lastName","firstName","dateOfBirth","gender","Communication.0.phoneNumber"]}
-        ]}
-    },
-    "rxdata" : {
-      "provider" : {"path" : "model-tables/provider.csv", "size" : 50, "id_prefix" : "P-"},
-      "member" : {"path" : "model-tables/member.csv", "size" : 100, "id_prefix" : "M-", "thumbnail" : [
-          {"name" : "recentClaims", "coll" : "claim", "type" : "many", "query" : "{}" , "find_query" : "{\"patient_id\" : doc[\"member_id\"]}", "fields" : ["claim_id","claimType","claimStatus","serviceEndDate","attendingProvider_id","placeOfService"]}
-        ]},
-      "claim" : {"path" : "model-tables/claim.csv", "size" : 500, "id_prefix" : "C-", "thumbnail" : [
-          {"name" : "attendingProvider", "coll" : "provider", "type" : "one", "query" : "{}", "find_query" : "{\"provider_id\" : doc[\"attendingProvider_id\"]}", "fields" : ["lastName","firstName","dateOfBirth","gender","nationalProviderIdentifier"]},
-          {"name": "patientMember", "coll" : "member", "type" : "one", "query" : "{}", "find_query" : "{\"member_id\" : doc[\"patient_id\"]}", "fields" : ["lastName","firstName","dateOfBirth","gender","Communication.0.phoneNumber"]}
-        ]}
+    "claim": {
+      "path": "model-tables/claim.csv",
+      "size": 500,
+      "id_prefix": "C-",
+      "thumbnail": [{
+          "name": "attendingProvider",
+          "coll": "provider",
+          "type": "one",
+          "query": "{}",
+          "find_query": "{\"provider_id\" : doc[\"attendingProvider_id\"]}",
+          "fields": ["lastName", "firstName", "dateOfBirth", "gender", "nationalProviderIdentifier"]
+        },
+        {
+          "name": "patientMember",
+          "coll": "member",
+          "type": "one",
+          "query": "{}",
+          "find_query": "{\"member_id\" : doc[\"patient_id\"]}",
+          "fields": ["lastName", "firstName", "dateOfBirth", "gender", "Communication.0.phoneNumber"]
+        }
+      ]
     }
   }
+}
