@@ -77,6 +77,33 @@ Common Relational Use Cases
 
 ssh -i ../../../servers/bradybyrd_mdb_key.pem ec2-user@34.207.253.18
 
+# ----------------------------------------------------------#
+#  Queries
+# 7/13/22
+select m.firstname, m.lastname, m.member_id, m.gender, ma.city, ma.state
+from member m
+left join (select member_id, city, state from member_address where member_id IN ('M-1000007','M-1000008','M-1000009','M-1000010') and name = 'Main') ma on ma.member_id = m.member_id
+where m.member_id IN ('M-1000007','M-1000008','M-1000009','M-1000010');
+
+
+select c.claim_id, c.claimstatus, c.claimtype, c.servicefromdate, m.firstname, m.lastname, m.dateofbirth, m.gender, cl.*, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate, 
+op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate, 
+rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate, 
+opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate, ma.city as city, ma.state as us_state, 
+mc.phonenumber as phone, mc.emailaddress as email, me.employeeidentificationnumber as EIN
+from claim c  
+INNER JOIN member m on m.member_id = c.patient_id 
+LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id 
+INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id
+INNER JOIN provider op on cl.orderingprovider_id = op.provider_id 
+INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id 
+INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id 
+LEFT JOIN (select member_id, city, state from member_address where member_id IN ('M-1000007','M-1000008','M-1000009','M-1000010') and name = 'Main') ma on ma.member_id = m.member_id 
+INNER JOIN (select * from member_communication where emailtype = 'Work' and member_id IN ('M-1000007','M-1000008','M-1000009','M-1000010') limit 1) mc on mc.member_id = m.member_id
+LEFT JOIN (select member_id, usage, language from member_languages where member_id IN ('M-1000007','M-1000008','M-1000009','M-1000010') and usage = 'Native') ml on ml.member_id = m.member_id 
+LEFT JOIN (select member_id, employeeidentificationnumber from member_employment where member_id IN ('M-1000007','M-1000008','M-1000009','M-1000010') limit 1) me on me.member_id = m.member_id
+WHERE c.patient_id IN ('M-1000007','M-1000008','M-1000009','M-1000010')
+
 
 # ----------------------------------------------------------#
 #  Queries
