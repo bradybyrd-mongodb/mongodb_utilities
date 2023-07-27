@@ -1,6 +1,46 @@
 # ------------------------------------------------------------- # 
 #   Demo Notes - 5/24/23
 
+Updaters:
+- db.claims_raw.findOne({source_table: "claim_claimline"})
+- db.claims_raw.updateOne({source_table: "claim_claimline", claim_claimline_id: "CL-2100243"},{$set: {quantity: "bb_change0"}})
+- db.claims_raw.find({source_table: "claim"})
+- db.claims_raw.updateOne({source_table: "claim", claim_id: "C-2150465"},{$set: {servicefacility_id: "bb_change0"}})
+- db.claims_raw.updateMany({source_table: "claim_claimline", claim_id: "C-2150465"},{$unset: {processed_at: ""}})
+
+Provider:
+    {attendingprovider_id: {$in: ["P-2000017","P-2000044","P-2000048"]}}
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 {"_id":"646cdeee4429f84304a6b600",
