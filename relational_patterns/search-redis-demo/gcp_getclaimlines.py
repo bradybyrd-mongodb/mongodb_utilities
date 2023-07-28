@@ -1,9 +1,13 @@
 import json
 import logging
-from ssl import SSLSocket
 import sys
 import time
 from collections import OrderedDict, defaultdict
+from ssl import SSLSocket
+import datetime
+from faker import Faker
+from random import randint
+
 import psycopg2
 import redis
 from bson.json_util import dumps
@@ -13,8 +17,8 @@ from pymongo import MongoClient
 from bbutil import Util
 
 settings_file = "../relations_settings.json"
-
 logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("faker").setLevel(logging.ERROR)
 
 
 def pg_connection(type="postgres", sdb="none"):
@@ -33,11 +37,29 @@ def redis_connection(type="redis_local"):
     return r
 
 
+def mongodb_connection(type="miguri", details={}):
+    mdb_conn = settings[type]
+    username = settings["username"]
+    password = settings["password"]
+    if "username" in details:
+        username = details["username"]
+        password = details["password"]
+    mdb_conn = mdb_conn.replace("//", f"//{username}:{password}@")
+    logging.debug(f"Connecting: {mdb_conn}")
+    if "readPreference" in details:
+        client = MongoClient(
+            mdb_conn, readPreference=details["readPreference"]
+        )  # &w=majority
+    else:
+        client = MongoClient(mdb_conn)
+    return client
+
+
 def get_claims_redis(r, key):
     try:
         r_data = r.get(key)
         if r_data is not None:
-            json.loads(r_data)
+            r_data = json.loads(r_data)
         return r_data
     except Exception as error:
         logging.error(f" {error}")
@@ -55,6 +77,7 @@ def load_claims_redis(r, key, data):
 
 
 def get_claims_sql(conn, query, patient_id, r):
+    start = datetime.datetime.now()
     key = query + ":" + patient_id
     SQL = ""
     query_result = get_claims_redis(r, key)
@@ -104,6 +127,10 @@ def get_claims_sql(conn, query, patient_id, r):
         ids = []
         for row in query_result["data"]:
             print(row)
+        logging.debug(f"records fetched from psql")
+
+    elapsed = datetime.datetime.now() - start
+    logging.debug(f"query took: {elapsed.microseconds / 1000} ms")
 
 
 def newsql_query(sql, conn):
@@ -117,6 +144,75 @@ def newsql_query(sql, conn):
     except psycopg2.DatabaseError as err:
         print(f"{sql} - {err}")
     cur.close()
+
+
+def generate_payments(num):
+    payment = [None] * num
+    faker = Faker()
+    for i in range(0, num):
+        payment[i] = {}
+        payment[i]["ApprovedAmount"] = randint(1, 10000)
+        payment[i]["CoinsuranceAmount"] = randint(1, 10000)
+        payment[i]["CopayAmount"] = randint(1, 1000)
+        payment[i]["LatepaymentInterest"] = randint(1, 100)
+        payment[i]["PaidAmount"] = randint(1, 100)
+        payment[i]["PaidDate"] = faker.date()
+        payment[i]["PatientPaidAmount"] = randint(1, 100)
+        payment[i]["PatientResponsibilityAmount"] = randint(1, 100)
+        payment[i]["PayerPaidAmount"] = randint(1, 100)
+    logging.debug(f"Payment objects generated")
+    return payment
+
+
+def transaction_mongodb(num_payment):
+    client = mongodb_connection()
+    db = "healthcare"
+    claim = client[db]["claim"]
+    member = client[db]["member"]
+    payment = generate_payments(num_payment)
+    start = datetime.datetime.now()
+    for i in range(0, num_payment):
+        claim_id = "C-100000" + str(i)
+        print(claim_id)
+        with client.start_session() as session:
+            logging.debug(f"Transaction started")
+            logging.debug(f"Transaction started for claim {claim_id}")
+            with session.start_transaction():
+                claim_update = claim.find_one_and_update(
+                    {"Claim_id": claim_id},
+                    {"$addToSet": {"Payment": payment[i]}},
+                    projection={"Patient_id": 1},
+                    session=session,
+                )
+                # if claim_update.acknowledged:
+                #     logging.debug(f"Claim updated")
+                # member_id = claim.find_one({"Claim_id": claim_id})["Patient_id"]
+                member_id = claim_update["Patient_id"]
+                member.update_one(
+                    {"Member_id": member_id},
+                    {"$inc": {"total_payments": payment[i]["PatientPaidAmount"]}},
+                    session=session,
+                )
+                elapsed = datetime.datetime.now() - start
+                logging.debug(f"Transaction took: {elapsed.microseconds / 1000} ms")
+                logging.debug(f"Transaction completed")
+
+
+def transaction_postgres(num_payment):
+    payment = generate_payments(num_payment)
+    # start = datetime.datetime.now()
+    # for i in range(0, num_payment):
+    #     print(payment[i])
+    #     # sql = """BEGIN;
+    #     #         INSERT INTO public.claim_payment(
+    #     #         id, claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)
+    #     #         VALUES ('', claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at);
+    #     #         COMMIT;""".format(
+    #     #     claim_payment_id = payment[""], claim_id = , approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at
+    #     #     payment="variables"
+    #     # )
+    #     # print(sql)
+    return 0
 
 
 if __name__ == "__main__":
@@ -151,17 +247,13 @@ if __name__ == "__main__":
         else:
             get_claims_sql(conn, ARGS["query"], ARGS["patient_id"], r)
 
-    # elif ARGS["action"] == "get_claimlines_mdb":
-    #     get_claimlines_mdb()
+    elif ARGS["action"] == "transaction_mongodb":
+        transaction_mongodb(5)
+    elif ARGS["action"] == "transaction_postgres":
+        transaction_postgres(1)
     else:
         print(f'{ARGS["action"]} not found')
 
     conn.close()
     r.close()
     # conn.close()
-
-    #  start = datetime.datetime.now()
-    #     coll = item.split("_")[0]
-    #     ans = mdb[coll].aggregate(agg)
-    #     elapsed = datetime.datetime.now() - start
-    #     bb.logit(f'{item} - result: {ans.first["numFound"]}, elapsed: {elapsed.seconds}')
