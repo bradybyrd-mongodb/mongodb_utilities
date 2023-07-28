@@ -49,7 +49,9 @@ Member.Guardian().Address.type,String,Optional,"fake.random_element(('Main', 'Su
 Member.Guardian().Address.effectiveDate,date,Optional,fake.past_datetime(),Random,,,,Approved,,,,7.21
 Member.Guardian().Address.endDate,date,Optional,"fake.future_datetime(end_date=""+3y"")",Random,,,,Approved,,,,7.21
 Member.Guardian().Address.wheelchairAccess,boolean,Optional,fake.boolean(chance_of_getting_true=75),"True, False",,,,Approved,,,,7.21
-Member.EffectiveDate,Date,Optional,fake.past_datetime(),Random,,effective date for this instance of the member data,,Approved,,,,7.21
+Member.Payment().claim_id,String ,Optional,"fake.random_int(min=40, max=1000)",Random,,,,Approved,,,,7.21
+Member.Payment().payment_date,date ,Optional,fake.past_datetime(),Random,,,,Approved,,,,7.21
+Member.Payment().amount,double ,Optional,"fake.random_int(min=40, max=1000)",Random,,,,Approved,,,,7.21Member.EffectiveDate,Date,Optional,fake.past_datetime(),Random,,effective date for this instance of the member data,,Approved,,,,7.21
 Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+10y"")",Random,,end date for this instance of the member data,,Approved,,,,7.21
 Member.SitusState,String,Optional,"fake.state_abbr()",Random,,Member situs state,,Approved,,,,7.21
 Member.BankAccount.BankName,String ,Optional,"fake.company()",Random,,"Only Primary Bank Account Recommend name change from Bank Account Information to Bank Acccount. This is not a change to Cigna",,Approved,,,,7.21
@@ -60,3 +62,5 @@ Member.BankAccount.BankRoutingNumber,String ,Optional,"fake.iban()",Random,,,,Ap
 Member.Employment().EmployeeIdentificationNumber,String,Optional,"fake.ssn()",Random,,"1 Member can have many Employments
 Member.EmployeeIdentificationNumber",double,Optional,"fake.random_int(min=1000000, max=100000000)",Approved,,,,7.21
 Member.Weight,Integer,Optional,"fake.random_int(min=1, max=400)",1 - 400,,Member weight,,Approved,,,,7.21
+Member.PlanYear,Integer,Optional,"fake.random_int(min=2023, max=2023)",0,,,,,,,,7.21
+Member.TotalPayments,double,Optional,"fake.random_int(min=20, max=1200)",,,,,,,,,7.21
