@@ -7,6 +7,7 @@ from ssl import SSLSocket
 import datetime
 from faker import Faker
 from random import randint
+import random
 
 import psycopg2
 import redis
@@ -139,7 +140,8 @@ def newsql_query(sql, conn):
         cur.execute(sql)
         row_count = cur.rowcount
         print(f"{row_count} records")
-        result = {"num_records": row_count, "data": cur.fetchall()}
+        rows = cur.fetchall()
+        result = {"num_records": row_count, "data": rows}
         return result
     except psycopg2.DatabaseError as err:
         print(f"{sql} - {err}")
@@ -164,18 +166,27 @@ def generate_payments(num):
     return payment
 
 
+def sql_execute(sql):
+    cur = conn.cursor()
+    try:
+        sql = cur.execute(sql)
+    except psycopg2.DatabaseError as err:
+        print(f"{sql} - {err}")
+    cur.close()
+
+
 def transaction_mongodb(num_payment):
     client = mongodb_connection()
     db = "healthcare"
     claim = client[db]["claim"]
     member = client[db]["member"]
     payment = generate_payments(num_payment)
-    start = datetime.datetime.now()
+    pipe = [{"$sample": {"size": num_payment}}, {"$project": {"Claim_id": 1, "_id": 0}}]
+    claim_ids = list(claim.aggregate(pipe))
     for i in range(0, num_payment):
-        claim_id = "C-100000" + str(i)
-        print(claim_id)
+        claim_id = claim_ids[i]["Claim_id"]
         with client.start_session() as session:
-            logging.debug(f"Transaction started")
+            start = datetime.datetime.now()
             logging.debug(f"Transaction started for claim {claim_id}")
             with session.start_transaction():
                 claim_update = claim.find_one_and_update(
@@ -184,15 +195,18 @@ def transaction_mongodb(num_payment):
                     projection={"Patient_id": 1},
                     session=session,
                 )
-                # if claim_update.acknowledged:
-                #     logging.debug(f"Claim updated")
-                # member_id = claim.find_one({"Claim_id": claim_id})["Patient_id"]
                 member_id = claim_update["Patient_id"]
                 member.update_one(
                     {"Member_id": member_id},
                     {"$inc": {"total_payments": payment[i]["PatientPaidAmount"]}},
                     session=session,
                 )
+                print(f'Enter "yes" to commit or anything to abort transaction')
+                abort = input()
+                if abort != "yes":
+                    logging.debug(f"Transaction aborted: {abort}")
+                    raise Exception("Operation aborted")
+                # switch to abort transaction.
                 elapsed = datetime.datetime.now() - start
                 logging.debug(f"Transaction took: {elapsed.microseconds / 1000} ms")
                 logging.debug(f"Transaction completed")
@@ -200,19 +214,96 @@ def transaction_mongodb(num_payment):
 
 def transaction_postgres(num_payment):
     payment = generate_payments(num_payment)
-    # start = datetime.datetime.now()
-    # for i in range(0, num_payment):
-    #     print(payment[i])
-    #     # sql = """BEGIN;
-    #     #         INSERT INTO public.claim_payment(
-    #     #         id, claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)
-    #     #         VALUES ('', claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at);
-    #     #         COMMIT;""".format(
-    #     #     claim_payment_id = payment[""], claim_id = , approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at
-    #     #     payment="variables"
-    #     # )
-    #     # print(sql)
-    return 0
+    conn = pg_connection()
+    cur = conn.cursor()
+
+    SQL_RANDOM = (
+        "select claim_id, patient_id from claim order by random() limit {};".format(
+            num_payment
+        )
+    )
+    claim_ids = newsql_query(SQL_RANDOM, conn)
+    for i in range(0, num_payment):
+        start = datetime.datetime.now()
+        claim_id = claim_ids["data"][i][0]
+        member_id = claim_ids["data"][i][1]
+        logging.debug(f"SQL Transaction started for claim {claim_id}")
+        # cdate = datetime.datetime.now()
+        pmt = {
+            "claim_id": claim_id,
+            "claim_payment_id": "",
+            "approvedamount": 0,
+            "coinsuranceamount": 0,
+            "paidamount": 0,
+            # "paiddate": cdate,
+            "patientresponsibilityamount": 0,
+        }
+        pmtid = 3000000
+        year = 2023
+        month = 7 - random.randint(1, 6)
+        day = random.randint(1, 28)
+        idnum = random.randint(1000000, 1050000)
+        pmt["claim_payment_id"] = f"CP-{pmtid}"
+        pmt["approvedamouth"] = random.randint(20, 100)
+        pmt["paidamount"] = random.randint(20, 100)
+        pmt["paiddate"] = datetime.datetime(year, month, day, 10, 45)
+        # claim payment + insert new payment claim
+        SQL_INSERT = (
+            f"INSERT INTO claim_payment(claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)"
+            f"VALUES ('{pmt['claim_payment_id']}', '{pmt['claim_id']}', {payment[i]['ApprovedAmount']}, {payment[i]['CoinsuranceAmount']}, {payment[i]['CopayAmount']}, {payment[i]['LatepaymentInterest']}, {payment[i]['PaidAmount']}, DEFAULT, {payment[i]['PatientPaidAmount']}, {payment[i]['PatientResponsibilityAmount']}, {payment[i]['PayerPaidAmount']}, DEFAULT );"
+        )
+
+        SQL_INSERT2 = """INSERT INTO claim_payment(
+                        claim_payment_id, claim_id, approvedamount,
+                        coinsuranceamount, copayamount, latepaymentinterest,
+                        paidamount, paiddate, patientpaidamount, patientresponsibilityamount,
+                        payerpaidamount, modified_at)
+                        VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');
+                        """.format(
+            pmt["claim_payment_id"],
+            pmt["claim_id"],
+            payment[i]["ApprovedAmount"],
+            payment[i]["CoinsuranceAmount"],
+            payment[i]["CopayAmount"],
+            payment[i]["LatepaymentInterest"],
+            payment[i]["PaidAmount"],
+            payment[i]["PaidDate"],
+            payment[i]["PatientPaidAmount"],
+            payment[i]["PatientResponsibilityAmount"],
+            payment[i]["PayerPaidAmount"],
+            datetime.datetime.now(),
+        )
+        # claim + update total payment claim
+        SQL_UPDATE_CLAIM = (
+            f"UPDATE public.claim "
+            f'SET totalpayments= totalpayments + {payment[i]["PatientPaidAmount"]} '
+            f"WHERE claim_id = {claim_id};"
+        )
+
+        # members + update total payment
+
+        SQL_UPDATE_MEMBER = (
+            f"UPDATE public.member "
+            f'SET totalpayments= totalpayments + {payment[i]["PatientPaidAmount"]} '
+            f"WHERE member_id = {member_id};"
+        )
+        # print(SQL_UPDATE_MEMBER)
+
+        SQL_TRANSACTION = (
+            f"BEGIN;"
+            f"{SQL_INSERT} "
+            f"{SQL_UPDATE_CLAIM} "
+            f"{SQL_UPDATE_MEMBER} "
+            f"COMMIT;"
+        )
+
+        print(SQL_INSERT)
+        sql_execute(SQL_INSERT)
+        cur.execute(SQL_INSERT2)
+
+        elapsed = datetime.datetime.now() - start
+        logging.debug(f"Transaction took: {elapsed.microseconds / 1000} ms")
+        logging.debug(f"Transaction completed")
 
 
 if __name__ == "__main__":
@@ -248,7 +339,7 @@ if __name__ == "__main__":
             get_claims_sql(conn, ARGS["query"], ARGS["patient_id"], r)
 
     elif ARGS["action"] == "transaction_mongodb":
-        transaction_mongodb(5)
+        transaction_mongodb(1)
     elif ARGS["action"] == "transaction_postgres":
         transaction_postgres(1)
     else:
