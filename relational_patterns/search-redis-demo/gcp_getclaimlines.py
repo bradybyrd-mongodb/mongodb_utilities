@@ -251,42 +251,22 @@ def transaction_postgres(num_payment):
         # claim payment + insert new payment claim
         SQL_INSERT = (
             f"INSERT INTO claim_payment(claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)"
-            f"VALUES ('{pmt['claim_payment_id']}', '{pmt['claim_id']}', {payment[i]['ApprovedAmount']}, {payment[i]['CoinsuranceAmount']}, {payment[i]['CopayAmount']}, {payment[i]['LatepaymentInterest']}, {payment[i]['PaidAmount']}, DEFAULT, {payment[i]['PatientPaidAmount']}, {payment[i]['PatientResponsibilityAmount']}, {payment[i]['PayerPaidAmount']}, DEFAULT );"
+            f"VALUES ('{pmt['claim_payment_id']}', '{pmt['claim_id']}', {payment[i]['ApprovedAmount']}, {payment[i]['CoinsuranceAmount']}, {payment[i]['CopayAmount']}, {payment[i]['LatepaymentInterest']}, {payment[i]['PaidAmount']}, '{payment[i]['PaidDate']}', {payment[i]['PatientPaidAmount']}, {payment[i]['PatientResponsibilityAmount']}, {payment[i]['PayerPaidAmount']}, now() );"
         )
 
-        SQL_INSERT2 = """INSERT INTO claim_payment(
-                        claim_payment_id, claim_id, approvedamount,
-                        coinsuranceamount, copayamount, latepaymentinterest,
-                        paidamount, paiddate, patientpaidamount, patientresponsibilityamount,
-                        payerpaidamount, modified_at)
-                        VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');
-                        """.format(
-            pmt["claim_payment_id"],
-            pmt["claim_id"],
-            payment[i]["ApprovedAmount"],
-            payment[i]["CoinsuranceAmount"],
-            payment[i]["CopayAmount"],
-            payment[i]["LatepaymentInterest"],
-            payment[i]["PaidAmount"],
-            payment[i]["PaidDate"],
-            payment[i]["PatientPaidAmount"],
-            payment[i]["PatientResponsibilityAmount"],
-            payment[i]["PayerPaidAmount"],
-            datetime.datetime.now(),
-        )
         # claim + update total payment claim
         SQL_UPDATE_CLAIM = (
             f"UPDATE public.claim "
-            f'SET totalpayments= totalpayments + {payment[i]["PatientPaidAmount"]} '
-            f"WHERE claim_id = {claim_id};"
+            f'SET totalpayments=  COALESCE(totalpayments ,0)  + {payment[i]["PatientPaidAmount"]} '
+            f"WHERE claim_id = '{claim_id}';"
         )
 
         # members + update total payment
 
         SQL_UPDATE_MEMBER = (
             f"UPDATE public.member "
-            f'SET totalpayments= totalpayments + {payment[i]["PatientPaidAmount"]} '
-            f"WHERE member_id = {member_id};"
+            f'SET totalpayments = COALESCE(totalpayments ,0) + {payment[i]["PatientPaidAmount"]} '
+            f"WHERE member_id = '{member_id}';"
         )
         # print(SQL_UPDATE_MEMBER)
 
@@ -298,9 +278,10 @@ def transaction_postgres(num_payment):
             f"COMMIT;"
         )
 
-        print(SQL_INSERT)
-        sql_execute(SQL_INSERT)
-        cur.execute(SQL_INSERT2)
+        print(SQL_TRANSACTION)
+        # sql_execute(SQL_INSERT)
+        cur.execute(SQL_TRANSACTION)
+        conn.commit()
 
         elapsed = datetime.datetime.now() - start
         logging.debug(f"Transaction took: {elapsed.microseconds / 1000} ms")
