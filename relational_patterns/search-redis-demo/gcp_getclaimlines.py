@@ -16,6 +16,8 @@ from pymongo import MongoClient
 
 from bbutil import Util
 
+faker = Faker()
+    
 settings_file = "../relations_settings.json"
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("faker").setLevel(logging.ERROR)
@@ -147,21 +149,20 @@ def newsql_query(sql, conn):
 
 
 def generate_payments(num):
-    payment = [None] * num
-    faker = Faker()
+    payments = [None] * num
     for i in range(0, num):
-        payment[i] = {}
-        payment[i]["ApprovedAmount"] = randint(1, 10000)
-        payment[i]["CoinsuranceAmount"] = randint(1, 10000)
-        payment[i]["CopayAmount"] = randint(1, 1000)
-        payment[i]["LatepaymentInterest"] = randint(1, 100)
-        payment[i]["PaidAmount"] = randint(1, 100)
-        payment[i]["PaidDate"] = faker.date()
-        payment[i]["PatientPaidAmount"] = randint(1, 100)
-        payment[i]["PatientResponsibilityAmount"] = randint(1, 100)
-        payment[i]["PayerPaidAmount"] = randint(1, 100)
+        payments[i] = {}
+        payments[i]["ApprovedAmount"] = randint(1, 10000)
+        payments[i]["CoinsuranceAmount"] = randint(1, 10000)
+        payments[i]["CopayAmount"] = randint(1, 1000)
+        payments[i]["LatepaymentInterest"] = randint(1, 100)
+        payments[i]["PaidAmount"] = randint(1, 100)
+        payments[i]["PaidDate"] = faker.date()
+        payments[i]["PatientPaidAmount"] = randint(1, 100)
+        payments[i]["PatientResponsibilityAmount"] = randint(1, 100)
+        payments[i]["PayerPaidAmount"] = randint(1, 100)
     logging.debug(f"Payment objects generated")
-    return payment
+    return payments
 
 
 def transaction_mongodb(num_payment):
@@ -199,19 +200,20 @@ def transaction_mongodb(num_payment):
 
 
 def transaction_postgres(num_payment):
-    payment = generate_payments(num_payment)
-    # start = datetime.datetime.now()
-    # for i in range(0, num_payment):
-    #     print(payment[i])
-    #     # sql = """BEGIN;
-    #     #         INSERT INTO public.claim_payment(
-    #     #         id, claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)
-    #     #         VALUES ('', claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at);
-    #     #         COMMIT;""".format(
-    #     #     claim_payment_id = payment[""], claim_id = , approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at
-    #     #     payment="variables"
-    #     # )
-    #     # print(sql)
+    claim_ids = newsql_query(f"select claim_id from claim order by random() limit {num_payment}")
+    payments = generate_payments(num_payment)
+    cp_id = 1000000
+    start = datetime.datetime.now()
+    for i in range(0, num_payment):
+        #print(payment[i])
+        sql = """
+                INSERT INTO public.claim_payment(claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)
+                VALUES ('{claim_payment_id}'}, '{claim_id}', {approvedamount}, {coinsuranceamount}, {copayamount}, {latepaymentinterest}, {paidamount}, {paiddate}, {patientpaidamount}, {patientresponsibilityamount}, {payerpaidamount}, {modified_at});
+                COMMIT;""".format(1
+            claim_payment_id = f'CP-{cp_id}', claim_id = , approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at
+            payment="variables"
+        )
+        print(sql)
     return 0
 
 
