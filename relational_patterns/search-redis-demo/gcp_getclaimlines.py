@@ -17,6 +17,8 @@ from pymongo import MongoClient
 
 from bbutil import Util
 
+faker = Faker()
+
 settings_file = "../relations_settings.json"
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("faker").setLevel(logging.ERROR)
@@ -149,21 +151,20 @@ def newsql_query(sql, conn):
 
 
 def generate_payments(num):
-    payment = [None] * num
-    faker = Faker()
+    payments = [None] * num
     for i in range(0, num):
-        payment[i] = {}
-        payment[i]["ApprovedAmount"] = randint(1, 10000)
-        payment[i]["CoinsuranceAmount"] = randint(1, 10000)
-        payment[i]["CopayAmount"] = randint(1, 1000)
-        payment[i]["LatepaymentInterest"] = randint(1, 100)
-        payment[i]["PaidAmount"] = randint(1, 100)
-        payment[i]["PaidDate"] = faker.date()
-        payment[i]["PatientPaidAmount"] = randint(1, 100)
-        payment[i]["PatientResponsibilityAmount"] = randint(1, 100)
-        payment[i]["PayerPaidAmount"] = randint(1, 100)
+        payments[i] = {}
+        payments[i]["ApprovedAmount"] = randint(1, 10000)
+        payments[i]["CoinsuranceAmount"] = randint(1, 10000)
+        payments[i]["CopayAmount"] = randint(1, 1000)
+        payments[i]["LatepaymentInterest"] = randint(1, 100)
+        payments[i]["PaidAmount"] = randint(1, 100)
+        payments[i]["PaidDate"] = faker.date()
+        payments[i]["PatientPaidAmount"] = randint(1, 100)
+        payments[i]["PatientResponsibilityAmount"] = randint(1, 100)
+        payments[i]["PayerPaidAmount"] = randint(1, 100)
     logging.debug(f"Payment objects generated")
-    return payment
+    return payments
 
 
 def sql_execute(sql):
