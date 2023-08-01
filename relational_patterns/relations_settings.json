@@ -18,7 +18,7 @@
     "username": "postgres",
     "password": "bugsyBoo!",
     "database": "healthcare",
-    "notes": "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+    "notes": "GCP CloudSQL Database"
   },
   "redis_local": {
     "host": "localhost"
@@ -26,11 +26,11 @@
   "redis": {
     "host": "10.213.30.107"
   },
-  "version": "1.1",
+  "version": "2.0",
   "process_count": 4,
   "batch_size": 2000,
   "batches": 20,
-  "base_counter": 2000000,
+  "base_counter": 2500000,
   "gcp_project_id": "bradybyrd-poc",
   "gcp_dataset": "claims_warehouse",
   "limitdata": {

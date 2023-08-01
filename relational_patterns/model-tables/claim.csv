@@ -1,54 +1,54 @@
-Resource.Property,Property Type,Optional / Required,Generator,,,,,,,,
-Claim.claim_id,String,,"IDGEN.get(""C-"")",,,,,,,,
-Claim.attendingProvider_id,string,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimStatus,String,,"str(fake.random_int(min=1, max=784))",,,,,,,,
-Claim.claimStatusDate,Date,,fake.past_datetime(),,,,,,,,
-Claim.claimType,string,,"fake.random_element(('Dental', 'Medical', 'Pharmacy', 'Vision'))",,,,,,,,
-Claim.diagnosisCode().code,String,,"str(fake.random_int(min=1, max=50000))",,,,,,,,
-Claim.lastXRayDate,Date,,fake.past_datetime(),,,,,,,,
-Claim.notes().claimNoteText,String,,"""""",,,,,,,,
-Claim.patient_id,String,,"IDGEN.random_value(""M-"")",,,,,,,,
-Claim.payment().approvedAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.payment().coinsuranceAmount,double,,"fake.random_int(min=0, max=1000)",,,,,,,,
-Claim.payment().copayAmount,double,,"fake.random_int(min=0, max=100)",,,,,,,,
-Claim.payment().latepaymentInterest,double,,"fake.random_int(min=0, max=100)",,,,,,,,
-Claim.payment().paidAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.payment().paidDate,Date,,fake.past_datetime(),,,,,,,,
-Claim.payment().patientPaidAmount,double,,"fake.random_int(min=0, max=1000)",,,,,,,,
-Claim.payment().patientResponsibilityAmount,double,,"fake.random_int(min=0, max=1000)",,,,,,,,
-Claim.payment().payerPaidAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.placeOfService,String,,"fake.random_element(('Pharmacy', 'Telehhealth', 'School', 'Homeless Shelter', 'Indian Health', 'Correctional Facility', 'Office', 'Home', 'Assisted Living Facility', 'Group Home', 'Mobile Unit', 'Walk-In Retail Health Clinic', 'Worksite', 'Urgent Care Facility', 'Unassigned', 'Inpatient Hospital', 'Emergency Room', 'Birthing Center', 'Military Treatment Facility', 'Nursing Facility', 'Hospice', 'Psychiatric Facility', 'Community Mental Health', 'Residential Substance Abuse Treatment Facility', 'Public Health Clinic', 'Independant Laboratory', 'Other Place of Service'))",,,,,,,,
-Claim.principalDiagnosis,String,,"str(fake.random_int(min=1, max=50000))",,,,,,,,
-Claim.priorAuthorization,boolean,,fake.boolean(),,,,,,,,
-Claim.receivedDate,Date,,fake.past_datetime(),,,,,,,,
-Claim.renderingProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.serviceEndDate,Date,,fake.future_datetime(),,,,,,,,
-Claim.serviceFacility_id,String,,"""P-"" + str(fake.random_int(min=1, max=800000))",,,,,,,,
-Claim.serviceFromDate,Date,,fake.past_datetime(),,,,,,,,
-Claim.subscriber_id,String,,"""M-"" + str(fake.random_int(min=1, max=85000))",,,,,,,,
-Claim.supervisingProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimLine().adjudicationDate,Date,,fake.past_datetime(),,,,,,,,
-Claim.claimLine().attendingProvider_id,string,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimLine().diagnosiscodes().diagnosisCode,String,,"str(fake.random_int(min=1, max=50000))",,,,,,,,
-Claim.claimLine().operatingProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimLine().orderingProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimLine().otherOperatingProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimLine().payment.allowedAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.claimLine().payment.approvedAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.claimLine().payment.coinsuranceAmount,double,,"fake.random_int(min=0, max=1000)",,,,,,,,
-Claim.claimLine().payment.copayAmount,double,,"fake.random_int(min=0, max=100)",,,,,,,,
-Claim.claimLine().payment.deductibleAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.claimLine().payment.paidAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.claimLine().payment.paidDate,Date,,fake.future_datetime(),,,,,,,,
-Claim.claimLine().payment.patientPaidAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.claimLine().payment.patientResponsibilityAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.claimLine().payment.payerPaidAmount,double,,"fake.random_int(min=0, max=10000)",,,,,,,,
-Claim.claimLine().placeOfService,String,,"fake.random_element(('Pharmacy', 'Telehhealth', 'School', 'Homeless Shelter', 'Indian Health', 'Correctional Facility', 'Office', 'Home', 'Assisted Living Facility', 'Group Home', 'Mobile Unit', 'Walk-In Retail Health Clinic', 'Worksite', 'Urgent Care Facility', 'Unassigned', 'Inpatient Hospital', 'Emergency Room', 'Birthing Center', 'Military Treatment Facility', 'Nursing Facility', 'Hospice', 'Psychiatric Facility', 'Community Mental Health', 'Residential Substance Abuse Treatment Facility', 'Public Health Clinic', 'Independant Laboratory', 'Other Place of Service'))",,,,,,,,
-Claim.claimLine().procedureCode,String,,"str(fake.random_int(min=0, max=20000))",,,,,,,,
-Claim.claimLine().quantity,string,,"str(fake.random_int(min=0, max=100))",,,,,,,,
-Claim.claimLine().referringProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimLine().renderingProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimLine().serviceEndDate,Date,,fake.future_datetime(),,,,,,,,
-Claim.claimLine().serviceFromDate,Date,,fake.past_datetime(),,,,,,,,
-Claim.claimLine().supervisingProvider_id,String,,"IDGEN.random_value(""P-"")",,,,,,,,
-Claim.claimLine().unit,String,,"fake.random_element(('Each', 'Days', 'Prints', 'Miles'))",,,,,,,,
+Resource.Property,Property Type,Optional / Required,Generator,Sample Data
+Claim.claim_id,String,,"IDGEN.get(""C-"")","C-101"
+Claim.attendingProvider_id,string,,"IDGEN.random_value(""P-"")","P-101"
+Claim.claimStatus,String,,"str(fake.random_int(min=1, max=784))",0
+Claim.claimStatusDate,Date,,fake.past_datetime(),0
+Claim.claimType,string,,"fake.random_element(('Dental', 'Medical', 'Pharmacy', 'Vision'))",0
+Claim.diagnosisCode().code,String,,"str(fake.random_int(min=1, max=50000))",0
+Claim.lastXRayDate,Date,,fake.past_datetime(),0
+Claim.notes().claimNoteText,String,,"""""",0
+Claim.patient_id,String,,"IDGEN.random_value(""M-"")",
+Claim.payment().approvedAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.payment().coinsuranceAmount,double,,"fake.random_int(min=0, max=1000)",0
+Claim.payment().copayAmount,double,,"fake.random_int(min=0, max=100)",0
+Claim.payment().latepaymentInterest,double,,"fake.random_int(min=0, max=100)",0
+Claim.payment().paidAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.payment().paidDate,Date,,fake.past_datetime(),0
+Claim.payment().patientPaidAmount,double,,"fake.random_int(min=0, max=1000)",0
+Claim.payment().patientResponsibilityAmount,double,,"fake.random_int(min=0, max=1000)",0
+Claim.payment().payerPaidAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.placeOfService,String,,"fake.random_element(('Pharmacy', 'Telehhealth', 'School', 'Homeless Shelter', 'Indian Health', 'Correctional Facility', 'Office', 'Home', 'Assisted Living Facility', 'Group Home', 'Mobile Unit', 'Walk-In Retail Health Clinic', 'Worksite', 'Urgent Care Facility', 'Unassigned', 'Inpatient Hospital', 'Emergency Room', 'Birthing Center', 'Military Treatment Facility', 'Nursing Facility', 'Hospice', 'Psychiatric Facility', 'Community Mental Health', 'Residential Substance Abuse Treatment Facility', 'Public Health Clinic', 'Independant Laboratory', 'Other Place of Service'))",""
+Claim.principalDiagnosis,String,,"str(fake.random_int(min=1, max=50000))",0
+Claim.priorAuthorization,boolean,,fake.boolean(),0
+Claim.receivedDate,Date,,fake.past_datetime(),0
+Claim.renderingProvider_id,String,,"IDGEN.random_value(""P-"")",0
+Claim.serviceEndDate,Date,,fake.future_datetime(),0
+Claim.serviceFacility_id,String,,"""P-"" + str(fake.random_int(min=1, max=800000))",0
+Claim.serviceFromDate,Date,,fake.past_datetime(),0
+Claim.subscriber_id,String,,"""M-"" + str(fake.random_int(min=1, max=85000))",0
+Claim.supervisingProvider_id,String,,"IDGEN.random_value(""P-"")",0
+Claim.claimLine().adjudicationDate,Date,,fake.past_datetime(),0
+Claim.claimLine().attendingProvider_id,string,,"IDGEN.random_value(""P-"")",0
+Claim.claimLine().diagnosiscodes().diagnosisCode,String,,"str(fake.random_int(min=1, max=50000))",0
+Claim.claimLine().operatingProvider_id,String,,"IDGEN.random_value(""P-"")",0
+Claim.claimLine().orderingProvider_id,String,,"IDGEN.random_value(""P-"")",0
+Claim.claimLine().otherOperatingProvider_id,String,,"IDGEN.random_value(""P-"")",0
+Claim.claimLine().payment.allowedAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.claimLine().payment.approvedAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.claimLine().payment.coinsuranceAmount,double,,"fake.random_int(min=0, max=1000)",0
+Claim.claimLine().payment.copayAmount,double,,"fake.random_int(min=0, max=100)",0
+Claim.claimLine().payment.deductibleAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.claimLine().payment.paidAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.claimLine().payment.paidDate,Date,,fake.future_datetime(),0
+Claim.claimLine().payment.patientPaidAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.claimLine().payment.patientResponsibilityAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.claimLine().payment.payerPaidAmount,double,,"fake.random_int(min=0, max=10000)",0
+Claim.claimLine().placeOfService,String,,"fake.random_element(('Pharmacy', 'Telehhealth', 'School', 'Homeless Shelter', 'Indian Health', 'Correctional Facility', 'Office', 'Home', 'Assisted Living Facility', 'Group Home', 'Mobile Unit', 'Walk-In Retail Health Clinic', 'Worksite', 'Urgent Care Facility', 'Unassigned', 'Inpatient Hospital', 'Emergency Room', 'Birthing Center', 'Military Treatment Facility', 'Nursing Facility', 'Hospice', 'Psychiatric Facility', 'Community Mental Health', 'Residential Substance Abuse Treatment Facility', 'Public Health Clinic', 'Independant Laboratory', 'Other Place of Service'))",0
+Claim.claimLine().procedureCode,String,,"str(fake.random_int(min=0, max=20000))",0
+Claim.claimLine().quantity,string,,"str(fake.random_int(min=0, max=100))",0
+Claim.claimLine().referringProvider_id,String,,"IDGEN.random_value(""P-"")",0
+Claim.claimLine().renderingProvider_id,String,,"IDGEN.random_value(""P-"")",0
+Claim.claimLine().serviceEndDate,Date,,fake.future_datetime(),0
+Claim.claimLine().serviceFromDate,Date,,fake.past_datetime(),0
+Claim.claimLine().supervisingProvider_id,String,,"IDGEN.random_value(""P-"")",0
+Claim.claimLine().unit,String,,"fake.random_element(('Each', 'Days', 'Prints', 'Miles'))",0
