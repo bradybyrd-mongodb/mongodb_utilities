@@ -1,10 +1,10 @@
-Full Name,Property Type,Optional/Required,Generator,Sample Data,Notes about Sample Data
+Full Name,Property Type,Optional/Required,Generator,Sample Data
 Provider.provider_id,String,Required,"IDGEN.get(""P-"")","P-101"
 Provider.federalTaxID,String,Optional,fake.ssn(),Random
 Provider.nationalProviderIdentifier,String,Required,"ID(""NPI-"")","""NPI-"" + Incremental 1 - 1 million"
 Provider.NPIType,String,Required,"fake.random_element(('Individual', 'Institution'))","Individual, Institution"
-Provider.lastName,String,Required,fake.company(),""
-Provider.firstName,String,Optional,fake.last_name(),if Instituion then Blank otherwise Random
+Provider.lastName,String,Required,fake.last_name(),""
+Provider.firstName,String,Optional,fake.first_name(),Random
 Provider.SSN,String,Optional,fake.ssn(),Random
 Provider.dateOfBirth,String,Optional,"fake.past_datetime() - datetime.timedelta(365*20)",Random
 Provider.dateOfDeath,String,Optional,"fake.future_datetime(end_date=""+20y"")",Random

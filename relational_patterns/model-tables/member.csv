@@ -38,20 +38,20 @@ Member.Disability().DisabilityTypeCode,String ,Optional,"fake.random_element(('A
 Member.Guardian().LastName,String ,Optional,fake.last_name(),Random
 Member.Guardian().FirstName,String ,Optional,fake.first_name(),0
 Member.Guardian().Type,String ,Optional,"fake.random_element(('Natural', 'Legal', 'Medical', 'Custodial'))","Natural, Legal, Medical, Custodial"
-Member.Guardian().Address.name,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old"
-Member.Guardian().Address.addressLine1,String,Optional,fake.street_address(),Random
-Member.Guardian().Address.addressLine2,String,Optional,fake.secondary_address(),0
-Member.Guardian().Address.city,String,Optional,fake.city(),0
-Member.Guardian().Address.state,String,Optional,fake.state_abbr(),0
-Member.Guardian().Address.postalCode,String,Optional,fake.postcode(),0
-Member.Guardian().Address.country,String,Optional,fake.country(),0
-Member.Guardian().Address.type,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))",0
-Member.Guardian().Address.effectiveDate,date,Optional,fake.past_datetime(),0
-Member.Guardian().Address.endDate,date,Optional,"fake.future_datetime(end_date=""+3y"")",0
-Member.Guardian().Address.wheelchairAccess,boolean,Optional,fake.boolean(chance_of_getting_true=75),"True, False"
+Member.Guardian().Addressname,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old"
+Member.Guardian().AddressLine1,String,Optional,fake.street_address(),Random
+Member.Guardian().AddressLine2,String,Optional,fake.secondary_address(),0
+Member.Guardian().Addresscity,String,Optional,fake.city(),0
+Member.Guardian().Addressstate,String,Optional,fake.state_abbr(),0
+Member.Guardian().AddresspostalCode,String,Optional,fake.postcode(),0
+Member.Guardian().Addresscountry,String,Optional,fake.country(),0
+Member.Guardian().Addresstype,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))",0
+Member.Guardian().AddresseffectiveDate,date,Optional,fake.past_datetime(),0
+Member.Guardian().AddressendDate,date,Optional,"fake.future_datetime(end_date=""+3y"")",0
+Member.Guardian().AddresswheelchairAccess,boolean,Optional,fake.boolean(chance_of_getting_true=75),"True, False"
 Member.Payment().claim_id,String ,Optional,"fake.random_int(min=40, max=1000)",0
 Member.Payment().payment_date,date ,Optional,fake.past_datetime(),0
-Member.Payment().amount,double ,Optional,"fake.random_int(min=40, max=1000)",Member.EffectiveDate,Date,Optional,fake.past_datetime(),Random
+Member.Payment().amount,double ,Optional,"fake.random_int(min=40, max=1000)",0
 Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+10y"")",Random
 Member.SitusState,String,Optional,"fake.state_abbr()",Random
 Member.BankAccount.BankName,String ,Optional,"fake.company()",Random
@@ -61,6 +61,6 @@ Member.BankAccount.BankAccountType,String ,Optional,"fake.random_element(('Check
 Member.BankAccount.BankRoutingNumber,String ,Optional,"fake.iban()",
 Member.Employment().EmployeeIdentificationNumber,String,Optional,"fake.ssn()",Random
 Member.EmployeeIdentificationNumber",double,Optional,"fake.random_int(min=1000000, max=100000000)",0
-Member.Weight,Integer,Optional,"fake.random_int(min=1, max=400)",1 - 400,0
+Member.Weight,Integer,Optional,"fake.random_int(min=1, max=400)",1 - 400
 Member.PlanYear,Integer,Optional,"fake.random_int(min=2023, max=2023)",0
 Member.TotalPayments,double,Optional,"fake.random_int(min=20, max=1200)",0

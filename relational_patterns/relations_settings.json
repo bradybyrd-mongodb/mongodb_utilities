@@ -27,10 +27,10 @@
     "host": "10.213.30.107"
   },
   "version": "2.0",
-  "process_count": 4,
-  "batch_size": 2000,
+  "process_count": 1,
+  "batch_size": 1000,
   "batches": 20,
-  "base_counter": 2500000,
+  "base_counter": 2000000,
   "gcp_project_id": "bradybyrd-poc",
   "gcp_dataset": "claims_warehouse",
   "limitdata": {

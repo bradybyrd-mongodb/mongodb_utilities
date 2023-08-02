@@ -7,7 +7,7 @@ Claim.claimType,string,,"fake.random_element(('Dental', 'Medical', 'Pharmacy', '
 Claim.diagnosisCode().code,String,,"str(fake.random_int(min=1, max=50000))",0
 Claim.lastXRayDate,Date,,fake.past_datetime(),0
 Claim.notes().claimNoteText,String,,"""""",0
-Claim.patient_id,String,,"IDGEN.random_value(""M-"")",
+Claim.patient_id,String,,"IDGEN.random_value(""M-"")",M-00000
 Claim.payment().approvedAmount,double,,"fake.random_int(min=0, max=10000)",0
 Claim.payment().coinsuranceAmount,double,,"fake.random_int(min=0, max=1000)",0
 Claim.payment().copayAmount,double,,"fake.random_int(min=0, max=100)",0
