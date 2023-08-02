@@ -176,43 +176,51 @@ def get_claims_sql(conn, query, patient_id, r, redis_bool):
     logging.debug(f"query took: {elapsed.microseconds / 1000} ms")
 
 
-def get_claims_mongodb(client, query, patient_id):
+def get_claims_mongodb(client, query, patient_id, iters = 1):
     claim = client["claim"]
     result = ''
     start = datetime.datetime.now()
-    match query:
-        case "claim":  # Claim - only
-            result = claim.find({'Patient_id': patient_id})
+    pair = patient_id.split("-")
+    idnum = int(pair[1])
+    for cur in range(iters):
+        patient_id = f'{pair[0]}-{idnum}'
+        print(f'# -------------------- Patient_id: {patient_id} ----------------------------- #')
+        match query:
+            case "claim":  # Claim - only
+                result = claim.find({'Patient_id': patient_id})
 
-        case "claimLinePayments":  # Claim + Claimlines + Claimpayments
-            result = claim.find(
-                {'Patient_id': patient_id}, {'ClaimLine': 1})
-        case "claimMemberProvider":  # Claim + Member + Provider
-            result = claim.aggregate([
-                {
-                    '$match': {
-                        'Patient_id': patient_id
+            case "claimLinePayments":  # Claim + Claimlines + Claimpayments
+                result = claim.find(
+                    {'Patient_id': patient_id}, {'ClaimLine': 1})
+            case "claimMemberProvider":  # Claim + Member + Provider
+                result = claim.aggregate([
+                    {
+                        '$match': {
+                            'Patient_id': patient_id
+                        }
+                    }, {
+                        '$lookup': {
+                            'from': 'member',
+                            'localField': 'Patient_id',
+                            'foreignField': 'Member_id',
+                            'as': 'member'
+                        }
+                    }, {
+                        '$lookup': {
+                            'from': 'provider',
+                            'localField': 'AttendingProvider_id',
+                            'foreignField': 'Provider_id',
+                            'as': 'provider'
+                        }
                     }
-                }, {
-                    '$lookup': {
-                        'from': 'member',
-                        'localField': 'Patient_id',
-                        'foreignField': 'Member_id',
-                        'as': 'member'
-                    }
-                }, {
-                    '$lookup': {
-                        'from': 'provider',
-                        'localField': 'AttendingProvider_id',
-                        'foreignField': 'Provider_id',
-                        'as': 'provider'
-                    }
-                }
-            ])
+                ])
+        icnt = 0
+        for data in result:
+            print(f'Recs: {icnt}')
+            icnt += 1   
+        idnum += 1
+        
     elapsed = datetime.datetime.now() - start
-    for data in result:
-        print(data)
-    # print(result)
     logging.debug(f"query took: {elapsed.microseconds / 1000} ms")
 
 
@@ -337,6 +345,17 @@ def transaction_postgres(conn, num_payment):
     )
     logging.debug(f"Test completed")
 
+#-----------------------------------------------------------------------#
+#  Utility
+#-----------------------------------------------------------------------#
+def timer(t_start, quiet = True):
+    #  Reads file and finds values
+    end_time = datetime.datetime.now()
+    time_diff = (end_time - t_start)
+    execution_time = time_diff.total_seconds() + time_diff.microseconds * .000001
+    if not quiet:
+        print(f"Elapsed {'{:.3f}'.format(execution_time)} seconds")
+    return execution_time
 
 if __name__ == "__main__":
     bb = Util()
@@ -351,6 +370,13 @@ if __name__ == "__main__":
         print("Send action= argument")
         sys.exit(1)
     elif ARGS["action"] == "get_claims_sql":
+        skip_cache = True
+        if "cache" in ARGS:
+            ARGS["cache"].lowercase() == 'true'
+            use_cache = True
+        iters = 1
+        if "iters" in ARGS:
+            iters = ARGS["iters"]
         if "patient_id" not in ARGS:
             print("Send patient_id= argument e.g: python3 gcp_getclaimlines.py action=get_claims_sql patient_id='M-2030000' query=claim or claimLinePayments or  claimMemberProvider ")
             sys.exit(1)
@@ -358,14 +384,17 @@ if __name__ == "__main__":
             print("Send patient_id= argument e.g: python3 gcp_getclaimlines.py action=get_claims_sql patient_id='M-2030000' query=claim or claimLinePayments or  claimMemberProvider ")
             sys.exit(1)
         else:
-            if ARGS["cache"] == 'False':
+            if skip_cache:
                 get_claims_sql(conn, ARGS["query"],
-                               ARGS["patient_id"], r, False)
+                               ARGS["patient_id"], r, False, iters)
             else:
                 get_claims_sql(conn, ARGS["query"],
                                ARGS["patient_id"], r, True)
     elif ARGS["action"] == "get_claims_mongodb":
-        get_claims_mongodb(mongodb, ARGS["query"], ARGS["patient_id"])
+        iters = 1
+        if "iters" in ARGS:
+            iters = ARGS["iters"]
+        get_claims_mongodb(mongodb, ARGS["query"], ARGS["patient_id"], iters)
     elif ARGS["action"] == "transaction_mongodb":
         if ARGS["mcommit"] == 'True':
             transaction_mongodb(client, int(ARGS["num_transactions"]), True)
@@ -378,4 +407,12 @@ if __name__ == "__main__":
 
     conn.close()
     r.close()
-    
+
+
+'''
+Postgres indexes
+create index idx_patient_id on claim(patient_id);
+create index idx_member_id on member(member_id);
+create index idx_provider_id on provider(provider_id);
+create index idx_attprovider_id on claim(attendingprovider_id);
+'''
