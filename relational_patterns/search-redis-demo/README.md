@@ -1,7 +1,7 @@
 # Demo 1 - Query Postgres: 
 python3 gcp_getclaimlines.py action=get_claims_sql cache=False patient_id='M-2030000' query=(claim or claimLinePayments or  claimMemberProvider)
 # Demo 2 - Query MongoDB: 
-python3 gcp_getclaimlines.py action=get_claims_mongodb patient_id='M-2030000' query=(claim or claimLinePayments or  claimMemberProvider)
+python3 gcp_getclaimlines.py action=get_claims_mongodb patient_id='M-1000080' query=(claim or claimLinePayments or  claimMemberProvider)
 # Demo 3 - Query Postgres with redis:
 python3 gcp_getclaimlines.py action=get_claims_sql cache=True patient_id='M-2030000' query=(claim or claimLinePayments or  claimMemberProvider)
 # Demo 4 - Transaction MongoDB with manual commit: 
