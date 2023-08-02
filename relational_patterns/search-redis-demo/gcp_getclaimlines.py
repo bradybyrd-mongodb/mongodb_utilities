@@ -182,12 +182,13 @@ def get_claims_mongodb(client, query, patient_id):
     start = datetime.datetime.now()
     match query:
         case "claim":  # Claim - only
-            result = list(claim.find({'Patient_id': patient_id}))
+            result = claim.find({'Patient_id': patient_id})
+
         case "claimLinePayments":  # Claim + Claimlines + Claimpayments
-            result = list(claim.find(
-                {'Patient_id': patient_id}, {'ClaimLine': 1}))
+            result = claim.find(
+                {'Patient_id': patient_id}, {'ClaimLine': 1})
         case "claimMemberProvider":  # Claim + Member + Provider
-            result = list(claim.aggregate([
+            result = claim.aggregate([
                 {
                     '$match': {
                         'Patient_id': patient_id
@@ -207,9 +208,11 @@ def get_claims_mongodb(client, query, patient_id):
                         'as': 'provider'
                     }
                 }
-            ]))
-    print(result)
+            ])
     elapsed = datetime.datetime.now() - start
+    for data in result:
+        print(data)
+    # print(result)
     logging.debug(f"query took: {elapsed.microseconds / 1000} ms")
 
 
