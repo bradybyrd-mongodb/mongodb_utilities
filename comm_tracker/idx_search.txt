@@ -1,0 +1,22 @@
+09/15/2022 17:58:56|INFO> Connecting: mongodb+srv://main_admin:bugsyBoo@commstracker.mhsdb.mongodb.net
+09/15/2022 17:58:56|INFO> #----------------------------------------------------------------------------------------------------#
+09/15/2022 17:58:56|INFO> #                                    Pub/Sub Message Subscriiption                                   #
+09/15/2022 17:58:56|INFO> #----------------------------------------------------------------------------------------------------#
+09/15/2022 17:58:56|INFO> # Settings from: commtracker_settings.json
+timer started
+querying...
+09/15/2022 17:58:56|INFO> #---------------------------------------- Comm Feed Simulation ---------------------------------------#
+09/15/2022 17:58:56|INFO> Connecting: mongodb+srv://main_admin:bugsyBoo@commstracker.mhsdb.mongodb.net
+comm-summary
+09/15/2022 17:58:58|INFO> Loading batch: 416
+[Process-1:1] 416 msgs in 0:00:01.693689s, speed: 245.61770195118467 msgs/sec
+comm-summary
+09/15/2022 17:58:59|INFO> Loading batch: 416
+[Process-1:1] 416 msgs in 0:00:00.952990s, speed: 436.5208449196739 msgs/sec
+comm-summary
+09/15/2022 17:59:00|INFO> Loading batch: 416
+[Process-1:1] 416 msgs in 0:00:00.931266s, speed: 446.70373448617255 msgs/sec
+comm-summary
+09/15/2022 17:59:01|INFO> Loading batch: 416
+started process: Process-1:1
+09/15/2022 17:58:56|INFO> Main process is Process-1 19672

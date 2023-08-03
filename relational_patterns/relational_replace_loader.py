@@ -121,7 +121,7 @@ def worker_load(ipos, args):
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
 def build_batch_from_template(cur_coll, details = {}):
-    template_file = details["path"]
+    template_file = details["template"]
     batch_size = settings["batch_size"]
     cnt = 0
     records = []
@@ -147,9 +147,18 @@ def build_batch_from_template(cur_coll, details = {}):
                 else:
                     counts = defaultdict(lambda: random.randint(1, 5))
                 partial = procpath(path, counts, row[3]) # Note, later version of files may not include required field
-                #print(f'{row[0]}-{islist}: {partial}')
+                print(f'{row[0]}-{islist}: {partial}')
                 # Merge partial trees.
-                data = merger.merge(data, partial)
+                try:
+                    data = merger.merge(data, partial)
+                except Exception as e:
+                    print("---- ERROR --------")
+                    pprint.pprint(data)
+                    print("---- partial --------")
+                    pprint.pprint(partial)
+                    print("---- error --------")
+                    print(e)
+                    exit(1)
                 icnt += 1
                 
         data = list(data.values())[0]

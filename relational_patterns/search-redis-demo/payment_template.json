@@ -1,0 +1,50 @@
+{
+    "transaction_id": {
+        "$objectid": {}
+    },
+    "timestamp": {
+        "$date": {
+            "min": "2022-01-01",
+            "max": "2023-06-20"
+        }
+    },
+    "cashier": {
+        "$name": {}
+    },
+    "customer": {
+        "$name": {}
+    },
+    "items": {
+        "$array": {
+            "of": [{
+                    "$objectid": {}
+                },
+                {
+                    "$objectid": {}
+                },
+                {
+                    "$objectid": {}
+                }
+            ],
+            "size": {
+                "$randint": {
+                    "min": 1,
+                    "max": 10
+                }
+            }
+        }
+    },
+    "payment_method": {
+        "status": {
+            "$choose": {
+                "from": ["Cash", "Credit Card", "Mobile Payment"]
+            }
+        }
+    },
+    "total_amount": {
+        "$numberDecimal": {
+            "min": 10,
+            "max": 500
+        }
+    }
+}
