@@ -8,7 +8,7 @@ import datetime
 from faker import Faker
 from random import randint
 import random
-
+import pprint
 import psycopg2
 import redis
 from bson.json_util import dumps
@@ -41,7 +41,7 @@ def redis_connection(type="redis_local"):
     return r
 
 
-def mongodb_connection(type="miguri", details={}):
+def mongodb_connection(type="uri", details={}):
     mdb_conn = settings[type]
     username = settings["username"]
     password = settings["password"]
@@ -59,12 +59,12 @@ def mongodb_connection(type="miguri", details={}):
     return client
 
 
-def newsql_query(sql, conn):
+def sql_query(sql, conn):
     cur = conn.cursor()
     try:
         cur.execute(sql)
         row_count = cur.rowcount
-        print(f"{row_count} records")
+        #print(f"{row_count} records")
         rows = cur.fetchall()
         result = {"num_records": row_count, "data": rows}
         return result
@@ -120,101 +120,127 @@ def load_claims_redis(r, key, data):
         logging.error(f" {error}")
 
 
-def get_claims_sql(conn, query, patient_id, r, redis_bool):
+def get_claims_sql(conn, query, patient_id, r, skip_cache, iters = 1):
     start = datetime.datetime.now()
-    key = query + ":" + patient_id
     SQL = ""
     query_result = None
-    if redis_bool is True:
-        query_result = get_claims_redis(r, key)
-    if query_result is not None:
-        logging.debug(f"cache hit -> {patient_id}")
-        print(query_result)
-    else:
-        match query:
-            case "claim":  # Claim - only
-                SQL = "select *  from claim c where c.patient_id ='{}'".format(
-                    str(ARGS["patient_id"])
-                )
-            case "claimLinePayments":  # Claim + Claimlines + Claimpayments
-                SQL = "select c.*, cl.* from claim c LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id where c.patient_id = '{}'".format(
-                    str(ARGS["patient_id"])
-                )
-            # Claim + Member + Provider (and a bunch of the sub tables)
-            case "claimMemberProvider":
-                SQL = """select c.*, m.firstname, m.lastname, m.dateofbirth, m.gender, cl.*, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate,
-                                op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate,
-                                rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate,
-                                opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate, ma.city as city, ma.state as us_state,
-                                mc.phonenumber as phone, mc.emailaddress as email
-                                from claim c
-                                INNER JOIN member m on m.member_id = c.patient_id
-                                LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id
-                                INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id
-                                INNER JOIN provider op on cl.orderingprovider_id = op.provider_id
-                                INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id
-                                INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id
-								LEFT JOIN (select * from member_address where type = 'Main' limit 1) ma on ma.member_id = m.member_id
-                                INNER JOIN (select * from member_communication where emailtype = 'Work' and member_id = '{}' limit 1) mc on mc.member_id = m.member_id
-                                where c.patient_id = '{}' """.format(
-                    str(ARGS["patient_id"]), str(ARGS["patient_id"])
-                )
-        logging.debug(f"cache miss -> {patient_id}")
-        logging.debug(f"fetching from psql {SQL}")
-        query_result = newsql_query(SQL, conn)
-        if redis_bool is True:
-            load_claims_redis(r, key, query_result)
-        num_results = query_result["num_records"]
-        logging.debug(f"found {num_results} records")
+    cache_hit = False
+    pair = patient_id.split("-")
+    idnum = int(pair[1])
+    for inc in range(iters):
+        patient_id = f'{pair[0]}-{idnum}'
+        instart = datetime.datetime.now()
+        if not skip_cache:
+            key = query + ":" + patient_id
+            query_result = get_claims_redis(r, key)
+            if query_result is not None:
+                logging.debug(f"cache hit -> {patient_id}")
+                print(query_result)
+                cache_hit = True
+            else:
+                logging.debug(f"cache miss -> {patient_id}")
+                logging.debug(f"fetching from psql {SQL}")
+        if not cache_hit:            
+            match query:
+                case "claim":  # Claim - only
+                    SQL = "select *  from claim c where c.patient_id ='{}'".format(str(patient_id))
+                case "claimLinePayments":  # Claim + Claimlines + Claimpayments
+                    SQL = "select c.*, cl.* from claim c LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id where c.patient_id = '{}'".format(
+                        str(patient_id)
+                    )
+                # Claim + Member + Provider (and a bunch of the sub tables)
+                case "claimMemberProvider":
+                    SQL = """select c.*, m.firstname, m.lastname, m.dateofbirth, m.gender, cl.*, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate,
+                                    op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate,
+                                    rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate,
+                                    opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate, ma.city as city, ma.state as us_state,
+                                    mc.phonenumber as phone, mc.emailaddress as email
+                                    from claim c
+                                    INNER JOIN member m on m.member_id = c.patient_id
+                                    LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id
+                                    INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id
+                                    INNER JOIN provider op on cl.orderingprovider_id = op.provider_id
+                                    INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id
+                                    INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id
+                                    LEFT JOIN (select * from member_address where type = 'Main' limit 1) ma on ma.member_id = m.member_id
+                                    INNER JOIN (select * from member_communication where emailtype = 'Work' and member_id = '{}' limit 1) mc on mc.member_id = m.member_id
+                                    where c.patient_id = '{}' """.format(
+                                                       str(patient_id), str(patient_id)
+                    )
+            query_result = sql_query(SQL, conn)
+            if not skip_cache:
+                load_claims_redis(r, key, query_result)
+            #num_results = query_result["num_records"]
+            #logging.debug(f"found {num_results} records")
+            cnt = 0
+            for data in query_result["data"]:
+                # print(result)
+                cnt += 1
+            timer(cnt,instart)
+            idnum += 1
+    #logging.debug(f"records fetched from psql")
+    logging.debug("# --------------------- SQL --------------------------- #")
+    logging.debug(SQL)
+    timer(iters,start,"tot")
 
-        print(f"Claims: {num_results}")
-        for row in query_result["data"]:
-            print(row)
-        logging.debug(f"records fetched from psql")
 
-    elapsed = datetime.datetime.now() - start
-    logging.debug(f"query took: {elapsed.microseconds / 1000} ms")
-
-
-def get_claims_mongodb(client, query, patient_id):
+def get_claims_mongodb(client, query, patient_id, iters = 1):
     claim = client["claim"]
     result = ''
+    last_result = {}
     start = datetime.datetime.now()
-    match query:
-        case "claim":  # Claim - only
-            result = claim.find({'Patient_id': patient_id})
+    pair = patient_id.split("-")
+    idnum = int(pair[1])
+    for inc in range(iters):
+        patient_id = f'{pair[0]}-{idnum}'
+        instart = datetime.datetime.now()
+        match query:
+            case "claim":  # Claim - only
+                result = claim.find({'Patient_id': patient_id})
 
-        case "claimLinePayments":  # Claim + Claimlines + Claimpayments
-            result = claim.find(
-                {'Patient_id': patient_id}, {'ClaimLine': 1})
-        case "claimMemberProvider":  # Claim + Member + Provider
-            result = claim.aggregate([
-                {
-                    '$match': {
-                        'Patient_id': patient_id
+            case "claimLinePayments":  # Claim + Claimlines + Claimpayments
+                result = claim.find(
+                    {'Patient_id': patient_id}, {'ClaimLine': 1})
+            case "claimMemberProvider":  # Claim + Member + Provider
+                result = claim.aggregate([
+                    {
+                        '$match': {
+                            'Patient_id': patient_id
+                        }
+                    }, {
+                        '$lookup': {
+                            'from': 'member',
+                            'localField': 'Patient_id',
+                            'foreignField': 'Member_id',
+                            'as': 'member'
+                        }
+                    }, {
+                        '$lookup': {
+                            'from': 'provider',
+                            'localField': 'AttendingProvider_id',
+                            'foreignField': 'Provider_id',
+                            'as': 'provider'
+                        }
                     }
-                }, {
-                    '$lookup': {
-                        'from': 'member',
-                        'localField': 'Patient_id',
-                        'foreignField': 'Member_id',
-                        'as': 'member'
-                    }
-                }, {
-                    '$lookup': {
-                        'from': 'provider',
-                        'localField': 'AttendingProvider_id',
-                        'foreignField': 'Provider_id',
-                        'as': 'provider'
-                    }
-                }
-            ])
-    elapsed = datetime.datetime.now() - start
-    for data in result:
-        print(data)
-    # print(result)
-    logging.debug(f"query took: {elapsed.microseconds / 1000} ms")
+                ])
+        cnt = 0
+        for data in result:
+            # print(result)
+            last_result = data
+            cnt += 1
+        timer(cnt,instart)
+        idnum += 1
+    pprint.pprint(last_result)
+    timer(iters,start,"tot")
 
+def timer(cnt,starttime,ttype = "sub"):
+    elapsed = datetime.datetime.now() - starttime
+    elapsed = elapsed.seconds + elapsed.microseconds * .001
+    if ttype == "sub":
+        logging.debug(f"query ({cnt} recs) took: {'{:.3f}'.format(elapsed)} ms")
+    else:
+        logging.debug(f"# --- Complete: query took: {'{:.3f}'.format(elapsed * .001)} s ---- #")
+        logging.debug(f"#   {cnt} items {'{:.3f}'.format((elapsed*.001)/cnt)} s avg")
 
 def transaction_mongodb(client, num_payment, manual=False):
     db = "healthcare"
@@ -251,13 +277,14 @@ def transaction_mongodb(client, num_payment, manual=False):
                         logging.debug(f"Transaction aborted: {abort}")
                         raise Exception("Operation aborted")
                 # switch to abort transaction.
+                session.commit_transaction()
                 elapsed = datetime.datetime.now() - start
                 logging.debug(
-                    f"Transaction took: {elapsed.microseconds / 1000} ms")
+                    f"Transaction took: {'{:.3f}'.format(elapsed.microseconds / 1000)} ms")
                 logging.debug(f"Transaction completed")
                 elapsed_transactions += elapsed.microseconds
     logging.debug(
-        f"Transaction average time took for {num_payment} transactions: {elapsed_transactions / (num_payment * 1000)} ms"
+        f"Transaction average time took for {num_payment} transactions: {'{:.3f}'.format(elapsed_transactions / (num_payment * 1000))} ms"
     )
     logging.debug(f"Test completed")
 
@@ -272,7 +299,7 @@ def transaction_postgres(conn, num_payment):
     SQL_RANDOM = "select claim_id from claim order by random() limit {};".format(
         num_payment
     )
-    claim_ids = newsql_query(SQL_RANDOM, conn)
+    claim_ids = sql_query(SQL_RANDOM, conn)
     elapsed_transactions = 0
     for i in range(0, num_payment):
         start = datetime.datetime.now()
@@ -307,7 +334,7 @@ def transaction_postgres(conn, num_payment):
             f"WHERE claim_id = '{claim_id}';"
         )
         # FIND MEMBER ID
-        member_id = newsql_query(
+        member_id = sql_query(
             f"select patient_id from claim WHERE claim_id = '{claim_id}'", conn
         )
         member_id = member_id["data"][0][0]
@@ -329,11 +356,11 @@ def transaction_postgres(conn, num_payment):
         # conn.commit()
 
         elapsed = datetime.datetime.now() - start
-        logging.debug(f"Transaction took: {elapsed.microseconds / 1000} ms")
+        logging.debug(f"Transaction took: {'{:.3f}'.format(elapsed.microseconds / 1000)} ms")
         logging.debug(f"Transaction completed")
         elapsed_transactions += elapsed.microseconds
     logging.debug(
-        f"Transaction average time took for {num_payment} transactions: {elapsed_transactions / (num_payment * 1000)} ms"
+        f"Transaction average time took for {num_payment} transactions: {'{:.3f}'.format(elapsed_transactions / (num_payment * 1000))} ms"
     )
     logging.debug(f"Test completed")
 
@@ -343,14 +370,26 @@ if __name__ == "__main__":
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
     id_map = defaultdict(int)
+    r_conn = None
     conn = pg_connection()
     client = mongodb_connection()
     mongodb = client["healthcare"]
-    r = redis_connection()
+    skip_cache = True
+    iters = 1
+    if "cache" in ARGS:
+        skip_cache = ARGS["cache"].lower() == 'false'
+    if not skip_cache:
+        r_conn = redis_connection()
+    if "iters" in ARGS:
+        iters = int(ARGS["iters"])
     if "action" not in ARGS:
         print("Send action= argument")
         sys.exit(1)
     elif ARGS["action"] == "get_claims_sql":
+        skip_cache = True
+        if "cache" in ARGS:
+            ARGS["cache"].lower() == 'true'
+            use_cache = True
         if "patient_id" not in ARGS:
             print("Send patient_id= argument e.g: python3 gcp_getclaimlines.py action=get_claims_sql patient_id='M-2030000' query=claim or claimLinePayments or  claimMemberProvider ")
             sys.exit(1)
@@ -358,24 +397,19 @@ if __name__ == "__main__":
             print("Send patient_id= argument e.g: python3 gcp_getclaimlines.py action=get_claims_sql patient_id='M-2030000' query=claim or claimLinePayments or  claimMemberProvider ")
             sys.exit(1)
         else:
-            if ARGS["cache"] == 'False':
-                get_claims_sql(conn, ARGS["query"],
-                               ARGS["patient_id"], r, False)
-            else:
-                get_claims_sql(conn, ARGS["query"],
-                               ARGS["patient_id"], r, True)
+            get_claims_sql(conn, ARGS["query"], ARGS["patient_id"], r_conn, skip_cache, iters)
     elif ARGS["action"] == "get_claims_mongodb":
-        get_claims_mongodb(mongodb, ARGS["query"], ARGS["patient_id"])
+        get_claims_mongodb(mongodb, ARGS["query"], ARGS["patient_id"], iters)
     elif ARGS["action"] == "transaction_mongodb":
-        if ARGS["mcommit"] == 'True':
-            transaction_mongodb(client, int(ARGS["num_transactions"]), True)
-        else:
-            transaction_mongodb(client, int(ARGS["num_transactions"]), False)
+        mcommit = False
+        if "mcommit" in ARGS:
+            mcommit = ARGS["mcommit"].lower() == 'true'
+        transaction_mongodb(client, int(ARGS["num_transactions"]), mcommit)
     elif ARGS["action"] == "transaction_postgres":
         transaction_postgres(conn, int(ARGS["num_transactions"]))
     else:
         print(f'{ARGS["action"]} not found')
 
     conn.close()
-    r.close()
-    
+    if not skip_cache:
+        r_conn.close()
