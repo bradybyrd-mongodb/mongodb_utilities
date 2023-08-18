@@ -23,56 +23,6 @@ settings_file = "../relations_settings.json"
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("faker").setLevel(logging.ERROR)
 
-
-def pg_connection(type="postgres", sdb="none"):
-    shost = settings[type]["host"]
-    susername = settings[type]["username"]
-    spwd = settings[type]["password"]
-    if sdb == "none":
-        sdb = settings[type]["database"]
-    conn = psycopg2.connect(host=shost, database=sdb,
-                            user=susername, password=spwd)
-    return conn
-
-
-def redis_connection(type="redis_local"):
-    rhost = settings[type]["host"]
-    r = redis.Redis(host=rhost, port=6379, db=0)
-    return r
-
-
-def mongodb_connection(type="uri", details={}):
-    mdb_conn = settings[type]
-    username = settings["username"]
-    password = settings["password"]
-    if "username" in details:
-        username = details["username"]
-        password = details["password"]
-    mdb_conn = mdb_conn.replace("//", f"//{username}:{password}@")
-    logging.debug(f"Connecting: {mdb_conn}")
-    if "readPreference" in details:
-        client = MongoClient(
-            mdb_conn, readPreference=details["readPreference"]
-        )  # &w=majority
-    else:
-        client = MongoClient(mdb_conn)
-    return client
-
-
-def sql_query(sql, conn):
-    cur = conn.cursor()
-    try:
-        cur.execute(sql)
-        row_count = cur.rowcount
-        #print(f"{row_count} records")
-        rows = cur.fetchall()
-        result = {"num_records": row_count, "data": rows}
-        return result
-    except psycopg2.DatabaseError as err:
-        print(f"{sql} - {err}")
-    cur.close()
-
-
 def generate_payments(num):
     payments = [None] * num
     for i in range(0, num):
@@ -176,12 +126,12 @@ def get_claims_sql(conn, query, patient_id, r, skip_cache, iters = 1):
             for data in query_result["data"]:
                 # print(result)
                 cnt += 1
-            timer(cnt,instart)
+            timer(instart, cnt)
             idnum += 1
     #logging.debug(f"records fetched from psql")
     logging.debug("# --------------------- SQL --------------------------- #")
     logging.debug(SQL)
-    timer(iters,start,"tot")
+    timer(start,iters,"tot")
 
 
 def get_claims_mongodb(client, query, patient_id, iters = 1):
@@ -231,16 +181,7 @@ def get_claims_mongodb(client, query, patient_id, iters = 1):
         timer(cnt,instart)
         idnum += 1
     pprint.pprint(last_result)
-    timer(iters,start,"tot")
-
-def timer(cnt,starttime,ttype = "sub"):
-    elapsed = datetime.datetime.now() - starttime
-    elapsed = elapsed.seconds + elapsed.microseconds * .001
-    if ttype == "sub":
-        logging.debug(f"query ({cnt} recs) took: {'{:.3f}'.format(elapsed)} ms")
-    else:
-        logging.debug(f"# --- Complete: query took: {'{:.3f}'.format(elapsed * .001)} s ---- #")
-        logging.debug(f"#   {cnt} items {'{:.3f}'.format((elapsed*.001)/cnt)} s avg")
+    timer(start,iters,"tot")
 
 def transaction_mongodb(client, num_payment, manual=False):
     db = "healthcare"
@@ -365,17 +306,252 @@ def transaction_postgres(conn, num_payment):
     logging.debug(f"Test completed")
 
 
+# --------------------------------------------------------- #
+#    API Presentation
+# --------------------------------------------------------- #
+
+#  SQL Query - 7 tables queried, looping through 60+ records in 7 cursors
+#    Additional 9 tables to get member information
+
+# GET api/v1/claim?claim_id=<id>
+def get_claim_api_sql(conn, claim_id, add_member = False):
+    iters = 1
+    if "iters" in ARGS:
+        iters = int(ARGS["iters"])
+    base_id = int(claim_id.replace("C-",""))
+    start_time = datetime.datetime.now()
+    rich = ""
+    if add_member:
+        rich = "Rich "
+    bb.message_box(f"{rich}Claim API - MongoDB","title")
+    for k in range(iters):
+        instart = datetime.datetime.now()
+        new_id = f'C-{base_id + k}'
+        result = {}
+        cursor = conn.cursor()
+        tables = ['claim_claimline',
+                'claim_diagnosiscode',
+                'claim_notes',
+                'claim_payment'
+                ]
+        sub_tables = ['claim_claimline_payment',
+                'claim_claimline_diagnosiscodes'
+                ]
+        sub_key = "claim_claimline_id"
+        primary_table = "claim"
+        claim_sql = f'select * from {primary_table} where claim_id = \'{new_id}\' limit(1)'
+        answer = sql_query(claim_sql, conn)
+        #bb.logit(f'Primary table: {primary_table} - {answer["num_records"]}')
+        recs = answer["data"]
+        result = jsonize_records(conn, "claim", recs)[0]
+            
+        for tab in tables:
+            claim_sql = f'select * from {tab} where claim_id = \'{new_id}\''
+            answer = sql_query(claim_sql, conn)
+            #bb.logit(f'Related table: {tab} - {answer["num_records"]}')
+            recs = jsonize_records(conn, tab, answer["data"])
+            if tab in sub_tables[0]:
+                for subtab in sub_tables:
+                    icnt = 0
+                    for it in recs:
+                        sub_claim_sql = f'select * from {subtab} where {sub_key} = \'{it[sub_key]}\''
+                        subanswer = sql_query(sub_claim_sql, conn)
+                        #bb.logit(f'Related subtable: {subtab} - {subanswer["num_records"]}')
+                        subrecs = jsonize_records(conn, subtab, subanswer["data"])
+                        recs[icnt][subtab] = subrecs
+                        icnt += 1
+            result[tab] = recs
+        if add_member:
+            member = add_member_info_sql(conn, result["patient_id"])
+            result["member_detail"] = member
+        timer(instart)
+    timer(start_time, iters, "tot")
+    pprint.pprint(result)
+    
+def jsonize_records(conn, table, results):
+    result = []
+    cols = column_names(table, conn)
+    icnt = 0
+    for row in results:
+        rec = {}
+        icnt = 0
+        for col in row:
+            rec[cols[icnt]] = col
+            icnt += 1
+        result.append(rec)
+    return result
+
+def add_member_info_sql(conn, member_id):
+    primary_table = "member"
+    tables = ['member_address',
+              'member_bankaccount',
+              'member_communication',
+              'member_disability',
+              'member_employment',
+              'member_guardian',
+              'member_languages'
+              ]
+    sql = f'select * from {primary_table} where member_id = \'{member_id}\' limit(1)'
+    answer = sql_query(sql, conn)
+    #bb.logit(f'Primary table: {primary_table} - {answer["num_records"]}')
+    recs = answer["data"]
+    result = jsonize_records(conn, "member", recs)[0]        
+    for tab in tables:
+        claim_sql = f'select * from {tab} where member_id = \'{member_id}\''
+        answer = sql_query(claim_sql, conn)
+        #bb.logit(f'Related table: {tab} - {answer["num_records"]}')
+        recs = jsonize_records(conn, tab, answer["data"])
+        result[tab] = recs
+    return result
+
+# MongoDB - single query, 1 IOP, single document returned    
+def get_claim_api(client, claim_id):
+    iters = 1
+    if "iters" in ARGS:
+        iters = int(ARGS["iters"])
+    mongodb = client["healthcare"]
+    collection = "claim"
+    bb.message_box("Claim API - MongoDB","title")
+    base_id = int(claim_id.replace("C-",""))
+    start_time = datetime.datetime.now()
+    for k in range(iters):
+        instart = datetime.datetime.now()
+        new_id = f'C-{base_id + k}'
+        docs = mongodb[collection].find_one({"Claim_id" : new_id})
+        timer(instart)
+    timer(start_time, iters, "tot")
+    pprint.pprint(docs)
+
+def get_claim_api_rich(client, claim_id):
+    iters = 1
+    if "iters" in ARGS:
+        iters = int(ARGS["iters"])
+    mongodb = client["healthcare"]
+    collection = "claim"
+    bb.message_box("Rich Claim API - MongoDB","title")
+    base_id = int(claim_id.replace("C-",""))
+    start_time = datetime.datetime.now()
+    for k in range(iters):
+        instart = datetime.datetime.now()
+        new_id = f'C-{base_id + k}'
+        pipe = [
+                {"$match" : {"claim_id" : new_id}},
+                {"$lookup" : {
+                    "from" : "member",
+                    'localField': 'patient_id', 
+                    'foreignField': 'member_id', 
+                    'as': 'member_detail'
+                    }
+                }, 
+                {'$unwind': {'path': '$member'}} 
+            ]
+        docs = mongodb[collection].aggregate(pipe)
+        timer(instart)
+    timer(start_time, iters, "tot")
+    for doc in docs:
+        pprint.pprint(docs)
+        
+
+# --------------------------------------------------------- #
+#       UTILITY METHODS
+# --------------------------------------------------------- #
+
+def timer(starttime,cnt = 1, ttype = "sub"):
+    elapsed = datetime.datetime.now() - starttime
+    secs = elapsed.seconds
+    msecs = elapsed.microseconds
+    if secs == 0:
+        elapsed = msecs * .001
+        unit = "ms"
+    else:
+        elapsed = secs + (msecs * .000001)
+        unit = "s"
+    if ttype == "sub":
+        logging.debug(f"query ({cnt} recs) took: {'{:.3f}'.format(elapsed)} {unit}")
+    else:
+        logging.debug(f"# --- Complete: query took: {'{:.3f}'.format(elapsed)} {unit} ---- #")
+        logging.debug(f"#   {cnt} items {'{:.3f}'.format((elapsed)/cnt)} {unit} avg")
+
+def column_names(table, conn):
+    sql = f"SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name   = '{table}'"
+    cur = conn.cursor()
+    # print(sql)
+    try:
+        cur.execute(sql)
+        row_count = cur.rowcount
+        #print(f"{row_count} columns")
+    except psycopg2.DatabaseError as err:
+        print(f"{sql} - {err}")
+    rows = cur.fetchall()
+    result = []
+    for i in rows:
+        result.append(i[0])
+    cur.close()
+    return result
+
+def pg_connection(type="postgres", sdb="none"):
+    shost = settings[type]["host"]
+    susername = settings[type]["username"]
+    spwd = settings[type]["password"]
+    if sdb == "none":
+        sdb = settings[type]["database"]
+    conn = psycopg2.connect(host=shost, database=sdb,
+                            user=susername, password=spwd)
+    return conn
+
+def redis_connection(type="redis_local"):
+    rhost = settings[type]["host"]
+    r = redis.Redis(host=rhost, port=6379, db=0)
+    return r
+
+def mongodb_connection(type="uri", details={}):
+    mdb_conn = settings[type]
+    username = settings["username"]
+    password = settings["password"]
+    if "username" in details:
+        username = details["username"]
+        password = details["password"]
+    mdb_conn = mdb_conn.replace("//", f"//{username}:{password}@")
+    logging.debug(f"Connecting: {mdb_conn}")
+    if "readPreference" in details:
+        client = MongoClient(
+            mdb_conn, readPreference=details["readPreference"]
+        )  # &w=majority
+    else:
+        client = MongoClient(mdb_conn)
+    return client
+
+def sql_query(sql, conn):
+    cur = conn.cursor()
+    try:
+        cur.execute(sql)
+        row_count = cur.rowcount
+        #print(f"{row_count} records")
+        rows = cur.fetchall()
+        result = {"num_records": row_count, "data": rows}
+        return result
+    except psycopg2.DatabaseError as err:
+        print(f"{sql} - {err}")
+    cur.close()
+
+
+# --------------------------------------------------------- #
+#       MAIN
+# --------------------------------------------------------- #
 if __name__ == "__main__":
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
     id_map = defaultdict(int)
     r_conn = None
+    client = {"empty": True}
     conn = pg_connection()
-    client = mongodb_connection()
-    mongodb = client["healthcare"]
     skip_cache = True
+    skip_mongo = False
     iters = 1
+    if not skip_mongo:
+        client = mongodb_connection()
+        mongodb = client["healthcare"]
     if "cache" in ARGS:
         skip_cache = ARGS["cache"].lower() == 'false'
     if not skip_cache:
@@ -386,7 +562,6 @@ if __name__ == "__main__":
         print("Send action= argument")
         sys.exit(1)
     elif ARGS["action"] == "get_claims_sql":
-        skip_cache = True
         if "cache" in ARGS:
             ARGS["cache"].lower() == 'true'
             use_cache = True
@@ -407,6 +582,18 @@ if __name__ == "__main__":
         transaction_mongodb(client, int(ARGS["num_transactions"]), mcommit)
     elif ARGS["action"] == "transaction_postgres":
         transaction_postgres(conn, int(ARGS["num_transactions"]))
+    elif ARGS["action"] == "get_claim_api_sql":
+        claim_id = ARGS["claim_id"]
+        rich = False
+        if "rich" in ARGS:
+            rich = True
+        get_claim_api_sql(conn, claim_id, rich)
+    elif ARGS["action"] == "get_claim_api":
+        claim_id = ARGS["claim_id"]
+        if "rich" in ARGS:
+            get_claim_api_rich(client, claim_id)
+        else:
+            get_claim_api(client, claim_id)
     else:
         print(f'{ARGS["action"]} not found')
 

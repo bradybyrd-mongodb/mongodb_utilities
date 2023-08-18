@@ -98,7 +98,7 @@ def load_postgres_data():
     passed_args = {"ddl_action": "info"}
     if "template" in ARGS:
         template = ARGS["template"]
-        passed_args["template":template]
+        passed_args["template"] = template
     elif "data" in settings:
         goodtogo = True
     else:
@@ -143,8 +143,9 @@ def worker_load(ipos, args):
             master_table: {
                 "path": template,
                 "size": settings["batches"] * settings["batch_size"],
-            },
-            "id_prefix": f"{master_table[0].upper()}-",
+                "id_prefix": f"{master_table[0].upper()}-"
+            }
+            
         }
     else:
         job_info = settings["data"]
@@ -848,7 +849,7 @@ def increment_version(old_ver):
 
 
 def sql_action(conn, action, tables):
-    if action == "none":
+    if action == "none" or action == "info":
         return "no action"
     sql = ""
     cursor = conn.cursor()

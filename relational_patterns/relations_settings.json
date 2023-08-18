@@ -6,7 +6,7 @@
   "collection": "member",
   "username": "main_admin",
   "password": "bugsyBoo",
-  "postgres_local": {
+  "postgresloc": {
     "host": "localhost",
     "username": "bbadmin",
     "password": "bugsyBoo",

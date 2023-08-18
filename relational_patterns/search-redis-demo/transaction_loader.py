@@ -11,7 +11,7 @@ import redis
 from bson.json_util import dumps
 from bson.objectid import ObjectId
 from pymongo import MongoClient
-
+import pprint
 from bbutil import Util
 
 settings_file = "../relations_settings.json"
@@ -80,7 +80,7 @@ def get_claims_sql(conn, query, patient_id, r):
                 )
         logging.debug(f"cache miss -> {patient_id}")
         logging.debug(f"fetching from psql {SQL}")
-        query_result = newsql_query(SQL, conn)
+        query_result = sql_query(SQL, conn)
         load_claims_redis(r, key, query_result)
         num_results = query_result["num_records"]
         logging.debug(f"found {num_results} records")
@@ -108,8 +108,8 @@ def add_payment(sql, conn):
         pmt["paiddate"] = datetime.datetime(year,month,day, 10, 45)
         vals = ""
         for it in pmt:
-            
-        sql = f"insert into claim_payment ({','.join(list(pmt.keys()))}), values ({"vals"})"
+            vals += f"'{str(it)}',"
+        sql = f"insert into claim_payment ({','.join(list(pmt.keys()))}), values ({vals})"
         sql_execute(sql)
         pmtid += 1
     cur.close()
@@ -122,7 +122,7 @@ def sql_execute(sql):
         print(f"{sql} - {err}")
     cur.close()
 
-def newsql_query(sql, conn):
+def sql_query(sql, conn):
     cur = conn.cursor()
     try:
         cur.execute(sql)
@@ -133,6 +133,80 @@ def newsql_query(sql, conn):
     except psycopg2.DatabaseError as err:
         print(f"{sql} - {err}")
     cur.close()
+
+def column_names(table, conn):
+    sql = f"SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name   = '{table}'"
+    cur = conn.cursor()
+    # print(sql)
+    try:
+        cur.execute(sql)
+        row_count = cur.rowcount
+        print(f"{row_count} columns")
+    except psycopg2.DatabaseError as err:
+        print(f"{sql} - {err}")
+    rows = cur.fetchall()
+    result = []
+    for i in rows:
+        result.append(i[0])
+    cur.close()
+    return result
+
+# --------------------------------------------------------- #
+#    API Presentation
+# --------------------------------------------------------- #
+
+# GET api/v1/claim?claim_id=<id>
+def get_claim_api_sql(conn, claim_id):
+    result = {}
+    cursor = conn.cursor()
+    tables = ['claim_claimline',
+              'claim_diagnosiscode',
+              'claim_notes',
+              'claim_payment'
+              ]
+    sub_tables = ['claim_claimline_payment',
+              'claim_claimline_diagnosiscodes'
+              ]
+    sub_key = "claim_claimline_id"
+    primary_table = "claim"
+    claim_sql = f'select * from {primary_table} where claim_id = \'{claim_id}\' limit(1)'
+    answer = sql_query(claim_sql, conn)
+    bb.logit(f'Primary table: {primary_table} - {answer["num_records"]}')
+    recs = answer["data"]
+    result = jsonize_records(cursor, "claim", recs)[0]
+        
+    for tab in tables:
+        claim_sql = f'select * from {tab} where claim_id = \'{claim_id}\''
+        answer = sql_query(claim_sql, conn)
+        bb.logit(f'Related table: {tab} - {answer["num_records"]}')
+        recs = jsonize_records(cursor, tab, answer["data"])
+        if tab in sub_tables[0]:
+            for subtab in sub_tables:
+                icnt = 0
+                for it in recs:
+                    sub_claim_sql = f'select * from {subtab} where {sub_key} = \'{it[sub_key]}\''
+                    subanswer = sql_query(sub_claim_sql, conn)
+                    bb.logit(f'Related subtable: {subtab} - {subanswer["num_records"]}')
+                    subrecs = jsonize_records(cursor, subtab, subanswer["data"])
+                    recs[icnt][subtab] = subrecs
+                    icnt += 1
+        result[tab] = recs
+    pprint.pprint(result)
+
+def jsonize_records(cur, table, results):
+    result = []
+    cols = column_names(table, conn)
+    icnt = 0
+    for row in results:
+        rec = {}
+        icnt = 0
+        for col in row:
+            rec[cols[icnt]] = col
+            icnt += 1
+        result.append(rec)
+    return result
+
+def get_claim_api(claim_id):
 
 # --------------------------------------------------------- #
 #       UTILITY METHODS
@@ -163,6 +237,24 @@ def redis_connection(type="redis_local"):
     r = redis.Redis(host=rhost, port=6379, db=0)
     return r
 
+def client_connection(type = "uri", details = {}):
+    mdb_conn = settings[type]
+    username = settings["username"]
+    password = settings["password"]
+    if "username" in details:
+        username = details["username"]
+        password = details["password"]
+    mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
+    bb.logit(f'Connecting: {mdb_conn}')
+    if "readPreference" in details:
+        client = MongoClient(mdb_conn, readPreference=details["readPreference"]) #&w=majority
+    else:
+        client = MongoClient(mdb_conn)
+    return client
+
+# --------------------------------------------------------- #
+#       MAIN
+# --------------------------------------------------------- #
 if __name__ == "__main__":
     bb = Util()
     ARGS = bb.process_args(sys.argv)
@@ -174,6 +266,9 @@ if __name__ == "__main__":
     if "action" not in ARGS:
         print("Send action= argument")
         sys.exit(1)
+    elif ARGS["action"] == "get_claim_api_sql":
+        claim_id = ARGS["claim_id"]
+        get_claim_api_sql(conn, claim_id)
     elif ARGS["action"] == "get_claims_sql":
         if "patient_id" not in ARGS:
             print(
