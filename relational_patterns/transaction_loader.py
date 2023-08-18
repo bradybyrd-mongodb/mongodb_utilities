@@ -19,7 +19,7 @@ from bbutil import Util
 
 faker = Faker()
 
-settings_file = "../relations_settings.json"
+settings_file = "relations_settings.json"
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("faker").setLevel(logging.ERROR)
 
