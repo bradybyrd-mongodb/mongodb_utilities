@@ -131,7 +131,7 @@ def build_batch_from_template(cur_coll, details = {}):
     ], [ "override" ], [ "override" ])
     for J in range(0, batch_size): # iterate through the bulk insert count
         # A dictionary that will provide consistent, random list lengths
-        counts = defaultdict(lambda: random.randint(1, 5))
+        counts = random.randint(1, 5) #defaultdict(lambda: random.randint(1, 5))
         data = {}
         with open(template_file) as csvfile:
             propreader = csv.reader(csvfile)
@@ -142,12 +142,12 @@ def build_batch_from_template(cur_coll, details = {}):
                     icnt += 1
                     continue
                 path = row[0].split('.')
-                if path[-2].endswith('()'):
+                if "()" in row[0]: #path[-2].endswith('()'):
                     islist = "Y"
                 else:
-                    counts = defaultdict(lambda: random.randint(1, 5))
-                partial = procpath(path, counts, row[3]) # Note, later version of files may not include required field
-                print(f'{row[0]}-{islist}: {partial}')
+                    counts = random.randint(1, 5) #defaultdict(lambda: random.randint(1, 5))
+                partial = procpath_new(path, counts, row[3]) # Note, later version of files may not include required field
+                #print(f'{row[0]}-{islist}: {partial}')
                 # Merge partial trees.
                 try:
                     data = merger.merge(data, partial)
@@ -454,7 +454,7 @@ def update_birthdate():
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
 #----------------------------------------------------------------------#
-stripProp = lambda str: re.sub(r'\s+', '', (str.strip('()')))
+stripProp = lambda str: re.sub(r'\s+', '', (str[0].lower() + str[1:].strip('()')))
 
 def ser(o):
     """Customize serialization of types that are not JSON native"""
@@ -471,12 +471,31 @@ def procpath(path, counts, generator):
         # Lists are slightly more complex. We generate a list of the length specified in the
         # counts map. Note that what we pass recursively is _the exact same path_, but we strip
         # off the ()s, which will cause us to hit the `else` block below on recursion.
-        return {
+        print("# ------------------------------------------ #")
+        print(f'{stripped} - {counts} - {generator}')
+        return {            
             stripped: [ procpath([ path[0].strip('()') ] + path[1:], counts, generator)[stripped] for X in range(0, counts[stripped]) ]
         }
     else:
         # Return a nested page, of the specified type, populated recursively.
         return {stripped: procpath(path[1:], counts, generator)}
+
+def procpath_new(path, counts, generator):
+    """Recursively walk a path, generating a partial tree with just this path's random contents"""
+    stripped = stripProp(path[0])
+    if len(path) == 1:
+        # Base case. Generate a random value by running the Python expression in the text file
+        return { stripped: eval(generator) }
+    elif path[0].endswith('()'):
+        # Lists are slightly more complex. We generate a list of the length specified in the
+        # counts map. Note that what we pass recursively is _the exact same path_, but we strip
+        # off the ()s, which will cause us to hit the `else` block below on recursion.
+        return {            
+            stripped: [ procpath_new([ path[0].strip('()') ] + path[1:], counts, generator)[stripped] for X in range(0, counts) ]
+        }
+    else:
+        # Return a nested page, of the specified type, populated recursively.
+        return {stripped: procpath_new(path[1:], counts, generator)}
 
 def ID(key):
     id_map[key] += 1
