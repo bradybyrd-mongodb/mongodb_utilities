@@ -456,7 +456,7 @@ def update_birthdate():
 #   CSV Loader Routines
 #----------------------------------------------------------------------#
 #stripProp = lambda str: re.sub(r'\s+', '', (str[0].lower() + str[1:].strip('()')))
-def strip_prop(str):
+def stripProp(str):
     if str[0].isUpper() and str[1].isLower():
         ans = str[0].lower() + str[1:].strip('()')
     ans = re.sub(r'\s+', '', ans)
