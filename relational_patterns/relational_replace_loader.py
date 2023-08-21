@@ -459,8 +459,8 @@ def update_birthdate():
 def stripProp(str):
     ans = str
     if str[0].isupper() and str[1].islower():
-        ans = str[0].lower() + str[1:].strip('()')
-    ans = re.sub(r'\s+', '', ans)
+        ans = str[0].lower() + str[1:]
+    ans = re.sub(r'\s+', '', ans.strip('()'))
     return ans
 
 def ser(o):
