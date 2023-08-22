@@ -178,7 +178,7 @@ def get_claims_mongodb(client, query, patient_id, iters = 1):
             # print(result)
             last_result = data
             cnt += 1
-        timer(cnt,instart)
+        timer(instart,cnt)
         idnum += 1
     pprint.pprint(last_result)
     timer(start,iters,"tot")
