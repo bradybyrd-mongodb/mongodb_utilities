@@ -184,31 +184,31 @@ def get_claims_mongodb(client, query, patient_id, iters = 1):
     timer(start,iters,"tot")
 
 def transaction_mongodb(client, num_payment, manual=False):
-    db = "healthcare"
+    db = settings["database"]
     claim = client[db]["claim"]
     member = client[db]["member"]
     payment = generate_payments(num_payment)
     pipe = [{"$sample": {"size": num_payment}},
-            {"$project": {"Claim_id": 1, "_id": 0}}]
+            {"$project": {"claim_id": 1, "_id": 0}}]
     claim_ids = list(claim.aggregate(pipe))
     elapsed_transactions = 0
     for i in range(0, num_payment):
-        claim_id = claim_ids[i]["Claim_id"]
+        claim_id = claim_ids[i]["claim_id"]
         with client.start_session() as session:
             start = datetime.datetime.now()
             logging.debug(f"Transaction started for claim {claim_id}")
             with session.start_transaction():
                 claim_update = claim.find_one_and_update(
-                    {"Claim_id": claim_id},
-                    {"$addToSet": {"Payment": payment[i]}},
-                    projection={"Patient_id": 1},
+                    {"claim_id": claim_id},
+                    {"$addToSet": {"payment": payment[i]}},
+                    projection={"patient_id": 1},
                     session=session,
                 )
-                member_id = claim_update["Patient_id"]
+                member_id = claim_update["patient_id"]
                 member.update_one(
-                    {"Member_id": member_id},
+                    {"member_id": member_id},
                     {"$inc": {
-                        "total_payments": payment[i]["PatientPaidAmount"]}},
+                        "total_payments": payment[i]["patientPaidAmount"]}},
                     session=session,
                 )
                 if manual:
