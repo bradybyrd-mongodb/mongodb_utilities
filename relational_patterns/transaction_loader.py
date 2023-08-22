@@ -27,15 +27,15 @@ def generate_payments(num):
     payments = [None] * num
     for i in range(0, num):
         payments[i] = {}
-        payments[i]["ApprovedAmount"] = randint(1, 10000)
-        payments[i]["CoinsuranceAmount"] = randint(1, 10000)
-        payments[i]["CopayAmount"] = randint(1, 1000)
-        payments[i]["LatepaymentInterest"] = randint(1, 100)
-        payments[i]["PaidAmount"] = randint(1, 100)
-        payments[i]["PaidDate"] = faker.date()
-        payments[i]["PatientPaidAmount"] = randint(1, 100)
-        payments[i]["PatientResponsibilityAmount"] = randint(1, 100)
-        payments[i]["PayerPaidAmount"] = randint(1, 100)
+        payments[i]["approvedAmount"] = randint(1, 10000)
+        payments[i]["coinsuranceAmount"] = randint(1, 10000)
+        payments[i]["copayAmount"] = randint(1, 1000)
+        payments[i]["latepaymentInterest"] = randint(1, 100)
+        payments[i]["paidAmount"] = randint(1, 100)
+        payments[i]["paidDate"] = faker.date()
+        payments[i]["patientPaidAmount"] = randint(1, 100)
+        payments[i]["patientResponsibilityAmount"] = randint(1, 100)
+        payments[i]["payerPaidAmount"] = randint(1, 100)
     logging.debug(f"Payment objects generated")
     return payments
 
