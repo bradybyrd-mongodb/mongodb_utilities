@@ -266,12 +266,12 @@ def transaction_postgres(conn, num_payment):
         # claim payment + insert new payment claim
         SQL_INSERT = (
             f"INSERT INTO claim_payment(claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)"
-            f"VALUES ('{pmt['claim_payment_id']}', '{pmt['claim_id']}', {payment[i]['ApprovedAmount']}, {payment[i]['CoinsuranceAmount']}, {payment[i]['CopayAmount']}, {payment[i]['LatepaymentInterest']}, {payment[i]['PaidAmount']}, '{payment[i]['PaidDate']}', {payment[i]['PatientPaidAmount']}, {payment[i]['PatientResponsibilityAmount']}, {payment[i]['PayerPaidAmount']}, now() );"
+            f"VALUES ('{pmt['claim_payment_id']}', '{pmt['claim_id']}', {payment[i]['approvedAmount']}, {payment[i]['coinsuranceAmount']}, {payment[i]['copayAmount']}, {payment[i]['latepaymentInterest']}, {payment[i]['paidAmount']}, '{payment[i]['paidDate']}', {payment[i]['patientPaidAmount']}, {payment[i]['PatientResponsibilityAmount']}, {payment[i]['PayerPaidAmount']}, now() );"
         )
         # claim + update total payment claim
         SQL_UPDATE_CLAIM = (
             f"UPDATE public.claim "
-            f'SET totalpayments=  COALESCE(totalpayments ,0)  + {payment[i]["PatientPaidAmount"]} '
+            f'SET totalpayments=  COALESCE(totalpayments ,0)  + {payment[i]["patientPaidAmount"]} '
             f"WHERE claim_id = '{claim_id}';"
         )
         # FIND MEMBER ID
@@ -282,7 +282,7 @@ def transaction_postgres(conn, num_payment):
         # members + update total payment
         SQL_UPDATE_MEMBER = (
             f"UPDATE public.member "
-            f'SET totalpayments = COALESCE(totalpayments ,0) + {payment[i]["PatientPaidAmount"]} '
+            f'SET totalpayments = COALESCE(totalpayments ,0) + {payment[i]["patientPaidAmount"]} '
             f"WHERE member_id = '{member_id}';"
         )
         SQL_TRANSACTION = (
