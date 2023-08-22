@@ -266,7 +266,7 @@ def transaction_postgres(conn, num_payment):
         # claim payment + insert new payment claim
         SQL_INSERT = (
             f"INSERT INTO claim_payment(claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)"
-            f"VALUES ('{pmt['claim_payment_id']}', '{pmt['claim_id']}', {payment[i]['approvedAmount']}, {payment[i]['coinsuranceAmount']}, {payment[i]['copayAmount']}, {payment[i]['latepaymentInterest']}, {payment[i]['paidAmount']}, '{payment[i]['paidDate']}', {payment[i]['patientPaidAmount']}, {payment[i]['PatientResponsibilityAmount']}, {payment[i]['PayerPaidAmount']}, now() );"
+            f"VALUES ('{pmt['claim_payment_id']}', '{pmt['claim_id']}', {payment[i]['approvedAmount']}, {payment[i]['coinsuranceAmount']}, {payment[i]['copayAmount']}, {payment[i]['latepaymentInterest']}, {payment[i]['paidAmount']}, '{payment[i]['paidDate']}', {payment[i]['patientPaidAmount']}, {payment[i]['patientResponsibilityAmount']}, {payment[i]['payerPaidAmount']}, now() );"
         )
         # claim + update total payment claim
         SQL_UPDATE_CLAIM = (
