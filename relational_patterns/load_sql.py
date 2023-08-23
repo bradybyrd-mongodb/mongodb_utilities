@@ -875,6 +875,16 @@ def sql_action(conn, action, tables):
     cursor.close()
     return "success"
 
+def create_indexes():
+    boo = "boo"
+    indexes = [
+        ["claim","claim_id"],
+        ["claim","patient_id"],
+        ["clamline","claim_id"],
+        ["claim_note","claim_id"],
+        ["claim_payment","claim_id"]
+    ]
+    return boo
 
 def pg_connection(type="postgres", sdb="none"):
     # cur = mydb.cursor()

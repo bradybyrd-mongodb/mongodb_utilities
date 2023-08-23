@@ -18,6 +18,7 @@ from bson.json_util import dumps
 from bbutil import Util
 from id_generator import Id_generator
 from pymongo import MongoClient
+import bigquery
 
 # import psycopg2
 from faker import Faker
@@ -920,7 +921,6 @@ def sql_action(conn, action, tables):
     cursor.close()
     """
     return "success"
-
 
 def bigquery_connection(type="bigquery", sdb="none"):
     # export GOOGLE_APPLICATION_CREDENTIALS="/Users/godwinekuma/tutorials/python-bigquery/service-account-file.json"
