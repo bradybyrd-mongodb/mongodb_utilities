@@ -147,41 +147,51 @@ def get_claims_mongodb(client, query, patient_id, iters = 1):
         instart = datetime.datetime.now()
         match query:
             case "claim":  # Claim - only
-                result = claim.find({'Patient_id': patient_id})
+                result = claim.find({'patient_id': patient_id})
 
             case "claimLinePayments":  # Claim + Claimlines + Claimpayments
                 result = claim.find(
-                    {'Patient_id': patient_id}, {'ClaimLine': 1})
+                    {'patient_id': patient_id}, {'claimLine': 1})
             case "claimMemberProvider":  # Claim + Member + Provider
-                result = claim.aggregate([
+                pipe = [
                     {
                         '$match': {
-                            'Patient_id': patient_id
+                            'patient_id': patient_id
                         }
                     }, {
                         '$lookup': {
                             'from': 'member',
-                            'localField': 'Patient_id',
-                            'foreignField': 'Member_id',
+                            'localField': 'patient_id',
+                            'foreignField': 'member_id',
                             'as': 'member'
                         }
+                    },
+                    {
+                        "$unwind" : {"path" : "$member"}
                     }, {
                         '$lookup': {
                             'from': 'provider',
-                            'localField': 'AttendingProvider_id',
-                            'foreignField': 'Provider_id',
+                            'localField': 'attendingProvider_id',
+                            'foreignField': 'provider_id',
                             'as': 'provider'
                         }
+                    },
+                    {
+                        "$unwind" : {"path" : "$provider"}
                     }
-                ])
+                ]
+                result = claim.aggregate(pipe)
         cnt = 0
         for data in result:
-            # print(result)
+            #pprint.pprint(data)
             last_result = data
             cnt += 1
         timer(instart,cnt)
         idnum += 1
+    print("# ---------------- Sample Document ---------------------- #")
     pprint.pprint(last_result)
+    print("# ---------------- Pipeline ---------------------- #")
+    pprint.pprint(pipe)
     timer(start,iters,"tot")
 
 def transaction_mongodb(client, num_payment, manual=False):
@@ -552,7 +562,7 @@ if __name__ == "__main__":
     iters = 1
     if not skip_mongo:
         client = mongodb_connection()
-        mongodb = client["healthcare"]
+        mongodb = client[settings["database"]]
     if "cache" in ARGS:
         skip_cache = ARGS["cache"].lower() == 'false'
     if not skip_cache:
