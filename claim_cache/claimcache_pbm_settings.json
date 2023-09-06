@@ -6,7 +6,7 @@
     "collection" : "claims",
     "alt_collection" : "claim_history",
     "username" : "main_admin",
-    "password" : "bugsyBoo",
+    "password" : "<secret>",
     "version" : "1.0",
     "process_count" : 1,
     "batch_size" : 500,

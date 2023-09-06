@@ -11,7 +11,7 @@
   "profile_collection" : "profiles",
   "history_collection" : "activity_raw",
   "username" : "main_admin",
-  "password" : "bugsyBoo",
+  "password" : "<secret>",
   "version" : "2.2st",
   "process_count" : 4,
   "batch_size" : 1000,

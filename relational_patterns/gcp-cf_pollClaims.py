@@ -30,7 +30,7 @@ def claim_polling_trigger(request):
     last_check = '2023-05-16 14:30:21'
     tables = ["Provider","Member","Claim","Claim_claimline","Member_address"]
     warehouse_db = "bradybyrd-poc.claims_warehouse"
-    mdb_cred = "mongodb+srv://main_admin:bugsyBoo@claims-demo.vmwqj.mongodb.net"
+    mdb_cred = "mongodb+srv://main_admin:<secret>@claims-demo.vmwqj.mongodb.net"
     mdbconn = MongoClient(mdb_cred)
     db = mdbconn["claim_demo"]
     ans = db["preferences"].find_one({"doc_type" : "last_check"})

@@ -5,12 +5,12 @@
   "database" : "master_data",
   "collection" : "party",
   "username" : "main_admin",
-  "password" : "bugsyBoo",
+  "password" : "<secret>",
   "version" : "1.0",
   "postgres" : {
     "host" : "localhost",
     "username" : "bbadmin",
-    "password" : "bugsyBoo",
+    "password" : "<secret>",
     "database" : "single_view",
     "notes" : "To startup - brew services start postgres"
   },

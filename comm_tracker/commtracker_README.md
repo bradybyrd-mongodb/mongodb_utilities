@@ -7,7 +7,7 @@ python3 claimcache_pbm.py action=load_claim_updates test=true size=10
 
 python3 commtracker.py action=publish_direct > output9-11.txt 2>&1 &
 
-mongosh "mongodb+srv://commstracker.mhsdb.mongodb.net/commtracker" --apiVersion 1 --username main_admin --password bugsyBoo
+mongosh "mongodb+srv://commstracker.mhsdb.mongodb.net/commtracker" --apiVersion 1 --username main_admin --password <secret>
 
 APIkey: qzllcgrg:37c9c00b-21c0-43e9-b097-36426f700142
 
@@ -15,7 +15,7 @@ python3 commtracker.py action=publish_direct > output-09-14-22.txt 2>&1 &
 python3 commtracker.py action=publish_kafka > output-09-16-22.txt 2>&1 &
 
 # --- Sharded Cluster --- #
-mongosh "mongodb+srv://commsharded.mhsdb.mongodb.net/commtracker" --apiVersion 1 --username main_admin --password bugsyBoo
+mongosh "mongodb+srv://commsharded.mhsdb.mongodb.net/commtracker" --apiVersion 1 --username main_admin --password <secret>
 M40 3 shards, 500Gb, 3 region
 
 ShardKey: taxonomy_cmnctn_format, id

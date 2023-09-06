@@ -7,7 +7,7 @@
     "profile_collection" : "profiles",
     "history_collection" : "activity_raw",
     "username" : "main_admin",
-    "password" : "bugsyBoo",
+    "password" : "<secret>",
     "version" : "1.0",
     "process_count" : 1,
     "batch_size" : 200,

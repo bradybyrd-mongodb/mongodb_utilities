@@ -3,7 +3,7 @@
     "database" : "bb_sales",
     "collection" : "customer_notes",
     "username" : "main_admin",
-    "password" : "bugsyBoo",
+    "password" : "<secret>",
     "version" : "1.0",
     "process_count" : 1,
     "batch_size" : 10,

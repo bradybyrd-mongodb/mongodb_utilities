@@ -141,6 +141,7 @@ def build_batch_from_template(cur_coll, details = {}):
                 if icnt == 0:
                     icnt += 1
                     continue
+                #print(row)
                 path = row[0].split('.')
                 if "()" in row[0]: #path[-2].endswith('()'):
                     islist = "Y"

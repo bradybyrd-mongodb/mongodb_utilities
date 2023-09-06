@@ -306,11 +306,11 @@ def ddl_from_template(action, pgconn, template, domain):
             flds = [field]
             if len(table.split("_")) > 1:
                 #  Add a parent_id field
-                new_field = f'{row["parent"]}_id'
+                new_field = stripProp(f'{row["parent"]}_id')
                 fkey = f"  {new_field} varchar(20) NOT NULL,"
                 flds.append(new_field)
                 #  Add a self_id field
-                new_field = f"{table}_id"
+                new_field = stripProp(f"{table}_id")
                 fkey += f"  {new_field} varchar(20) NOT NULL,"
                 flds.append(new_field)
             ddl = (
@@ -374,6 +374,7 @@ def pg_type(mtype):
         "boolean": "varchar(2)",
         "date": "timestamp",
         "integer": "integer",
+        "text": "text",
         "double": "real",
     }
     ftype = type_x[mtype.lower().strip()]
@@ -426,6 +427,7 @@ def fields_from_template(template):
 
 
 def execute_ddl(ddl_action="info"):
+    ddl_action = "info"
     if "template" in ARGS:
         template = ARGS["template"]
     elif "data" in settings:
@@ -698,8 +700,13 @@ def get_claimlines(conn, claim_ids):
 # ----------------------------------------------------------------------#
 #   CSV Loader Routines
 # ----------------------------------------------------------------------#
-stripProp = lambda str: re.sub(r"\s+", "", (str[0].upper() + str[1:].strip("()")))
-
+#stripProp = lambda str: re.sub(r"\s+", "", (str[0].upper() + str[1:].strip("()")))
+def stripProp(str):
+    ans = str
+    if str[0].isupper() and str[1].islower():
+        ans = str[0].lower() + str[1:]
+    ans = re.sub(r'\s+', '', ans.strip('()'))
+    return ans
 
 def ser(o):
     """Customize serialization of types that are not JSON native"""

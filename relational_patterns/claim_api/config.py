@@ -9,11 +9,11 @@ settings = {
     "database" : "healthcare",
     "collection" : "members",
     "username" : "main_admin",
-    "password" : "bugsyBoo",
+    "password" : "<secret>",
     "postgres" : {
       "host" : "localhost",
       "username" : "bbadmin",
-      "password" : "bugsyBoo",
+      "password" : "<secret>",
       "database" : "healthcare",
       "notes" : "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
     },
