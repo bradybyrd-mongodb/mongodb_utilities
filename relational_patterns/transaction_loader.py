@@ -92,33 +92,32 @@ def get_claims_sql(conn, query, patient_id, r, skip_cache, iters = 1):
                 logging.debug(f"cache miss -> {patient_id}")
                 logging.debug(f"fetching from psql {SQL}")
         if not cache_hit:            
-            match query:
-                case "claim":  # Claim - only
-                    SQL = "select *  from claim c where c.patient_id ='{}'".format(str(patient_id))
-                case "claimLinePayments":  # Claim + Claimlines + Claimpayments
-                    SQL = "select c.*, cl.*, cp.* from claim c LEFT JOIN claim_payment cp on cp.claim_id = c.claim_id LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id where c.patient_id = '{}'".format(
-                        str(patient_id)
-                    )
+            if query == "claim":  # Claim - only
+                SQL = "select *  from claim c where c.patient_id ='{}'".format(str(patient_id))
+            elif query == "claimLinePayments":  # Claim + Claimlines + Claimpayments
+                SQL = "select c.*, cl.*, cp.* from claim c LEFT JOIN claim_payment cp on cp.claim_id = c.claim_id LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id where c.patient_id = '{}'".format(
+                    str(patient_id)
+                )
                 # Claim + Member + Provider (and a bunch of the sub tables)
-                case "claimMemberProvider":
-                    SQL = """select c.*, m.firstname, m.lastname, m.dateofbirth, m.gender, cl.*, cp.paidamount, cp.paiddate, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate,
-                                    op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate,
-                                    rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate,
-                                    opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate, ma.city as city, ma.state as us_state,
-                                    mc.phonenumber as phone, mc.emailaddress as email
-                                    from claim c
-                                    INNER JOIN member m on m.member_id = c.patient_id
-                                    LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id
-                                    LEFT JOIN claim_payment cp on cp.claim_id = c.claim_id
-                                    INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id
-                                    INNER JOIN provider op on cl.orderingprovider_id = op.provider_id
-                                    INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id
-                                    INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id
-                                    LEFT JOIN (select * from member_address where type = 'Main' limit 1) ma on ma.member_id = m.member_id
-                                    INNER JOIN (select * from member_communication where emailtype = 'Work' and member_id = '{}' limit 1) mc on mc.member_id = m.member_id
-                                    where c.patient_id = '{}' """.format(
-                                                       str(patient_id), str(patient_id)
-                    )
+            elif query == "claimMemberProvider":
+                SQL = """select c.*, m.firstname, m.lastname, m.dateofbirth, m.gender, cl.*, cp.paidamount, cp.paiddate, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate,
+                                op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate,
+                                rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate,
+                                opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate, ma.city as city, ma.state as us_state,
+                                mc.phonenumber as phone, mc.emailaddress as email
+                                from claim c
+                                INNER JOIN member m on m.member_id = c.patient_id
+                                LEFT OUTER JOIN claim_claimline cl on cl.claim_id = c.claim_id
+                                LEFT JOIN claim_payment cp on cp.claim_id = c.claim_id
+                                INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id
+                                INNER JOIN provider op on cl.orderingprovider_id = op.provider_id
+                                INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id
+                                INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id
+                                LEFT JOIN (select * from member_address where type = 'Main' limit 1) ma on ma.member_id = m.member_id
+                                INNER JOIN (select * from member_communication where emailtype = 'Work' and member_id = '{}' limit 1) mc on mc.member_id = m.member_id
+                                where c.patient_id = '{}' """.format(
+                                                    str(patient_id), str(patient_id)
+                )
             query_result = sql_query(SQL, conn)
             if not skip_cache:
                 load_claims_redis(r, key, query_result)
