@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+import os
 import time
 from collections import OrderedDict, defaultdict
 from ssl import SSLSocket
@@ -504,6 +505,8 @@ def pg_connection(type="postgres", sdb="none"):
     shost = settings[type]["host"]
     susername = settings[type]["username"]
     spwd = settings[type]["password"]
+    if "secret" in spwd:
+        spwd = os.environ.get("_PGPWD_")
     if sdb == "none":
         sdb = settings[type]["database"]
     conn = psycopg2.connect(host=shost, database=sdb,
@@ -522,6 +525,8 @@ def mongodb_connection(type="uri", details={}):
     if "username" in details:
         username = details["username"]
         password = details["password"]
+    if "secret" in password:
+        password = os.environ.get("_PWD_")
     mdb_conn = mdb_conn.replace("//", f"//{username}:{password}@")
     logging.debug(f"Connecting: {mdb_conn}")
     if "readPreference" in details:

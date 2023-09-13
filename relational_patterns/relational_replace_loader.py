@@ -14,6 +14,7 @@ import multiprocessing
 import pprint
 import bson
 from bson.objectid import ObjectId
+from decimal import Decimal
 from bbutil import Util
 from id_generator import Id_generator
 import datetime
@@ -612,6 +613,8 @@ def client_connection(type = "uri", details = {}):
     mdb_conn = settings[type]
     username = settings["username"]
     password = settings["password"]
+    if "secret" in password:
+        password = os.environ.get("PWD")
     if "username" in details:
         username = details["username"]
         password = details["password"]
