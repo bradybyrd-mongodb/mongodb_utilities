@@ -145,42 +145,40 @@ def get_claims_mongodb(client, query, patient_id, iters = 1):
     for inc in range(iters):
         patient_id = f'{pair[0]}-{idnum}'
         instart = datetime.datetime.now()
-        match query:
-            case "claim":  # Claim - only
-                result = claim.find({'patient_id': patient_id})
-
-            case "claimLinePayments":  # Claim + Claimlines + Claimpayments
-                result = claim.find(
-                    {'patient_id': patient_id}, {'claimLine': 1})
-            case "claimMemberProvider":  # Claim + Member + Provider
-                pipe = [
-                    {
-                        '$match': {
-                            'patient_id': patient_id
-                        }
-                    }, {
-                        '$lookup': {
-                            'from': 'member',
-                            'localField': 'patient_id',
-                            'foreignField': 'member_id',
-                            'as': 'member'
-                        }
-                    },
-                    {
-                        "$unwind" : {"path" : "$member"}
-                    }, {
-                        '$lookup': {
-                            'from': 'provider',
-                            'localField': 'attendingProvider_id',
-                            'foreignField': 'provider_id',
-                            'as': 'provider'
-                        }
-                    },
-                    {
-                        "$unwind" : {"path" : "$provider"}
+        if query == "claim":  # Claim - only
+            result = claim.find({'patient_id': patient_id})
+        elif query == "claimLinePayments":  # Claim + Claimlines + Claimpayments
+            result = claim.find(
+                {'patient_id': patient_id}, {'claimLine': 1})
+        elif query == "claimMemberProvider":  # Claim + Member + Provider
+            pipe = [
+                {
+                    '$match': {
+                        'patient_id': patient_id
                     }
-                ]
-                result = claim.aggregate(pipe)
+                }, {
+                    '$lookup': {
+                        'from': 'member',
+                        'localField': 'patient_id',
+                        'foreignField': 'member_id',
+                        'as': 'member'
+                    }
+                },
+                {
+                    "$unwind" : {"path" : "$member"}
+                }, {
+                    '$lookup': {
+                        'from': 'provider',
+                        'localField': 'attendingProvider_id',
+                        'foreignField': 'provider_id',
+                        'as': 'provider'
+                    }
+                },
+                {
+                    "$unwind" : {"path" : "$provider"}
+                }
+            ]
+            result = claim.aggregate(pipe)
         cnt = 0
         for data in result:
             #pprint.pprint(data)
