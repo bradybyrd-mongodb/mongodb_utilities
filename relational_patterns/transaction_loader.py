@@ -210,12 +210,14 @@ def transaction_mongodb(client, num_payment, manual=False):
                 claim_update = claim.find_one_and_update(
                     {"claim_id": claim_id},
                     {"$addToSet": {"payment": payment[i]}},
-                    projection={"patient_id": 1},
+                    projection={"patient_id": 1, "payment" : 1},
                     session=session,
                 )
                 member_id = claim_update["patient_id"]
                 tot = 0
-                for it in claim_update.payment:
+                #print("# ---------- Claim Update ----------- #")
+                #pprint.pprint(claim_update)
+                for it in claim_update["payment"]:
                     tot += it["patientPaidAmount"]
                 member.update_one(
                     {"member_id": member_id},
