@@ -214,10 +214,16 @@ def transaction_mongodb(client, num_payment, manual=False):
                     session=session,
                 )
                 member_id = claim_update["patient_id"]
+                tot = 0
+                for it in claim_update.payment:
+                    tot += it["patientPaidAmount"]
                 member.update_one(
                     {"member_id": member_id},
-                    {"$inc": {
-                        "total_payments": payment[i]["patientPaidAmount"]}},
+                    #{"$inc": {
+                    #    "total_payments": payment[i]["patientPaidAmount"]}},
+                    {"$set" : {
+                        "total_payments" : tot
+                    }}
                     session=session,
                 )
                 if manual:
