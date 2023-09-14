@@ -223,7 +223,7 @@ def transaction_mongodb(client, num_payment, manual=False):
                     #    "total_payments": payment[i]["patientPaidAmount"]}},
                     {"$set" : {
                         "total_payments" : tot
-                    }}
+                    }},
                     session=session,
                 )
                 if manual:
