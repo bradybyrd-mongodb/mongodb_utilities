@@ -252,6 +252,7 @@ def transaction_mongodb(client, num_payment, manual=False):
 
 def transaction_postgres(conn, num_payment):
     payment = generate_payments(num_payment)
+    conn.autocommit = False #for multi-line transactions
     cur = conn.cursor()
 
     SQL_RANDOM = "select claim_id from claim order by random() limit {};".format(
@@ -285,12 +286,25 @@ def transaction_postgres(conn, num_payment):
             f"INSERT INTO claim_payment(claim_payment_id, claim_id, approvedamount, coinsuranceamount, copayamount, latepaymentinterest, paidamount, paiddate, patientpaidamount, patientresponsibilityamount, payerpaidamount, modified_at)"
             f"VALUES ('{pmt['claim_payment_id']}', '{pmt['claim_id']}', {payment[i]['approvedAmount']}, {payment[i]['coinsuranceAmount']}, {payment[i]['copayAmount']}, {payment[i]['latepaymentInterest']}, {payment[i]['paidAmount']}, '{payment[i]['paidDate']}', {payment[i]['patientPaidAmount']}, {payment[i]['patientResponsibilityAmount']}, {payment[i]['payerPaidAmount']}, now() );"
         )
+        cur.execute(SQL_INSERT)
+        # claim + update total payment claim
+        SQL_TALLY_PAYMENTS = (
+            f"select claim_id, sum(patientpaidamount) as tot_payments from claim_payment "
+            f"where claim_id = '{claim_id}' "
+            f"group by claim_id;"
+        )
+        cur.execute(SQL_TALLY_PAYMENTS)
+        rows = cur.fetchall()
+        tot = 0
+        for i in rows:
+            tot += i[1]
         # claim + update total payment claim
         SQL_UPDATE_CLAIM = (
             f"UPDATE public.claim "
-            f'SET totalpayments=  COALESCE(totalpayments ,0)  + {payment[i]["patientPaidAmount"]} '
+            f'SET totalpayments=  {tot} ' #COALESCE(totalpayments ,0)  + {payment[i]["patientPaidAmount"]} '
             f"WHERE claim_id = '{claim_id}';"
         )
+        cur.execute(SQL_UPDATE_CLAIM)
         # FIND MEMBER ID
         member_id = sql_query(
             f"select patient_id from claim WHERE claim_id = '{claim_id}'", conn
@@ -299,9 +313,11 @@ def transaction_postgres(conn, num_payment):
         # members + update total payment
         SQL_UPDATE_MEMBER = (
             f"UPDATE public.member "
-            f'SET totalpayments = COALESCE(totalpayments ,0) + {payment[i]["patientPaidAmount"]} '
+            f'SET totalpayments = {tot} ' #COALESCE(totalpayments ,0) + {payment[i]["patientPaidAmount"]} '
             f"WHERE member_id = '{member_id}';"
         )
+        cur.execute(SQL_UPDATE_MEMBER)
+        
         SQL_TRANSACTION = (
             f"BEGIN;"
             f"{SQL_INSERT} "
@@ -310,8 +326,8 @@ def transaction_postgres(conn, num_payment):
             f"COMMIT;"
         )
         # logging.debug(f"SQL Transaction : {SQL_TRANSACTION}")
-        cur.execute(SQL_TRANSACTION)
-        # conn.commit()
+        #cur.execute(SQL_TRANSACTION)
+        conn.commit()
 
         elapsed = datetime.datetime.now() - start
         logging.debug(f"Transaction took: {'{:.3f}'.format(elapsed.microseconds / 1000)} ms")
