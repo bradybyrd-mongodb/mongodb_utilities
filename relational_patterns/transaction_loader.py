@@ -318,15 +318,6 @@ def transaction_postgres(conn, num_payment):
         )
         cur.execute(SQL_UPDATE_MEMBER)
         
-        SQL_TRANSACTION = (
-            f"BEGIN;"
-            f"{SQL_INSERT} "
-            f"{SQL_UPDATE_CLAIM} "
-            f"{SQL_UPDATE_MEMBER} "
-            f"COMMIT;"
-        )
-        # logging.debug(f"SQL Transaction : {SQL_TRANSACTION}")
-        #cur.execute(SQL_TRANSACTION)
         conn.commit()
 
         elapsed = datetime.datetime.now() - start
@@ -337,6 +328,22 @@ def transaction_postgres(conn, num_payment):
         f"Transaction average time took for {num_payment} transactions: {'{:.3f}'.format(elapsed_transactions / (num_payment * 1000))} ms"
     )
     logging.debug(f"Test completed")
+
+# --------------------------------------------------------- #
+#    Migration to v2 policy
+# --------------------------------------------------------- #
+#  add policy coverage subdocument
+#  add version_id to policy
+#  add version_id to product
+#  add version_id to product coverage
+def migrate_product_coverage():
+    pipe = [
+        {"$project"{
+            "policy_id": 1, "product_id" : 1, "plan_sponsor_id" : 1, "name": 1, "effectiveDate" : 1, "expirationDate"
+            "coverage" : 1
+        }},
+        {"$out" : ""}
+    ]    
 
 
 # --------------------------------------------------------- #

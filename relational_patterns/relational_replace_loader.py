@@ -86,13 +86,16 @@ def worker_load(ipos, args):
     #IDGEN = Id_generator({"seed" : base_counter, "size" : count})
     bulk_docs = []
     ts_start = datetime.datetime.now()
+    job_size = batches * batch_size
+    if "size" in ARGS:
+        job_size = int(ARGS["size"])
     cur_time = ts_start
     cnt = 0
     tot = 0
     if "template" in args:
         template = args["template"]
         master_table = master_from_file(template)
-        job_info = {master_table : {"path" : template, "size" : settings["batches"] * settings["batch_size"], "id_prefix" : f'{master_table[0].upper()}-'}}
+        job_info = {master_table : {"path" : template, "size" : job_size, "id_prefix" : f'{master_table[0].upper()}-'}}
     else:
         job_info = settings["data"]
     # Loop through collection files
@@ -105,10 +108,12 @@ def worker_load(ipos, args):
         IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
         bb.message_box(f'[{pid}] {domain} - base: {base_counter}', "title")
         tot = 0
-        batches = int(details["size"]/batch_size)
+        batches = int(count/batch_size)
+        if batches == 0:
+            batches = 1
         for k in range(batches):
             #bb.logit(f"[{pid}] - {domain} Loading batch: {k} - size: {batch_size}")
-            bulk_docs = build_batch_from_template(domain, {"connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter})
+            bulk_docs = build_batch_from_template(domain, {"connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter, "size" : count})
             #print(bulk_docs)
             db[domain].insert_many(bulk_docs)
             tot += len(bulk_docs)
@@ -124,6 +129,14 @@ def worker_load(ipos, args):
 def build_batch_from_template(cur_coll, details = {}):
     template_file = details["template"]
     batch_size = settings["batch_size"]
+    if "size" in details and details["size"] < batch_size:
+        batch_size = details["size"]
+    sub_size = 5
+    sub_size_low = 1
+    if "sub_size" in details:
+        sub_size = details["sub_size"]
+        if sub_size > 10:
+            sub_size_low = 10
     cnt = 0
     records = []
     merger = Merger([
@@ -132,7 +145,7 @@ def build_batch_from_template(cur_coll, details = {}):
     ], [ "override" ], [ "override" ])
     for J in range(0, batch_size): # iterate through the bulk insert count
         # A dictionary that will provide consistent, random list lengths
-        counts = random.randint(1, 5) #defaultdict(lambda: random.randint(1, 5))
+        counts = random.randint(sub_size_low, sub_size) #defaultdict(lambda: random.randint(1, 5))
         data = {}
         with open(template_file) as csvfile:
             propreader = csv.reader(csvfile)
@@ -147,7 +160,7 @@ def build_batch_from_template(cur_coll, details = {}):
                 if "()" in row[0]: #path[-2].endswith('()'):
                     islist = "Y"
                 else:
-                    counts = random.randint(1, 5) #defaultdict(lambda: random.randint(1, 5))
+                    counts = random.randint(sub_size_low, sub_size) #defaultdict(lambda: random.randint(1, 5))
                 partial = procpath_new(path, counts, row[3]) # Note, later version of files may not include required field
                 #print(f'{row[0]}-{islist}: {partial}')
                 # Merge partial trees.
@@ -494,6 +507,7 @@ def procpath_new(path, counts, generator):
     stripped = stripProp(path[0])
     if len(path) == 1:
         # Base case. Generate a random value by running the Python expression in the text file
+        #bb.logit(generator)
         return { stripped: eval(generator) }
     elif path[0].endswith('()'):
         # Lists are slightly more complex. We generate a list of the length specified in the
@@ -614,7 +628,7 @@ def client_connection(type = "uri", details = {}):
     username = settings["username"]
     password = settings["password"]
     if "secret" in password:
-        password = os.environ.get("PWD")
+        password = os.environ.get("_PWD_")
     if "username" in details:
         username = details["username"]
         password = details["password"]
