@@ -132,35 +132,32 @@ def build_batch_from_template(cur_coll, details = {}):
     if "size" in details and details["size"] < batch_size:
         batch_size = details["size"]
     sub_size = 5
-    sub_size_low = 1
-    if "sub_size" in details:
-        sub_size = details["sub_size"]
-        if sub_size > 10:
-            sub_size_low = 10
     cnt = 0
     records = []
+    islist = False
     merger = Merger([
         (dict, "merge"),
         (list, zipmerge)
     ], [ "override" ], [ "override" ])
     for J in range(0, batch_size): # iterate through the bulk insert count
         # A dictionary that will provide consistent, random list lengths
-        counts = random.randint(sub_size_low, sub_size) #defaultdict(lambda: random.randint(1, 5))
+        counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
         data = {}
         with open(template_file) as csvfile:
             propreader = csv.reader(csvfile)
             icnt = 0
             for row in propreader:
-                islist = "n"
                 if icnt == 0:
                     icnt += 1
                     continue
                 #print(row)
                 path = row[0].split('.')
-                if "()" in row[0]: #path[-2].endswith('()'):
-                    islist = "Y"
+                if ")" in row[0]: #path[-2].endswith('()'):  
+                    islist = True
                 else:
-                    counts = random.randint(sub_size_low, sub_size) #defaultdict(lambda: random.randint(1, 5))
+                    islist = False
+                    counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
+                #print(f"# -- Procpath {path}")
                 partial = procpath_new(path, counts, row[3]) # Note, later version of files may not include required field
                 #print(f'{row[0]}-{islist}: {partial}')
                 # Merge partial trees.
@@ -475,32 +472,16 @@ def stripProp(str):
     ans = str
     if str[0].isupper() and str[1].islower():
         ans = str[0].lower() + str[1:]
-    ans = re.sub(r'\s+', '', ans.strip('()'))
+    if str.endswith(")"):
+        stg = re.findall(r'\(.*\)',ans)[0]
+        ans = ans.replace(stg,"")
+    ans = re.sub(r'\s+', '', ans)
     return ans
 
 def ser(o):
     """Customize serialization of types that are not JSON native"""
     if isinstance(o, datetime.datetime.date):
         return str(o)
-
-def procpath(path, counts, generator):
-    """Recursively walk a path, generating a partial tree with just this path's random contents"""
-    stripped = stripProp(path[0])
-    if len(path) == 1:
-        # Base case. Generate a random value by running the Python expression in the text file
-        return { stripped: eval(generator) }
-    elif path[0].endswith('()'):
-        # Lists are slightly more complex. We generate a list of the length specified in the
-        # counts map. Note that what we pass recursively is _the exact same path_, but we strip
-        # off the ()s, which will cause us to hit the `else` block below on recursion.
-        print("# ------------------------------------------ #")
-        print(f'{stripped} - {counts} - {generator}')
-        return {            
-            stripped: [ procpath([ path[0].strip('()') ] + path[1:], counts, generator)[stripped] for X in range(0, counts[stripped]) ]
-        }
-    else:
-        # Return a nested page, of the specified type, populated recursively.
-        return {stripped: procpath(path[1:], counts, generator)}
 
 def procpath_new(path, counts, generator):
     """Recursively walk a path, generating a partial tree with just this path's random contents"""
@@ -509,12 +490,18 @@ def procpath_new(path, counts, generator):
         # Base case. Generate a random value by running the Python expression in the text file
         #bb.logit(generator)
         return { stripped: eval(generator) }
-    elif path[0].endswith('()'):
+    elif path[0].endswith(')'):
         # Lists are slightly more complex. We generate a list of the length specified in the
         # counts map. Note that what we pass recursively is _the exact same path_, but we strip
         # off the ()s, which will cause us to hit the `else` block below on recursion.
+        res = re.findall(r'\(.*\)',path[0])[0]
+        if res == "()":
+            lcnt = counts
+        else:
+            lcnt = int(res.replace("(","").replace(")",""))
+        #print(f"lcnt: {lcnt}")
         return {            
-            stripped: [ procpath_new([ path[0].strip('()') ] + path[1:], counts, generator)[stripped] for X in range(0, counts) ]
+            stripped: [ procpath_new([ path[0].replace(res,"") ] + path[1:], counts, generator)[stripped] for X in range(0, lcnt) ]
         }
     else:
         # Return a nested page, of the specified type, populated recursively.
