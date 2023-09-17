@@ -1,0 +1,23 @@
+Resource.Property,Property Type,Optional/Required,Generator,Sample Data
+Product_version.product_version_id,String,Required,"IDGEN.get(""PV-"")","incremental"
+Product_version.product_id,String,Required,"IDGEN.random_value(""PR-"")",PR-1004
+Product_version.version,String,Optional,"""1.0""",1.0
+Product_version.startDate,date,Optional,"fake.past_datetime()",0
+Product_version.endDate,date,Optional,"fake.past_datetime()",0
+Product_version.isActive,String,Optional,"""true""",true
+Product_version.premium,double,Optional,"fake.random_int(min=40, max=1000)",0
+Product_version.coverage().name,String,Optional,fake.bs(),Prescription
+Product_version.coverage().description,Text,Optional,fake.paragraph(),Prescription
+Product_version.coverage().coverageType,String,Optional,"fake.random_element(('Medical', 'Presciption','Mental Health','Gym','Physical Therapy','Treatment-residential','Treatment-outpatient'))",Prescription
+Product_version.coverage().deductibleType,String,Optional,"fake.random_element(('Annual', 'Family-out-of-pocket','percentage','co-payment'))",Prescription
+Product_version.coverage().deductibleAmmount,double,Optional,"fake.random_int(min=20, max=1000)",20
+Product_version.coverage().version_id,String,Optional,"1.0",1
+Product_version.coverage().limit().limitTypeCode,String,Optional,"fake.random_element(('H01', 'L02','B1A','BBX'))",Prescription
+Product_version.coverage().limit().limitValue,double,Optional,"fake.random_int(min=20, max=1000)",20
+Product_version.coverage().limit().limitBasisCode,String,Optional,"fake.random_element(('H01', 'L02','B1A','BBX'))",20
+Product_version.coverage().deductibleConditions().conditionName,String,Optional,"fake.random_element(('In-network','Out-network','negotiated-amount','medical-necessity'))",20
+Product_version.coverage().deductibleConditions().factor,String,Optional,"fake.random_element(('Percentage','Fixed-amount','Not-to-exceed'))",20
+Product_version.coverage().deductibleConditions().factorAmount,double,Optional,"fake.random_int(min=20, max=1000)",20
+Product_version.coverage().physicalLocation().name,double,Optional,"fake.bs()",20
+Product_version.coverage().physicalLocation().longitude,double,Optional,"fake.longitude()",71.6875
+Product_version.coverage().physicalLocation().latitude,double,Optional,"fake.latitude()",45.2463

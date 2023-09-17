@@ -2,7 +2,7 @@
   "miguri": "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
   "basicuri": "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
   "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
-  "database": "healthcare_temp",
+  "database": "healthcare_new",
   "collection": "member",
   "username": "main_admin",
   "password": "<secret>",

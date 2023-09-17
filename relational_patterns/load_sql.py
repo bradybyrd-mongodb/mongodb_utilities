@@ -90,7 +90,6 @@ providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
 """
 settings_file = "relations_settings.json"
 
-
 def load_postgres_data():
     # read settings and echo back
     bb.message_box("Loading Data", "title")
@@ -122,11 +121,9 @@ def load_postgres_data():
     for i in jobs:
         i.join()
 
-
 def load_from_csv():
     # Provider.specialties().status,String,optional,"fake.random_element(('Active', 'Inactive'))","Active, Inactive",,,,Approved,,Provider.CredentialedSpecialties().Status,Embed-PegaHC-Stringlist,7.21
     boo = "boo"
-
 
 def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
@@ -183,7 +180,6 @@ def worker_load(ipos, args):
     # file_log(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
-
 # -----------------------------------------------------------#
 #  CSV template sql translator
 # -----------------------------------------------------------#
@@ -207,6 +203,7 @@ def build_sql_batch_from_template(tables, details={}):
         attrs = tables[item]
         cur_table = item
         parent = attrs["parent"]
+        sub_size = attrs["sub_size"]
         table_type = tab_types[cur_table]
         recs = []
         bb.logit(f"Table: {cur_table} building data")
@@ -219,7 +216,8 @@ def build_sql_batch_from_template(tables, details={}):
             id_prefix = parent[0:2].upper() + "-"
         else:
             id_prefix = details["id_prefix"]
-        counts = random.randint(1, 5) if len(cur_table.split("_")) > 1 else 1
+        #counts = random.randint(1, 5) if len(cur_table.split("_")) > 1 else 1
+        counts = sub_size if len(cur_table.split("_")) > 1 else 1
         bb.logit(f"Table: {cur_table} building data, factor: {counts}")
         sql = attrs["insert"]
         idpos = 0
@@ -269,7 +267,6 @@ def build_sql_batch_from_template(tables, details={}):
     bb.logit(f"{cnt} records for {database} complete")
     return cnt
 
-
 def table_types(table_info):
     res = {}
     subs = []
@@ -285,7 +282,6 @@ def table_types(table_info):
         elif tab in subs:
             res[tab] = "submaster"
     return res
-
 
 def ddl_from_template(action, pgconn, template, domain):
     database = settings["postgres"]["database"]
@@ -325,6 +321,7 @@ def ddl_from_template(action, pgconn, template, domain):
                 "fields": flds,
                 "generator": [row["generator"]],
                 "parent": row["parent"],
+                "sub_size" : row["sub_size"]
             }
 
         else:
@@ -340,10 +337,8 @@ def ddl_from_template(action, pgconn, template, domain):
     sql_action(pgconn, action, tables)
     return tables
 
-
 def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
-
 
 def clean_field_data(data):
     tab = data["table"]
@@ -355,7 +350,6 @@ def clean_field_data(data):
         tab = tab.split("_")[0]
     return tab, data["name"], data["type"]
 
-
 def clean_ddl(tables_obj):
     for tab in tables_obj:
         ddl = tables_obj[tab]["ddl"]
@@ -366,7 +360,6 @@ def clean_ddl(tables_obj):
         tables_obj[tab][
             "insert"
         ] = f'insert into {tab} ({",".join(tables_obj[tab]["fields"])}) values ({fmts});'
-
 
 def pg_type(mtype):
     type_x = {
@@ -380,11 +373,9 @@ def pg_type(mtype):
     ftype = type_x[mtype.lower().strip()]
     return ftype
 
-
 def generator_values(gen):
     # substitute params for generic generator values
     return gen
-
 
 def fields_from_template(template):
     """
@@ -394,6 +385,7 @@ def fields_from_template(template):
     with open(template) as csvfile:
         propreader = csv.reader(itertools.islice(csvfile, 1, None))
         master = ""
+        sub_size = 1
         # support for parent.child.child.field, parent.children().field
         for row in propreader:
             result = {
@@ -402,12 +394,20 @@ def fields_from_template(template):
                 "parent": "",
                 "type": pg_type(row[1]),
                 "generator": generator_values(row[3]),
+                "sub_size" : sub_size
             }
             path = row[0].split(".")
             depth = len(path)
             for k in range(depth):
-                path[k] = path[k].strip("()").strip()
+                if path[k].endswith(')'):
+                    res = re.findall(r'\(.*\)',path[k])[0]
+                    if res != "()":
+                        sub_size = int(res.replace("(","").replace(")",""))
+                    else:
+                        sub_size = random.randint(1,5)
+                    path[k] = path[k].replace(res,"")
             result["name"] = path[-1]
+            result["sub_size"] = sub_size
             master = f"{path[0]}"
             if depth == 1:
                 bb = ""  # should never see this
@@ -424,7 +424,6 @@ def fields_from_template(template):
                 result["parent"] = f"{path[0]}_{path[1]}_{path[2]}"
             ddl.append(result)
     return ddl
-
 
 def execute_ddl(ddl_action="info"):
     ddl_action = "info"
@@ -458,7 +457,6 @@ def execute_ddl(ddl_action="info"):
         table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
     mycon.close
 
-
 def create_foreign_keys():
     #  Reads settings file and finds values
     cur_process = multiprocessing.current_process()
@@ -491,7 +489,6 @@ def create_foreign_keys():
     pgconn.close()
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
-
 def foreign_key_sql(table):
     parts = table.split("_")
     part_size = len(parts)
@@ -512,7 +509,6 @@ def foreign_key_sql(table):
         f" NOT VALID"
     )
     return sql
-
 
 def fix_provider_ids():
     num_provs = 50
@@ -539,7 +535,6 @@ def fix_provider_ids():
     cur.close()
     mycon.close
 
-
 def add_primary_provider_ids():
     num_provs = 200
     base_val = 1000000
@@ -562,7 +557,6 @@ def add_primary_provider_ids():
         bb.logit(f"{err}")
     cur.close()
     mycon.close
-
 
 def fix_member_guardian_ids():
     num_provs = 200
@@ -591,7 +585,6 @@ def fix_member_guardian_ids():
     cur.close()
     mycon.close
 
-
 # ----------------------------------------------------------------------#
 #   Queries
 # ----------------------------------------------------------------------#
@@ -602,7 +595,6 @@ def member_claims_api():
     csql += "INNER JOIN member m on m.member_id = c.patient_id "
     csql += "INNER JOIN"
     sql["member_claims"] = csql
-
 
 def claimline_vw():
     vwsql = "create or replace view vw_claim_claimline AS \n"
@@ -615,7 +607,6 @@ def claimline_vw():
     sql += "INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id "
     sql += "INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id "
 
-
 def member_api():
     # show a single member and recent claims
     # include the primary provider
@@ -627,7 +618,6 @@ def member_api():
         if k < 20:
             pprint.pprint(item)
         k += 1
-
 
 def get_claims(conn=""):
     conn = pg_connection()
@@ -648,7 +638,6 @@ def get_claims(conn=""):
         if inc > 10:
             break
     conn.close()
-
 
 def get_claimlines(conn, claim_ids):
     # payment_fields = sql_helper.column_names("claim_claimline_payment", conn)
@@ -696,7 +685,6 @@ def get_claimlines(conn, claim_ids):
     result["data"] = data
     return result
 
-
 # ----------------------------------------------------------------------#
 #   CSV Loader Routines
 # ----------------------------------------------------------------------#
@@ -712,7 +700,6 @@ def ser(o):
     """Customize serialization of types that are not JSON native"""
     if isinstance(o, datetime.datetime.date):
         return str(o)
-
 
 def procpath(path, counts, generator):
     """Recursively walk a path, generating a partial tree with just this path's random contents"""
@@ -734,26 +721,21 @@ def procpath(path, counts, generator):
         # Return a nested page, of the specified type, populated recursively.
         return {stripped: procpath(path[1:], counts, generator)}
 
-
 def zipmerge(the_merger, path, base, nxt):
     """Strategy for deepmerge that will zip merge two lists. Assumes lists of equal length."""
     return [the_merger.merge(base[i], nxt[i]) for i in range(0, len(base))]
-
 
 def ID(key):
     id_map[key] += 1
     return key + str(id_map[key] + base_counter)
 
-
 def local_geo():
     coords = fake.local_latlng("US", True)
     return coords
 
-
 # ----------------------------------------------------------------------#
 #   Utility Routines
 # ----------------------------------------------------------------------#
-
 
 def record_loader(tables, table, recs, nconn=False):
     # insert_into table fields () values ();
@@ -782,7 +764,6 @@ def record_loader(tables, table, recs, nconn=False):
     if not nconn:
         conn.close()
 
-
 def sql_query(database, sql, nconn=False):
     # insert_into table fields () values ();
     if nconn:
@@ -802,7 +783,6 @@ def sql_query(database, sql, nconn=False):
         conn.close()
     return result
 
-
 def value_codes(flds, special={}):
     result = ""
 
@@ -815,7 +795,6 @@ def value_codes(flds, special={}):
         else:
             result += f", {fmt}"
     return result
-
 
 def newsql_query(sql, conn):
     # Simple query executor
@@ -830,7 +809,6 @@ def newsql_query(sql, conn):
     result = {"num_records": row_count, "data": cur.fetchall()}
     cur.close()
     return result
-
 
 def column_names(table, conn):
     sql = f"SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name   = '{table}'"
@@ -849,11 +827,9 @@ def column_names(table, conn):
     cur.close()
     return result
 
-
 def increment_version(old_ver):
     parts = old_ver.split(".")
     return f"{parts[0]}.{int(parts[1]) + 1}"
-
 
 def sql_action(conn, action, tables):
     if action == "none" or action == "info":
@@ -900,11 +876,12 @@ def pg_connection(type="postgres", sdb="none"):
     shost = settings[type]["host"]
     susername = settings[type]["username"]
     spwd = settings[type]["password"]
+    if "secret" in spwd:
+        spwd = os.environ.get("_PGPWD_")
     if sdb == "none":
         sdb = settings[type]["database"]
     conn = psycopg2.connect(host=shost, database=sdb, user=susername, password=spwd)
     return conn
-
 
 # ------------------------------------------------------------------#
 #     MAIN

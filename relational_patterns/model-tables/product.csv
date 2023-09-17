@@ -1,0 +1,22 @@
+Resource.Property,Property Type,Optional/Required,Generator,Sample Data
+Product.product_id,String,Required,"IDGEN.get(""PR-"")","""PR-"" + Incremental 1- 65 million"
+Product.name,String,Required,"fake.bs()",Smith
+Product.description,text,Optional,"fake.paragraph()",Sam
+Product.category,String,Optional,"fake.random_element(('Medicare', 'Medicaid', 'PPO', 'HMO','Major Medical'))",Medicare plan B
+Product.eligibility,String,Optional,"fake.bs()",Over 65
+Product.isActive,String,Optional,"fake.random_element(('T', 'F',))",T-F
+Product.startDate,date,Optional,"fake.past_datetime()","date"
+Product.endDate,date,Optional,"fake.past_datetime()","date"
+Product.premium,double,Optional,"fake.random_int(min=200, max=1000)",1.0
+Product.coverage(10).name,String,Optional,"fake.bs()","hospitalization"
+Product.coverage(10).description,text,Optional,"fake.paragraph()","hospitalization"
+Product.coverage(10).coverageType,String,Optional,"fake.bs()","dental"
+Product.coverage(10).deductibleConditions().conditionName,String,Optional,"fake.bs()","dental"
+Product.coverage(10).deductibleConditions().factor,String,Optional,"fake.bs()","dental"
+Product.coverage(10).deductibleConditions().factorAmount,double,Optional,"fake.random_int(min=2, max=100)",11
+Product.coverage(10).limit().limitTypeCode,String,Optional,"fake.random_element(('H01', 'L02','B1A','BBX'))",Prescription
+Product.coverage(10).limit().limitValue,double,Optional,"fake.random_int(min=20, max=1000)",20
+Product.coverage(10).limit().limitBasisCode,String,Optional,"fake.random_element(('H01', 'L02','B1A','BBX'))",20
+Product.coverage(10).physicalLocation().name,double,Optional,"fake.city()",20
+Product.coverage(10).physicalLocation().longitude,double,Optional,"float(fake.longitude())",71.6875
+Product.coverage(10).physicalLocation().latitude,double,Optional,"float(fake.latitude())",45.2463

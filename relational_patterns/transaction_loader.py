@@ -333,18 +333,50 @@ def transaction_postgres(conn, num_payment):
 #    Migration to v2 policy
 # --------------------------------------------------------- #
 #  add policy coverage subdocument
-#  add version_id to policy
-#  add version_id to product
-#  add version_id to product coverage
 def migrate_product_coverage():
     pipe = [
-        {"$project"{
-            "policy_id": 1, "product_id" : 1, "plan_sponsor_id" : 1, "name": 1, "effectiveDate" : 1, "expirationDate"
-            "coverage" : 1
-        }},
-        {"$out" : ""}
-    ]    
+        {
+            '$lookup': {
+                'from': 'product', 
+                'localField': 'product_id', 
+                'foreignField': 'product_id', 
+                'pipeline': [{'$project': {'coverage': 1, '_id': 0}}], 
+                'as': 'product'
+            }
+        }, {
+            '$unwind': {'path': '$product'}
+        }, {
+            '$project': {
+                'policy_id': 1, 
+                'plan_sponsor_id': 1, 
+                'name': 1, 
+                'effectiveDate': 1, 
+                'expirationDate': 1, 
+                'coverage': '$product.coverage', 
+                'version': 1, 
+                'isActive': 1, 
+                'premium': 1,
+                'holder' : 1,
+                'doc_version': 1
+            }
+        }, {
+            '$out': 'policy'
+        }
+    ]
+    db.command({'renameCollection': f'{settings["database"]}.policy',
+     'to' : f'{settings["database"]}.policy_temp'})
+    db.policy_temp.aggregate(pipe)
+    db.policy.create_index({"policy_id" : 1})
+    db.policy.create_index({"product_id" : 1})
+    db.policy.create_index({"holder.member_id" : 1})
+    #db.policy_temp.drop()
 
+#  add version_id to policy
+#  add version_id to product
+def add_version():
+    db.product.update_many({},{"$set": {"version" : "1.0"}})
+    db.policy.update_many({},{"$set": {"version" : "1.0"}})
+    db.product.create_index({"version" : 1})
 
 # --------------------------------------------------------- #
 #    API Presentation

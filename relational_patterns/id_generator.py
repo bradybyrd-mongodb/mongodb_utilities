@@ -27,13 +27,12 @@ class Id_generator:
         self.value_history[prefix] = {"base" : seed, "prev" : cur["prev"], "cur" : seed, "size" : size}
         return(seed)
 
-    def random_value(self, prefix):
+    def random_value(self, prefix, base = 1000, top = 1000000):
         if prefix in self.value_history:
             base = self.value_history[prefix]["base"]
             top = self.value_history[prefix]["base"] + self.value_history[prefix]["size"]
         else:
-            base = 1000
-            top = 1000000
+            top = base + top
         return(f'{prefix}{random.randint(base,top)}')
 
     def get(self, prefix = "none", amount = 1):

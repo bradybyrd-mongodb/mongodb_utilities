@@ -1,0 +1,31 @@
+Resource.Property,Property Type,Optional/Required,Generator,Sample Data
+Policy.policy_id,String,Required,"IDGEN.get(""P-"")","""P-"" + Incremental 1- 65 million"
+Policy.product_id,String,Required,"IDGEN.random_value(""PR-"",2000000,100)",Text
+Policy.plan_sponsor_id,String,Required,"IDGEN.random_value(""PS-"",2000000,100)",Text
+Policy.name,String,Required,fake.bs(),Smith
+Policy.effectiveDate,date,Required,"fake.past_datetime()",0
+Policy.expirationDate,date,Required,"fake.past_datetime() - datetime.timedelta(365*20)",0
+Policy.statusCode,String,Required,"fake.random_element(('10','20','30','40','50','1011','2011'))",0
+Policy.version,String,Optional,"1.0",Sam
+Policy.isActive,String,Optional,"""true""",True
+Policy.premium,double,Optional,"fake.random_int(min=40, max=1000)",0
+Policy.holder.firstName,String,Optional,fake.first_name(),Elijah
+Policy.holder.lastName,String,Optional,fake.last_name(),Dolittle
+Policy.holder.middleName,String,Optional,fake.first_name(),Elijah
+Policy.holder.suffix,String,Optional,fake.suffix(),esq
+Policy.holder.postalCode,String,Optional,fake.postcode(),0
+Policy.holder.member_id,String,Optional,"IDGEN.random_value(""M-"",2000000,10000)","M-1010"
+Policy.coverage().name,String,Optional,fake.bs(),Prescription
+Policy.coverage().description,Text,Optional,fake.paragraph(),Prescription
+Policy.coverage().coverageType,String,Optional,"fake.random_element(('Medical', 'Presciption','Mental Health','Gym','Physical Therapy','Treatment-residential','Treatment-outpatient'))",Prescription
+Policy.coverage().deductibleType,String,Optional,"fake.random_element(('Annual', 'Family-out-of-pocket','percentage','co-payment'))",Prescription
+Policy.coverage().deductibleAmmount,double,Optional,"fake.random_int(min=20, max=1000)",20
+Policy.coverage().deductibleConditions().conditionName,String,Optional,"fake.random_element(('In-network','Out-network','negotiated-amount','medical-necessity'))",20
+Policy.coverage().deductibleConditions().factor,String,Optional,"fake.random_element(('Percentage','Fixed-amount','Not-to-exceed'))",20
+Policy.coverage().deductibleConditions().factorAmount,double,Optional,"fake.random_int(min=20, max=1000)",20
+Policy.coverage().limit().limitTypeCode,String,Optional,"fake.random_element(('H01', 'L02','B1A','BBX'))",Prescription
+Policy.coverage().limit().limitValue,double,Optional,"fake.random_int(min=20, max=1000)",20
+Policy.coverage().limit().limitBasisCode,String,Optional,"fake.random_element(('H01', 'L02','B1A','BBX'))",20
+Policy.coverage().physicalLocation().name,double,Optional,"fake.bs()",20
+Policy.coverage().physicalLocation().longitude,double,Optional,"float(fake.longitude())",71.6875
+Policy.coverage().physicalLocation().latitude,double,Optional,"float(fake.latitude())",45.2463

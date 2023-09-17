@@ -174,7 +174,7 @@ def build_batch_from_template(cur_coll, details = {}):
                 icnt += 1
                 
         data = list(data.values())[0]
-        data["version"] = settings["version"]
+        data["doc_version"] = settings["version"]
         cnt += 1
         records.append(data)
     #bb.logit(f'{batch_size} {cur_coll} batch complete')
