@@ -39,38 +39,6 @@ fake = Faker()
 letters = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
 providers = ["cigna","aetna","anthem","bscbsma","kaiser"]
 
-'''
- #  CommTracker
-#  BJB 8/18/22
-Communications Cache from Hadoop UDF
-
-    python3 commtracker.py action=load_csv
-
-# Startup Env:
-    Atlas M10BasicAgain
-
-#  Use Case
-    CVS gathers fitness and activity data from external providers (multiple vendors)
-    Data arrives in batches, somtimes multiple updates to the same doc
-
-#  Metrics
-    50ms writes
-    100ms reads
-    1M users (5-6000 now)
-    Typical user is 100 recs/day
-    Goal - 200K users:
-        20M messages/day
-        10M Query API hits
-
-#  Methodology
-    Simulate the feed/batch from provider - simple 30attr document represents an update on MF
-    Store raw document - 2M/hr
-    Update "current" state of activity (add workout details) -> 25% of traffic
-    Create new activities -> 75% of traffic
-    create master profile documents -> 200K 
-    create trigger and function to update
-        
-'''
 settings_file = "commtracker_settings.json"
 
 def load_messages():

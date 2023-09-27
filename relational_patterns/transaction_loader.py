@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 import time
+import multiprocessing
 from collections import OrderedDict, defaultdict
 from ssl import SSLSocket
 import datetime
@@ -23,6 +24,7 @@ faker = Faker()
 settings_file = "relations_settings.json"
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("faker").setLevel(logging.ERROR)
+base_dir = os.path.dirname(os.path.abspath(__file__))
 
 def generate_payments(num):
     payments = [None] * num
@@ -523,10 +525,82 @@ def get_claim_api_rich(client, claim_id):
     for doc in docs:
         pprint.pprint(docs)
         
+# --------------------------------------------------------- #
+#       MIGRATION METHODS
+# --------------------------------------------------------- #
+def sql_migration():
+    #loop through a drirectory of sql scripts and execute in order
+    path = f'{base_dir}/sql_migration'
+    bulk_docs = []
+    if "path" in ARGS:
+        path = ARGS["path"]
+    main_process = multiprocessing.current_process()
+    bb.logit("#------------------------------------------------------------#")
+    bb.logit('# Main process is %s %s' % (main_process.name, main_process.pid))
+    cur = conn.cursor()
+    cnt = 0
+    tot = 0
+    
+    files = os.scandir(path) #os.walk(path, topdown=True):
+    conts = ""
+    cnt = 0
+    bb.logit("#--------------------------------------------------#")
+    bb.logit(f'# {path}')
+    #dir_doc = file_info(root, "dir")
+    filelist = []
+    for fil in files:
+        if fil.is_dir():
+            continue
+        if fil.name.startswith("."):
+            continue
+        #bb.logit(fil.name)
+        filelist.append(fil.name)
+        cnt += 1
+    bb.logit("#--------------------------------------------------#")
+    filelist.sort()
+    for fil in filelist:    
+        cur_file = os.path.join(path,fil)
+        bb.logit(f'Executing script: {fil}')
+        with open (cur_file , "r") as fil:
+            conts = fil.read()             
+        try:
+            res = cur.execute(conts)
+            conn.commit()
+        except Exception as e:
+            print(e)
+            print(e.pgerror)
+        tot += 1
+    
+    bb.logit(f'Completed {tot} directory items')
+    conn.close()
 
 # --------------------------------------------------------- #
 #       UTILITY METHODS
 # --------------------------------------------------------- #
+def file_info(file_obj, type = "file"):
+    try:
+        file_stats = os.stat(file_obj)
+        doc = OrderedDict()
+        doc["path_raw"] = file_obj
+        if type == "file":
+            doc["is_object"] = True
+            doc["num_objects"] = 0
+            doc["size_kb"] = file_stats.st_size * .001
+        else:
+            doc["is_object"] = False
+            doc["num_objects"] = 0
+            doc["size_kb"] = 0
+        doc["permissions"] = file_stats.st_mode
+        doc["owner"] = f'{file_stats.st_uid}:{file_stats.st_gid}'
+        m_at = file_stats.st_mtime
+        c_at = file_stats.st_ctime
+        doc["modified_at"] = datetime.fromtimestamp(m_at).strftime('%Y-%m-%d %H:%M:%S')      
+        doc["created_at"] = datetime.fromtimestamp(c_at).strftime('%Y-%m-%d %H:%M:%S') 
+        doc["paths"] = file_obj.split("/")
+    except:
+        bb.logit(f'Path: {file_obj} inaccessible')
+        doc = {"error" : True}
+    return(doc)
 
 def timer(starttime,cnt = 1, ttype = "sub"):
     elapsed = datetime.datetime.now() - starttime
@@ -651,6 +725,8 @@ if __name__ == "__main__":
             get_claims_sql(conn, ARGS["query"], ARGS["patient_id"], r_conn, skip_cache, iters)
     elif ARGS["action"] == "get_claims_mongodb":
         get_claims_mongodb(mongodb, ARGS["query"], ARGS["patient_id"], iters)
+    elif ARGS["action"] == "db_migrate":
+        sql_migration()
     elif ARGS["action"] == "transaction_mongodb":
         mcommit = False
         if "mcommit" in ARGS:
