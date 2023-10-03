@@ -332,55 +332,6 @@ def transaction_postgres(conn, num_payment):
     logging.debug(f"Test completed")
 
 # --------------------------------------------------------- #
-#    Migration to v2 policy
-# --------------------------------------------------------- #
-#  add policy coverage subdocument
-def migrate_product_coverage():
-    pipe = [
-        {
-            '$lookup': {
-                'from': 'product', 
-                'localField': 'product_id', 
-                'foreignField': 'product_id', 
-                'pipeline': [{'$project': {'coverage': 1, '_id': 0}}], 
-                'as': 'product'
-            }
-        }, {
-            '$unwind': {'path': '$product'}
-        }, {
-            '$project': {
-                'policy_id': 1, 
-                'plan_sponsor_id': 1, 
-                'name': 1, 
-                'effectiveDate': 1, 
-                'expirationDate': 1, 
-                'coverage': '$product.coverage', 
-                'version': 1, 
-                'isActive': 1, 
-                'premium': 1,
-                'holder' : 1,
-                'doc_version': 1
-            }
-        }, {
-            '$out': 'policy'
-        }
-    ]
-    db.command({'renameCollection': f'{settings["database"]}.policy',
-     'to' : f'{settings["database"]}.policy_temp'})
-    db.policy_temp.aggregate(pipe)
-    db.policy.create_index({"policy_id" : 1})
-    db.policy.create_index({"product_id" : 1})
-    db.policy.create_index({"holder.member_id" : 1})
-    #db.policy_temp.drop()
-
-#  add version_id to policy
-#  add version_id to product
-def add_version():
-    db.product.update_many({},{"$set": {"version" : "1.0"}})
-    db.policy.update_many({},{"$set": {"version" : "1.0"}})
-    db.product.create_index({"version" : 1})
-
-# --------------------------------------------------------- #
 #    API Presentation
 # --------------------------------------------------------- #
 
@@ -526,11 +477,11 @@ def get_claim_api_rich(client, claim_id):
         pprint.pprint(docs)
         
 # --------------------------------------------------------- #
-#       MIGRATION METHODS
+#       SQL MIGRATION METHODS
 # --------------------------------------------------------- #
 def sql_migration():
     #loop through a drirectory of sql scripts and execute in order
-    path = f'{base_dir}/sql_migration'
+    path = f'{base_dir}/mainframe_offload/sql_migration'
     bulk_docs = []
     if "path" in ARGS:
         path = ARGS["path"]
@@ -553,9 +504,11 @@ def sql_migration():
             continue
         if fil.name.startswith("."):
             continue
-        #bb.logit(fil.name)
-        filelist.append(fil.name)
+        if fil.name.endswith(".sql"):
+            filelist.append(fil.name)
         cnt += 1
+        #bb.logit(fil.name)
+        
     bb.logit("#--------------------------------------------------#")
     filelist.sort()
     for fil in filelist:    
@@ -573,6 +526,55 @@ def sql_migration():
     
     bb.logit(f'Completed {tot} directory items')
     conn.close()
+
+# --------------------------------------------------------- #
+#    MongoDB Migration to v2 policy
+# --------------------------------------------------------- #
+#  add policy coverage subdocument
+def migrate_product_coverage():
+    pipe = [
+        {
+            '$search': {
+                'vector': 'product', 
+                'localField': 'product_id', 
+                'foreignField': 'product_id', 
+                'pipeline': [{'$project': {'coverage': 1, '_id': 0}}], 
+                'as': 'product'
+            }
+        }, {
+            '$unwind': {'path': '$product'}
+        }, {
+            '$project': {
+                'policy_id': 1, 
+                'plan_sponsor_id': 1, 
+                'name': 1, 
+                'effectiveDate': 1, 
+                'expirationDate': 1, 
+                'coverage': '$product.coverage', 
+                'version': 1, 
+                'isActive': 1, 
+                'premium': 1,
+                'holder' : 1,
+                'doc_version': 1
+            }
+        }, {
+            '$out': 'policy'
+        }
+    ]
+    db.command({'renameCollection': f'{settings["database"]}.policy',
+     'to' : f'{settings["database"]}.policy_temp'})
+    db.policy_temp.aggregate(pipe)
+    db.policy.create_index({"policy_id" : 1})
+    db.policy.create_index({"product_id" : 1})
+    db.policy.create_index({"holder.member_id" : 1})
+    #db.policy_temp.drop()
+
+#  add version_id to policy
+#  add version_id to product
+def add_version():
+    db.product.update_many({},{"$set": {"version" : "1.0"}})
+    db.policy.update_many({},{"$set": {"version" : "1.0"}})
+    db.product.create_index({"version" : 1})
 
 # --------------------------------------------------------- #
 #       UTILITY METHODS

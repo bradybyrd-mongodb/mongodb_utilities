@@ -1,0 +1,17 @@
+Resource.Property,Property Type,Optional/Required,Generator,Sample Data
+Policy.policy_id,String,Required,"IDGEN.get(""P-"")","""P-"" + Incremental 1- 65 million"
+Policy.product_id,String,Required,"IDGEN.random_value(""PR-"",2000000,100)",Text
+Policy.plan_sponsor_id,String,Required,"IDGEN.random_value(""PS-"",2000000,100)",Text
+Policy.name,String,Required,fake.bs(),Smith
+Policy.effectiveDate,date,Required,"fake.past_datetime()",0
+Policy.expirationDate,date,Required,"fake.past_datetime() - datetime.timedelta(365*20)",0
+Policy.statusCode,String,Required,"fake.random_element(('10','20','30','40','50','1011','2011'))",0
+Policy.version,String,Optional,"1.0",Sam
+Policy.isActive,String,Optional,"""true""",True
+Policy.premium,double,Optional,"fake.random_int(min=40, max=1000)",0
+Policy.holder.firstName,String,Optional,fake.first_name(),Elijah
+Policy.holder.lastName,String,Optional,fake.last_name(),Dolittle
+Policy.holder.middleName,String,Optional,fake.first_name(),Elijah
+Policy.holder.suffix,String,Optional,fake.suffix(),esq
+Policy.holder.postalCode,String,Optional,fake.postcode(),0
+Policy.holder.member_id,String,Optional,"IDGEN.random_value(""M-"",2000000,10000)","M-1010"

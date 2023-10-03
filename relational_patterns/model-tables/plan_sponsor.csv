@@ -1,0 +1,7 @@
+Resource.Property,Property Type,Optional/Required,Generator,Sample Data
+Plan_sponsor.plan_sponsor_id,String,Required,"IDGEN.get(""PS-"")",PS-20393485
+Plan_sponsor.name,String,Required,"fake.company()",Text
+Plan_sponsor.startDate,date,Required,"fake.past_datetime()",0
+Plan_sponsor.endDate,date,Required,"fake.past_datetime() - datetime.timedelta(365*20)",0
+Plan_sponsor.statusCode,String,Required,"fake.random_element(('10','20','30','40','50','1011','2011'))",0
+Plan_sponsor.isActive,String,Optional,"""true""",True
