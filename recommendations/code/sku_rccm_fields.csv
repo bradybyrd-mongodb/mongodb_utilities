@@ -1,0 +1,4 @@
+XTRA_CARD_NBR.int32() 
+SKU_NBR.int32() 
+SKU_RANK.int32() 
+HEALTH_SKU_NBR.int32() 

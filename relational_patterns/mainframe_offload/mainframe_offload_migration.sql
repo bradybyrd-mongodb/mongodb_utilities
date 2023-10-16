@@ -1,4 +1,4 @@
---  DDL:
+--  DDL :
 
 CREATE SEQUENCE IF NOT EXISTS product_version_id_seq START 1000000;
 CREATE TABLE IF NOT EXISTS public.product_version

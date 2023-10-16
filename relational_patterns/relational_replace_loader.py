@@ -546,6 +546,21 @@ def fix_member_id():
         bb.logit(f"Updating: {inc} completed")
         inc += 1
 
+def fix_claim_status():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    status_codes = {100: "initiated", 101: "plan-check",102:"verify-rx",103:"verfiy-maximums",104:"oop-limits",105:"approved",106:"denied",
+                    106:"pending",107:"exception-needed",108: "exception-denied",109:"provider-contacted",110:"contact-missing",
+                    111:"manual-adjudication",112:"secondary-review",113:"suggest-generic",114:"maximun-exceeded",115:"minmum-met",
+                    116:"sched-verification",117:"duplicate-rx",118:"duplicate-contact",119:"unknown-planid",120:"last-status"}
+    inc = 0
+    cursor = db["claim"].find({},{"_id" : 1})
+    for adoc in cursor:
+        code = random.randint(100,120)
+        db["claim"].update_one({"_id": adoc["_id"]},{"$set": {"claimStatus" : code, "claimStatusDetail": status_codes[code]}})
+        bb.logit(f"Updating: {inc} completed")
+        inc += 1
+
 def id_manager(pnum, args):
     cur_process = multiprocessing.current_process()
     module = "IDGEN"
@@ -654,6 +669,8 @@ if __name__ == "__main__":
         synth_data_update()
     elif ARGS["action"] == "update_member_ids":
         update_member_ids()
+    elif ARGS["action"] == "fix_claim_status":
+        fix_claim_status()
     elif ARGS["action"] == "update_members":
         update_member_thumbnail()
     elif ARGS["action"] == "update_provider":

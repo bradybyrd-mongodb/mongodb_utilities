@@ -10,7 +10,7 @@ import sys
 from concurrent.futures import TimeoutError
 import os
 import time
-#from confluent_kafka import Producer
+from confluent_kafka import Producer
 import socket
 import json
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,9 +27,9 @@ class MessageLoader:
         self.settings = details["settings"]
         # self.conn = self.pubsub_connection()
         self.batch_size = self.settings["batch_size"]
-        self.project = self.settings["gcp"]["pub_sub_project"]
+        #self.project = self.settings["gcp"]["pub_sub_project"]
         # self.topic = self.settings["gcp"]["pub_sub_topic"]
-        self.timeout = self.settings["gcp"]["pub_sub_timeout"]
+        #self.timeout = self.settings["gcp"]["pub_sub_timeout"]
         self.topic = topic
         # self.logit(f'Publisher set in {self.project} for topic: {self.topic}')
         if self.settings["kafka_async"] == "N":
@@ -39,7 +39,7 @@ class MessageLoader:
             self.flushmsg = False
             kmode = "Async"
         self.logit(f"Kafka {kmode} - Topic: {self.topic}")
-        self.producer = None #Producer(self.settings["confluent"])
+        self.producer = Producer(self.settings["confluent"])
 
 
 # Best practice for higher availability in librdkafka clients prior to 1.7
@@ -78,8 +78,8 @@ class MessageLoader:
     def delivery_callback(self, err, msg):
         if err:
             print('ERROR: Message failed delivery: {}'.format(err))
-        #else:
-        #     print("Produced event to topic ", self.topic)
+        else:
+            print("Produced event to topic ", self.topic)
 
     def flush(self):
         cool = "not"

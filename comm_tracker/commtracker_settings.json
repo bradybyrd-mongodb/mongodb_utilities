@@ -10,19 +10,19 @@
   "username" : "main_admin",
   "password" : "<secret>",
   "version" : "2.2st",
-  "process_count" : 4,
-  "batch_size" : 1000,
+  "process_count" : 1,
+  "batch_size" : 100,
   "sample_time" : 60,
   "import_path" : "updatecsv",
   "batches" : 1,
   "base_counter" : 1000000,
-  "num_records" : 1000000,
+  "num_records" : 1000,
   "num_updates" : 0.1,
   "num_csvupdates" : 0.25,
   "messages_per_profile" : 100,
   "kafka_async" : "Y",
   "topics" : {
-    "comm-summary" : "speed_test"
+    "claim_change" : "claim_change"
   },
   "hottopics" : {
     "comm-detail" : "comm_detail",
@@ -37,11 +37,11 @@
     "pub_sub_timeout" : 3.0
   },
   "confluent" : {
-    "bootstrap.servers": "pkc-lgwgm.eastus2.azure.confluent.cloud:9092",
-    "security.protocol": "SASL_SSL",
-    "sasl.mechanisms": "PLAIN",
-    "sasl.username": "WMU4KF63X5A6APDR",
-    "sasl.password": "KS5gNBEVJGocALbg6sLeCMPh+H2d2xcKLQpzWCG9cPGKg8QMh1U8hEEcrCnirCfg",
+    "bootstrap.servers" : "pkc-419q3.us-east4.gcp.confluent.cloud:9092",
+    "security.protocol" : "SASL_SSL",
+    "sasl.mechanisms" : "PLAIN",
+    "sasl.username" : "MSR3PLSJHP5NM6UH",
+    "sasl.password" : "uwTx10lBfzwKHjeuQ3DRtcT12jXyTV0IMUZ+XLPeonQOdOM9NMlr/Ns+Vay8OVev",
     "client.id": "none"
   },
   "data" : {

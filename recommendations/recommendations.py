@@ -1183,6 +1183,52 @@ def build_skus():
     bb.logit("# -------------- COMPLETE ------------------- #")
     timer(tstart_time, False)
 
+# Create synthetic Store Data BJB 10-16-23
+def store_data():
+    # Get unique list of store_ids from xtra_card
+    # create store info
+    collection = 'xtra_card_raw'
+    tgt_coll = 'stores'
+    cur_process = multiprocessing.current_process()
+    procid = cur_process.name.replace("Process", "p")
+    tstart_time = datetime.datetime.now()
+    bstart_time = datetime.datetime.now()
+    batch_size = 1000
+    conn = client_connection("uri", settings)
+    db = conn[settings["database"]]
+    bb.logit(f'[{procid}] #--------------------- Starting ------------------------#')
+    res = db[collection].distinct("HOME_STORE_NBR")
+    bulk_docs = []
+    cnt = 0
+    totcnt = 0
+    for k in res:
+        doc = {}
+        doc["store_nbr"] = k
+        doc["create_dttm"] = datetime.datetime.now()
+        doc["version"] = "1.0"
+        doc["address1"] = fake.street_address()
+        doc["address2"] = ""
+        doc["city"] = fake.city()
+        doc["state"] = fake.state()
+        doc["zipcode"] = fake.zipcode()
+        doc["geo"] = local_geo()
+        bulk_docs.append(doc)
+        cnt += 1
+        totcnt += 1
+        if cnt == batch_size:
+            db[tgt_coll].insert_many(bulk_docs)
+            bb.logit(f"[{procid}] Processed: {totcnt} - in {timer(bstart_time)} secs")
+            bstart_time = datetime.datetime.now()
+            bulk_docs = []
+            cnt = 0
+
+    # get the leftovers
+    if len(bulk_docs) > 0:
+        db[tgt_coll].insert_many(bulk_docs)
+        bb.logit(f'Final batch {len(bulk_docs)} to process')
+    bb.logit("# -------------- COMPLETE ------------------- #")
+    timer(tstart_time, False)
+
 #-----------------------------------------------------------------------#
 #  Utility
 #-----------------------------------------------------------------------#
@@ -1407,6 +1453,9 @@ def q_pipe_lookup_coupon(card_id):
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
+def local_geo():
+    coords = fake.local_latlng('US', True)
+    return coords
 
 def client_connection(type = "uri", details = {}):
     global settings
@@ -1419,6 +1468,8 @@ def client_connection(type = "uri", details = {}):
     if "username" in details:
         username = details["username"]
         password = details["password"]
+    if "secret" in password:
+        password = os.environ.get("_PWD_")
     mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
     #bb.logit(f'Connecting: {mdb_conn}')
     if "readPreference" in details:
@@ -1468,6 +1519,8 @@ if __name__ == "__main__":
         query_mix()
     elif ARGS["action"] == "find_mix":
         find_mix()
+    elif ARGS["action"] == "store_data":
+        store_data()
     elif ARGS["action"] == "test":
         basictest()
     elif ARGS["action"] == "mergemulti":

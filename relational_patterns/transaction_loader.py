@@ -11,6 +11,7 @@ from faker import Faker
 from random import randint
 import random
 import pprint
+import pymongo
 import psycopg2
 import redis
 from bson.json_util import dumps
@@ -21,7 +22,6 @@ from bbutil import Util
 
 faker = Faker()
 
-settings_file = "relations_settings.json"
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("faker").setLevel(logging.ERROR)
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -482,12 +482,9 @@ def get_claim_api_rich(client, claim_id):
 def sql_migration():
     #loop through a drirectory of sql scripts and execute in order
     path = f'{base_dir}/mainframe_offload/sql_migration'
-    bulk_docs = []
+    bb.message_box("Performing SQL v2.0 Migration","title")
     if "path" in ARGS:
         path = ARGS["path"]
-    main_process = multiprocessing.current_process()
-    bb.logit("#------------------------------------------------------------#")
-    bb.logit('# Main process is %s %s' % (main_process.name, main_process.pid))
     cur = conn.cursor()
     cnt = 0
     tot = 0
@@ -495,7 +492,6 @@ def sql_migration():
     files = os.scandir(path) #os.walk(path, topdown=True):
     conts = ""
     cnt = 0
-    bb.logit("#--------------------------------------------------#")
     bb.logit(f'# {path}')
     #dir_doc = file_info(root, "dir")
     filelist = []
@@ -515,7 +511,9 @@ def sql_migration():
         cur_file = os.path.join(path,fil)
         bb.logit(f'Executing script: {fil}')
         with open (cur_file , "r") as fil:
-            conts = fil.read()             
+            conts = fil.read()
+            print("# ---------------------------------------------- #")
+            print(conts)            
         try:
             res = cur.execute(conts)
             conn.commit()
@@ -531,11 +529,13 @@ def sql_migration():
 #    MongoDB Migration to v2 policy
 # --------------------------------------------------------- #
 #  add policy coverage subdocument
-def migrate_product_coverage():
+def migrate_product_coverage(db = None):
+    collection = "policy"
+    bb.message_box("Performing v2.0 Migration","title")
     pipe = [
         {
-            '$search': {
-                'vector': 'product', 
+            '$lookup': {
+                'from': 'product', 
                 'localField': 'product_id', 
                 'foreignField': 'product_id', 
                 'pipeline': [{'$project': {'coverage': 1, '_id': 0}}], 
@@ -558,23 +558,26 @@ def migrate_product_coverage():
                 'doc_version': 1
             }
         }, {
-            '$out': 'policy'
+            '$out': collection
         }
     ]
-    db.command({'renameCollection': f'{settings["database"]}.policy',
-     'to' : f'{settings["database"]}.policy_temp'})
+    bb.logit("Aggregating product coverage...")
+    db[collection].rename("policy_temp", dropTarget=False)
     db.policy_temp.aggregate(pipe)
-    db.policy.create_index({"policy_id" : 1})
-    db.policy.create_index({"product_id" : 1})
-    db.policy.create_index({"holder.member_id" : 1})
-    #db.policy_temp.drop()
+    bb.logit("Creating indexes...")
+    db.policy.create_index([("policy_id" , pymongo.ASCENDING)])
+    db.policy.create_index([("product_id" , pymongo.ASCENDING)])
+    db.policy.create_index([("holder.member_id" , pymongo.ASCENDING)])
+    add_version(db)
 
-#  add version_id to policy
-#  add version_id to product
-def add_version():
-    db.product.update_many({},{"$set": {"version" : "1.0"}})
+def add_version(db = None):
+    db.product.update_many({},{"$set": {"version" : 
+                                        {"name" : "1.0",
+                                         "start_date" : datetime.datetime.now(),
+                                         "end_date" : datetime.datetime.now(),
+                                         "is_active" : True}}})
     db.policy.update_many({},{"$set": {"version" : "1.0"}})
-    db.product.create_index({"version" : 1})
+    db.product.create_index([("version.name", pymongo.ASCENDING)])
 
 # --------------------------------------------------------- #
 #       UTILITY METHODS
@@ -691,6 +694,7 @@ def sql_query(sql, conn):
 #       MAIN
 # --------------------------------------------------------- #
 if __name__ == "__main__":
+    settings_file = "relations_settings.json"
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
@@ -729,6 +733,8 @@ if __name__ == "__main__":
         get_claims_mongodb(mongodb, ARGS["query"], ARGS["patient_id"], iters)
     elif ARGS["action"] == "db_migrate":
         sql_migration()
+    elif ARGS["action"] == "mdb_migrate":
+        migrate_product_coverage(mongodb)
     elif ARGS["action"] == "transaction_mongodb":
         mcommit = False
         if "mcommit" in ARGS:

@@ -12,6 +12,21 @@ Mainframe and legacy systems are critical to operation, yet almost any major ent
 # ----------------- MongoDB Data Generation --------------------------- #
 
 python3 relational_replace_loader.py action=load_data template=model-tables/product.csv size=100
+python3 relational_replace_loader.py action=load_data template=model-tables/policy.csv
+
+python3 load_sql.py action=load_pg_data template=model-tables/policy.csv
+python3 load_sql.py action=execute_ddl task=create template=model-tables/policy.csv
+
+python3 load_sql.py action=execute_ddl template=model-tables/product.csv
+python3 load_sql.py action=load_pg_data template=model-tables/product.csv
+db.policy_temp.countDocuments({})
+db.policy.countDocuments({})
+db.policy_temp.renameCollection("policy",true)
+
+- local load
+python3 relational_replace_loader.py action=load_data
+python3 relational_replace_loader.py action=load_data template=model-tables/product.csv
+python3 relational_replace_loader.py action=load_data template=model-tables/policy.csv
 
 # ----------------- SQL Changes --------------------------- #
 
