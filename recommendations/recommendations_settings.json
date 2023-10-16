@@ -1,8 +1,8 @@
 {
-    "nuri" : "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+    "uri" : "mongodb+srv://claims-demo.vmwqj.mongodb.net",
     "zuri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
-    "uri" : "mongodb://localhost:27017,localhost:27018,localhost:27019/test?authSource=admin&replicaSet=rs0",
-    "database" : "recommendations",
+    "localuri" : "mongodb://localhost:27017,localhost:27018,localhost:27019/test?authSource=admin&replicaSet=rs0",
+    "database" : "retail_rx",
     "collection" : "profiles",
     "username" : "main_admin",
     "password" : "<secret>",
