@@ -1229,6 +1229,105 @@ def store_data():
     bb.logit("# -------------- COMPLETE ------------------- #")
     timer(tstart_time, False)
 
+# Create synthetic Recommendations BJB 10-16-23
+def recommendations_data():
+    # read settings and echo back
+    bb.message_box("Recommendations Loader", "title")
+    bb.logit(f'# Settings from: {settings_file}')
+    # Spawn processes
+    num_procs = 5
+    jobs = []
+    inc = 0
+    idstart = 0
+    idinc = 10000000
+    multiprocessing.set_start_method("fork", force=True)
+    for item in range(num_procs):
+        params = {"lowlim" : item * idinc}
+        p = multiprocessing.Process(target=recommendations_build, args = (item,params))
+        jobs.append(p)
+        p.start()
+        time.sleep(1)
+        inc += 1
+
+    main_process = multiprocessing.current_process()
+    bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
+    for i in jobs:
+        i.join()
+
+def recommendations_build(ipos, passed_args):
+    # Get unique list of store_ids from xtra_card
+    # create store info
+    collection = 'xtra_card_raw'
+    tgt_coll = 'recommendations'
+    inc = 2000000
+    lowlim = passed_args["lowlim"]
+    cur_process = multiprocessing.current_process()
+    procid = cur_process.name.replace("Process", "p")
+    tstart_time = datetime.datetime.now()
+    bstart_time = datetime.datetime.now()
+    batch_size = 1200
+    shelf = []
+    conn = client_connection("uri", settings)
+    db = conn[settings["database"]]
+    bb.logit(f'[{procid}] #--------------------- Starting ({lowlim}) ------------------------#')
+    shelf = build_shelf_items(db)
+    shelf_size = len(shelf)
+    for ibatch in range(4):
+        bb.logit(f'[{procid}] # ---- Batch: {lowlim + inc * ibatch} ---- #')
+        pipe = [
+            {"$match" : {"$and" : [{"XTRA_CARD_NBR" : {"$gt" : lowlim + inc * ibatch}},{"XTRA_CARD_NBR" : {"$lte" : lowlim + inc * (ibatch+1)}}]}},
+            {"$project" : {"XTRA_CARD_NBR" : 1}}
+        ]
+        res = db[collection].aggregate(pipe)
+        # count to 10M by 2 millions in batches
+        bulk_docs = []
+        cnt = 0
+        totcnt = 0
+        for doc in res:
+            icnt = 0
+            for it in shelf:
+                bulk_docs.append({
+                    "_id" : f'SH-{doc["XTRA_CARD_NBR"]}-{icnt}',
+                    "XTRA_CARD_NBR" : doc["XTRA_CARD_NBR"],
+                    "SKU_NBR" : it["SKU_NBR"], 
+                    "SKU_DSC" : it["SKU_DSC"]
+                })
+                icnt += 1
+                cnt += 1
+            totcnt += 1
+            if cnt >= batch_size:
+                print(f'# -------------------- {procid} - Bulk Docs ----------------------------')
+                print(f'{doc["XTRA_CARD_NBR"]} - cnt: {cnt}, tot: {totcnt}')
+                #if totcnt < 50:
+                #    pprint.pprint(bulk_docs)
+                db[tgt_coll].insert_many(bulk_docs)
+                bb.logit(f"[{procid}] Processed: {totcnt} - in {timer(bstart_time)} secs")
+                bstart_time = datetime.datetime.now()
+                bulk_docs = []
+                shelf = []
+                shelf = build_shelf_items(db)
+                cnt = 0
+        # get the leftovers
+        if len(bulk_docs) > 0:
+            bb.logit(f'Final batch {len(bulk_docs)} to process')
+            db[tgt_coll].insert_many(bulk_docs)
+            
+        bb.logit("# -------------- COMPLETE ------------------- #")
+        timer(bstart_time, False)
+        lowlim += inc
+    timer(tstart_time, False)
+
+def build_shelf_items(db):
+    pipe = [
+        {"$sample" : {"size" : 60}}
+    ]
+    recs = db.product_skus.aggregate(pipe)
+    res = []
+    for it in recs:
+        res.append({"SKU_NBR" : it["SKU_NBR"], "SKU_DSC" : it["SKU_DSC"]})
+    return res
+
+
 #-----------------------------------------------------------------------#
 #  Utility
 #-----------------------------------------------------------------------#
@@ -1521,6 +1620,8 @@ if __name__ == "__main__":
         find_mix()
     elif ARGS["action"] == "store_data":
         store_data()
+    elif ARGS["action"] == "recs_data":
+        recommendations_data()
     elif ARGS["action"] == "test":
         basictest()
     elif ARGS["action"] == "mergemulti":
