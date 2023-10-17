@@ -1266,7 +1266,8 @@ def recommendations_build(ipos, passed_args):
     # create store info
     collection = 'xtra_card_raw'
     tgt_coll = 'recommendations'
-    inc = int(passed_args["inc"] / 5 )
+    divs = 5
+    inc = int(passed_args["inc"] / divs )
     lowlim = passed_args["lowlim"]
     cur_process = multiprocessing.current_process()
     procid = cur_process.name.replace("Process", "p")
@@ -1282,8 +1283,8 @@ def recommendations_build(ipos, passed_args):
     shelf_size = len(shelf)
     id_low = lowlim
     id_high = lowlim + inc
-    for ibatch in range(4):
-        bb.logit(f'[{procid}] # ---- Batch: {id_low} ---- #')
+    for ibatch in range(divs):
+        bb.logit(f'[{procid}] # ---- Batch({ibatch}): {id_low} ---- #')
         file_log(f'Batch: from: {id_low} to: {id_high}')
         pipe = [
             {"$match" : {"$and" : [{"XTRA_CARD_NBR" : {"$gt" : id_low}},{"XTRA_CARD_NBR" : {"$lte" : id_high}}]}},
