@@ -1183,6 +1183,10 @@ def build_skus():
     bb.logit("# -------------- COMPLETE ------------------- #")
     timer(tstart_time, False)
 
+# --------------------------------------------------------------------------------------- #
+#   Demo - Perfomance and Scaling, Indexes
+#  BB - 10/19/23
+# --------------------------------------------------------------------------------------- #
 # Create synthetic Store Data BJB 10-16-23
 def store_data():
     # Get unique list of store_ids from xtra_card
@@ -1235,14 +1239,14 @@ def recommendations_data():
     bb.message_box("Recommendations Loader", "title")
     bb.logit(f'# Settings from: {settings_file}')
     # Spawn processes
-    num_procs = 5
+    num_procs = 6
     jobs = []
     inc = 0
-    #idstart = 0
-    #idinc = 10000000
+    idstart = 0
+    idinc = 10000000
     # Cleanup:
-    idstart = 50000000
-    idinc = 2000000
+    #idstart = 50000000
+    #idinc = 2000000
     multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
         params = {"lowlim" : idstart + item * idinc, "inc" : idinc}
@@ -1262,7 +1266,7 @@ def recommendations_build(ipos, passed_args):
     # create store info
     collection = 'xtra_card_raw'
     tgt_coll = 'recommendations'
-    inc = passed_args["inc"] / 5
+    inc = int(passed_args["inc"] / 5 )
     lowlim = passed_args["lowlim"]
     cur_process = multiprocessing.current_process()
     procid = cur_process.name.replace("Process", "p")
@@ -1272,13 +1276,17 @@ def recommendations_build(ipos, passed_args):
     shelf = []
     conn = client_connection("uri", settings)
     db = conn[settings["database"]]
+    file_log(f'# ------------- Starting: {lowlim}, inc: {inc} ---------------- #')
     bb.logit(f'[{procid}] #--------------------- Starting ({lowlim}) ------------------------#')
     shelf = build_shelf_items(db)
     shelf_size = len(shelf)
+    id_low = lowlim
+    id_high = lowlim + inc
     for ibatch in range(4):
-        bb.logit(f'[{procid}] # ---- Batch: {lowlim + inc * ibatch} ---- #')
+        bb.logit(f'[{procid}] # ---- Batch: {id_low} ---- #')
+        file_log(f'Batch: from: {id_low} to: {id_high}')
         pipe = [
-            {"$match" : {"$and" : [{"XTRA_CARD_NBR" : {"$gt" : lowlim + inc * ibatch}},{"XTRA_CARD_NBR" : {"$lte" : lowlim + inc * (ibatch+1)}}]}},
+            {"$match" : {"$and" : [{"XTRA_CARD_NBR" : {"$gt" : id_low}},{"XTRA_CARD_NBR" : {"$lte" : id_high}}]}},
             {"$project" : {"XTRA_CARD_NBR" : 1}}
         ]
         res = db[collection].aggregate(pipe)
@@ -1303,7 +1311,7 @@ def recommendations_build(ipos, passed_args):
                 print(f'{doc["XTRA_CARD_NBR"]} - cnt: {cnt}, tot: {totcnt}')
                 #if totcnt < 50:
                 #    pprint.pprint(bulk_docs)
-                db[tgt_coll].insert_many(bulk_docs)
+                #db[tgt_coll].insert_many(bulk_docs)
                 bb.logit(f"[{procid}] Processed: {totcnt} - in {timer(bstart_time)} secs")
                 bstart_time = datetime.datetime.now()
                 bulk_docs = []
@@ -1313,11 +1321,13 @@ def recommendations_build(ipos, passed_args):
         # get the leftovers
         if len(bulk_docs) > 0:
             bb.logit(f'Final batch {len(bulk_docs)} to process')
-            db[tgt_coll].insert_many(bulk_docs)
+            #db[tgt_coll].insert_many(bulk_docs)
             
         bb.logit("# -------------- COMPLETE ------------------- #")
         timer(bstart_time, False)
-        lowlim += inc
+        id_low += inc
+        id_high = id_low + inc
+    
     timer(tstart_time, False)
 
 def build_shelf_items(db):
