@@ -1238,11 +1238,14 @@ def recommendations_data():
     num_procs = 5
     jobs = []
     inc = 0
-    idstart = 0
-    idinc = 10000000
+    #idstart = 0
+    #idinc = 10000000
+    # Cleanup:
+    idstart = 50000000
+    idinc = 2000000
     multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
-        params = {"lowlim" : item * idinc}
+        params = {"lowlim" : idstart + item * idinc, "inc" : idinc}
         p = multiprocessing.Process(target=recommendations_build, args = (item,params))
         jobs.append(p)
         p.start()
@@ -1259,7 +1262,7 @@ def recommendations_build(ipos, passed_args):
     # create store info
     collection = 'xtra_card_raw'
     tgt_coll = 'recommendations'
-    inc = 2000000
+    inc = passed_args["inc"] / 5
     lowlim = passed_args["lowlim"]
     cur_process = multiprocessing.current_process()
     procid = cur_process.name.replace("Process", "p")
