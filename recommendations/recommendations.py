@@ -1311,7 +1311,7 @@ def recommendations_build(ipos, passed_args):
                 print(f'{doc["XTRA_CARD_NBR"]} - cnt: {cnt}, tot: {totcnt}')
                 #if totcnt < 50:
                 #    pprint.pprint(bulk_docs)
-                #db[tgt_coll].insert_many(bulk_docs)
+                db[tgt_coll].insert_many(bulk_docs)
                 bb.logit(f"[{procid}] Processed: {totcnt} - in {timer(bstart_time)} secs")
                 bstart_time = datetime.datetime.now()
                 bulk_docs = []
@@ -1321,7 +1321,7 @@ def recommendations_build(ipos, passed_args):
         # get the leftovers
         if len(bulk_docs) > 0:
             bb.logit(f'Final batch {len(bulk_docs)} to process')
-            #db[tgt_coll].insert_many(bulk_docs)
+            db[tgt_coll].insert_many(bulk_docs)
             
         bb.logit("# -------------- COMPLETE ------------------- #")
         timer(bstart_time, False)
