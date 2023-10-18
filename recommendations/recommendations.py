@@ -1370,7 +1370,6 @@ def build_enriched_data():
 def xtracard_merger_agg(procseq, params):
     #  Reads csv file and finds values
     settings_file = "recommendations_settings.json"
-    collection = 'extra_card'
     source_coll = 'xtra_card_raw'
     alt_coll = 'recommendations'
     key = "XTRA_CARD_NBR"
@@ -1387,56 +1386,36 @@ def xtracard_merger_agg(procseq, params):
     file_log(f'# ------------- Starting: {lowlim}, inc: {amount} ---------------- #')
     bb.logit(f'[{procid}] #--------------------- Starting ({lowlim}) ------------------------#')
     inc = int(amount/divs)
-    totcnt = 0
-    cnt = 0
     idstart = lowlim
     idend = lowlim + inc
+    # ex amount = 100,000,000 divs = 1000, 100k per agg
     for batchinc in range(divs):
         bstart_time = datetime.datetime.now()
         idstart = lowlim + (batchinc * inc)
         pipe = [
-            {"$match" : {"$and": [{key: {"$gt": idstart}}, {key: {"$lte": idend}}]}},
-            {"$lookup" : batch_size * batchinc},
-            {"$limit" : batch_size}
+            {'$match': {'$and': [{key: {'$gt': idstart}}, { key: {'$lte': idend }}]}}, 
+            {'$lookup': {
+                    'from': alt_coll, 
+                    'localField': 'XTRA_CARD_NBR', 
+                    'foreignField': 'XTRA_CARD_NBR', 
+                    'as': 'recommendations'
+                }}, 
+            {'$merge': {
+                    'into': 'xtra_card', 
+                    'on': '_id', 
+                    'whenMatched': 'replace', 
+                    'whenNotMatched': 'insert'
+                }
+            }
         ]
-        bb.logit(f"[{procid}] Building Pipe: {base_card_nbr} - {base_card_limit}")
-        #pprint.pprint(pipe)
-        cur = db[source_coll].aggregate(pipe)
-        # This gets each batch of 1000 xtra_cards
-        bulk_docs = []
-        bulk_ids = []
-        for row in cur:
-            row["version"] = "1.1"
-            bulk_docs.append(row)
-            bulk_ids.append(row[key])
-        if len(bulk_ids) < 1:
-            break
-        # Now match up the associated market segments
-        cur = db[alt_coll].find({key : {"$in" : bulk_ids}})
-        cnt = 0
-        for row in cur:
-            card_id = row[key]
-            row.pop("_id", None)
-            ipos = in_list(bulk_ids,card_id)
-            if ipos > 0:
-                bulk_docs[ipos]["market_segment"] = row
-            totcnt += 1
-            cnt += 1
-        bb.logit(f'[{procid}] sgmts = {cnt} in {len(bulk_ids)} cards')
-        result = query_related_skus(procid,db[alt2_coll],bulk_ids,bulk_docs, totcnt)
-
-        bb.logit(f'{len(bulk_docs)} to insert')
-        db[collection].insert_many(bulk_docs)
-        bb.logit(f"[{procid}] Processed: {totcnt} batch: {batchinc} - in {timer(bstart_time)} secs")
-        idend += inc
+        bb.logit(f"[{procid}] Building Pipe: {idstart} - {idend}")
+        res = db[source_coll].aggregate(pipe)
         idstart += inc
+        idend += inc
+        #pprint.pprint(pipe)
+        if batchinc % 10 == 0:
+            timer(bstart_time, False)
         
-    # get the leftovers
-    if len(bulk_docs) > 0:
-        bb.logit("Saving last records")
-        db[collection].insert_many(bulk_docs)
-    msg = f'[{procid}] Completed batch: {base_card_nbr} - {base_card_limit}, {cnt} cards'
-    file_log(msg, locker, hfile)
     bb.logit(msg)
     timer(tstart_time, False)
     bb.logit(f"[{procid}] # -------------- COMPLETE ------------------- #")
@@ -1452,7 +1431,7 @@ def timer(t_start, quiet = True):
     if not quiet:
         cur_process = multiprocessing.current_process()
         procid = cur_process.name.replace("process", "p")
-        print(f"{procid} - Bulk Load took {'{:.3f}'.format(execution_time)} seconds")
+        print(f"{procid} - Operation took {'{:.3f}'.format(execution_time)} seconds")
     return execution_time
 
 def basictest():
@@ -1735,6 +1714,8 @@ if __name__ == "__main__":
         store_data()
     elif ARGS["action"] == "recs_data":
         recommendations_data()
+    elif ARGS["action"] == "enriched_data":
+        build_enriched_data()
     elif ARGS["action"] == "test":
         basictest()
     elif ARGS["action"] == "mergemulti":
