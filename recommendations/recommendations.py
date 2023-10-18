@@ -1416,10 +1416,22 @@ def xtracard_merger_agg(procseq, params):
         if batchinc % 10 == 0:
             timer(bstart_time, False)
         
-    bb.logit(msg)
     timer(tstart_time, False)
     bb.logit(f"[{procid}] # -------------- COMPLETE ------------------- #")
 
+def add_tgt_mkt_code():
+    settings_file = "recommendations_settings.json"
+    coll = 'xtra_card_raw'
+    bb = Util()
+    settings = bb.read_json(settings_file)
+    tstart_time = datetime.datetime.now()
+    conn = client_connection("uri", settings)
+    db = conn[settings["database"]]
+    codes = db[coll].distinct("TGT_GEO_MKT_CD")
+    res = db.stores.find({},{"_id": 1})
+    for k in res:
+        db.stores.update_one({"_id": k["_id"]},{"$set": {"TGT_GEO_MKT_CD" : random.choice(codes)}})
+    
 #-----------------------------------------------------------------------#
 #  Utility
 #-----------------------------------------------------------------------#
@@ -1527,25 +1539,32 @@ def find_mix():
     db = conn[settings["database"]]
     start = datetime.datetime.now()
     bb.message_box("Performing find mix")
-    q_find(db["xtra_card_full"])
+    q_find(db["xtra_card_raw"])
 
 def q_find(coll):
-    card_ids = [120702671,56382424,129324067,393666906,302201229,63036879,96910041,122701609,157212897,444088055,922638,32920017,396113799,477765478,470238382,1472441,478653700,305760436,129218422,508015378,392387025,13275126,168168817,415788351,498557897,86958999,93752174,211511893,119900651,435422817,302728693,489566082,33854685,216098120,46351162,43697406,502330516,100004740,152734467,488069720,52546437,454190859,509518802,58722957,230316401,41629451,36970911,466305554,36086319,428234452,513888050,495327085,95372017,461352724,388840335,172528559,410519384,59355645,257707349,125608003,317981502,305490606,471842135,481464459,54104661,390757679,120030189,397122881,317714954,484045745,343698675,27610331,296038748,100028469,472564041,159863658,37214494,191105762,429271628,419021463,123762459,31432850,491877218,94208476,339017440,74275982,55295226,330207587,188945370,40750873,133522635,37455824]
+    card_ids = [322463729,98335865,56543354,429357438,2163574,157218162,83682889,512856171,110848252,435560405,227839876,214136399,32104946,205699331,115448693,504416129,202342187,97852703,482977919,34285295,482198463,33601052,49711134,60444130,107775594,113123044,94395651,52509153,39615419,675522,497914798,114940005,35916222,29711976,511862903,128615269,478524593,44745213,241584984,466548279,139591573,120062050,492009767,45741272,268744166,460067615,57278034,494536927,195816415,93403738]
+    res = None
     if "agg" in ARGS:
         bb.logit("Using lookup aggregation")
+    elif "join" in ARGS:
+        bb.logit("Joining collections")
     else:
         bb.logit("Using simple find")
     for it in card_ids:
         start = datetime.datetime.now()
         if "agg" in ARGS:
             res = coll.aggregate(q_pipe_lookup(it))
-        elif "coupon" in ARGS:
+        elif "join" in ARGS:
             res = coll.aggregate(q_pipe_lookup_coupon(it))
+        elif "coupon" in ARGS:
+            res = coll.aggregate(q_pipe_join(it))
         else:
             res = coll.find_one({"XTRA_CARD_NBR" : it}) #,{"_id": 0,"XTRA_CARD_NBR":1}
-        print(list(res)[0])
+        #if it % 10 == 0:
+        #    print(list(res)[0])
         print_stats(start, f" - id: {it}")
-    
+    pprint.pprint(res)
+
 def q_pipe(min,max):
     pipe = [
         {'$match': {
@@ -1607,6 +1626,23 @@ def q_pipe_lookup(card_id):
         {'$unwind': {'path': '$mkt_sgmt'}
         } 
         #{'$count': 'num_records'}
+    ]
+    return(pipe)
+
+def q_pipe_join(card_id):
+    pipe = [
+        {'$match': {
+                'XTRA_CARD_NBR': card_id}
+        }, 
+        {'$lookup': {
+                'from': 'recommendations', 
+                'localField': 'XTRA_CARD_NBR', 
+                'foreignField': 'XTRA_CARD_NBR', 
+                'as': 'recomendations'
+            }
+        }, 
+        {'$unwind': {'path': '$recommendations'}},
+        {"project" : {"recommendations" : "$recommendations", "_id" : 0}} 
     ]
     return(pipe)
 
@@ -1716,6 +1752,8 @@ if __name__ == "__main__":
         recommendations_data()
     elif ARGS["action"] == "enriched_data":
         build_enriched_data()
+    elif ARGS["action"] == "mkt_codes":
+        add_tgt_mkt_code()
     elif ARGS["action"] == "test":
         basictest()
     elif ARGS["action"] == "mergemulti":
