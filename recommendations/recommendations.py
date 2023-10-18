@@ -1239,13 +1239,13 @@ def recommendations_data():
     bb.message_box("Recommendations Loader", "title")
     bb.logit(f'# Settings from: {settings_file}')
     # Spawn processes
-    num_procs = 4
+    num_procs = 5
     jobs = []
     inc = 0
     #idstart = 0
-    idinc = 10000000
+    idinc = 100000000
     # Cleanup:
-    idstart = 60000000
+    idstart = 100000000
     #idinc = 2000000
     multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
@@ -1341,6 +1341,105 @@ def build_shelf_items(db):
         res.append({"SKU_NBR" : it["SKU_NBR"], "SKU_DSC" : it["SKU_DSC"]})
     return res
 
+def build_enriched_data():
+    # read settings and echo back
+    bb.message_box("Enriched Loader", "title")
+    bb.logit(f'# Settings from: {settings_file}')
+    # Spawn processes
+    num_procs = 6
+    jobs = []
+    divs = 1000
+    idstart = 0
+    idend = 600000000
+    idinc = int((idend - idstart)/num_procs)
+    inc = 0
+    #multiprocessing.set_start_method("fork", force=True)
+    for item in range(num_procs):
+        params = {"divs" : divs, "lowlim" : idstart + item * idinc, "inc" : idinc}
+        p = multiprocessing.Process(target=xtracard_merger_agg, args = (item,params))
+        jobs.append(p)
+        p.start()
+        time.sleep(1)
+        inc += 1
+
+    main_process = multiprocessing.current_process()
+    bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
+    for i in jobs:
+        i.join()
+
+def xtracard_merger_agg(procseq, params):
+    #  Reads csv file and finds values
+    settings_file = "recommendations_settings.json"
+    collection = 'extra_card'
+    source_coll = 'xtra_card_raw'
+    alt_coll = 'recommendations'
+    key = "XTRA_CARD_NBR"
+    bb = Util()
+    settings = bb.read_json(settings_file)
+    cur_process = multiprocessing.current_process()
+    procid = cur_process.name.replace("Process", "p")
+    tstart_time = datetime.datetime.now()
+    conn = client_connection("uri", settings)
+    db = conn[settings["database"]]
+    divs = params["divs"]
+    lowlim = params["lowlim"]
+    amount = params["inc"]
+    file_log(f'# ------------- Starting: {lowlim}, inc: {amount} ---------------- #')
+    bb.logit(f'[{procid}] #--------------------- Starting ({lowlim}) ------------------------#')
+    inc = int(amount/divs)
+    totcnt = 0
+    cnt = 0
+    idstart = lowlim
+    idend = lowlim + inc
+    for batchinc in range(divs):
+        bstart_time = datetime.datetime.now()
+        idstart = lowlim + (batchinc * inc)
+        pipe = [
+            {"$match" : {"$and": [{key: {"$gt": idstart}}, {key: {"$lte": idend}}]}},
+            {"$lookup" : batch_size * batchinc},
+            {"$limit" : batch_size}
+        ]
+        bb.logit(f"[{procid}] Building Pipe: {base_card_nbr} - {base_card_limit}")
+        #pprint.pprint(pipe)
+        cur = db[source_coll].aggregate(pipe)
+        # This gets each batch of 1000 xtra_cards
+        bulk_docs = []
+        bulk_ids = []
+        for row in cur:
+            row["version"] = "1.1"
+            bulk_docs.append(row)
+            bulk_ids.append(row[key])
+        if len(bulk_ids) < 1:
+            break
+        # Now match up the associated market segments
+        cur = db[alt_coll].find({key : {"$in" : bulk_ids}})
+        cnt = 0
+        for row in cur:
+            card_id = row[key]
+            row.pop("_id", None)
+            ipos = in_list(bulk_ids,card_id)
+            if ipos > 0:
+                bulk_docs[ipos]["market_segment"] = row
+            totcnt += 1
+            cnt += 1
+        bb.logit(f'[{procid}] sgmts = {cnt} in {len(bulk_ids)} cards')
+        result = query_related_skus(procid,db[alt2_coll],bulk_ids,bulk_docs, totcnt)
+
+        bb.logit(f'{len(bulk_docs)} to insert')
+        db[collection].insert_many(bulk_docs)
+        bb.logit(f"[{procid}] Processed: {totcnt} batch: {batchinc} - in {timer(bstart_time)} secs")
+        idend += inc
+        idstart += inc
+        
+    # get the leftovers
+    if len(bulk_docs) > 0:
+        bb.logit("Saving last records")
+        db[collection].insert_many(bulk_docs)
+    msg = f'[{procid}] Completed batch: {base_card_nbr} - {base_card_limit}, {cnt} cards'
+    file_log(msg, locker, hfile)
+    bb.logit(msg)
+    timer(tstart_time, False)
+    bb.logit(f"[{procid}] # -------------- COMPLETE ------------------- #")
 
 #-----------------------------------------------------------------------#
 #  Utility
