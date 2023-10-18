@@ -1239,13 +1239,13 @@ def recommendations_data():
     bb.message_box("Recommendations Loader", "title")
     bb.logit(f'# Settings from: {settings_file}')
     # Spawn processes
-    num_procs = 6
+    num_procs = 4
     jobs = []
     inc = 0
-    idstart = 0
+    #idstart = 0
     idinc = 10000000
     # Cleanup:
-    #idstart = 50000000
+    idstart = 60000000
     #idinc = 2000000
     multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
