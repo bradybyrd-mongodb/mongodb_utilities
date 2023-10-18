@@ -1435,16 +1435,22 @@ def add_tgt_mkt_code():
 #-----------------------------------------------------------------------#
 #  Utility
 #-----------------------------------------------------------------------#
-def timer(t_start, quiet = True):
-    #  Reads file and finds values
-    end_time = datetime.datetime.now()
-    time_diff = (end_time - t_start)
-    execution_time = time_diff.total_seconds() + time_diff.microseconds * .000001
-    if not quiet:
-        cur_process = multiprocessing.current_process()
-        procid = cur_process.name.replace("process", "p")
-        print(f"{procid} - Operation took {'{:.3f}'.format(execution_time)} seconds")
-    return execution_time
+def timer(starttime,cnt = 1, ttype = "sub"):
+    elapsed = datetime.datetime.now() - starttime
+    secs = elapsed.seconds
+    msecs = elapsed.microseconds
+    if secs == 0:
+        elapsed = msecs * .001
+        unit = "ms"
+    else:
+        elapsed = secs + (msecs * .000001)
+        unit = "s"
+    if ttype == "sub":
+        bb.logit(f"query ({cnt} recs) took: {'{:.3f}'.format(elapsed)} {unit}")
+    else:
+        bb.logit(f"# --- Complete: query took: {'{:.3f}'.format(elapsed)} {unit} ---- #")
+        bb.logit(f"#   {cnt} items {'{:.3f}'.format((elapsed)/cnt)} {unit} avg")
+
 
 def basictest():
     source_coll = 'xtra_card'
@@ -1505,7 +1511,7 @@ def print_stats(start_t, msg = ""):
     end = datetime.datetime.now()
     elapsed = end - start_t
     secs = (elapsed.seconds) + elapsed.microseconds * .000001
-    bb.logit(f'Elapsed: {"{:.3f}".format(secs)} - {msg}')
+    bb.logit(f'Elapsed: {"{:.2f}".format(secs)} - {msg}')
 
 def query_mix():
     # mixed query
@@ -1562,7 +1568,7 @@ def q_find(coll):
             res = coll.find_one({"XTRA_CARD_NBR" : it}) #,{"_id": 0,"XTRA_CARD_NBR":1}
         #if it % 10 == 0:
         #    print(list(res)[0])
-        print_stats(start, f" - id: {it}")
+        timer(start)
     pprint.pprint(res)
 
 def q_pipe(min,max):
