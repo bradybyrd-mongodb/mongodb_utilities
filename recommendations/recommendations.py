@@ -1650,7 +1650,7 @@ def q_pipe_join(card_id):
             }
         }, 
         {'$unwind': {'path': '$recommendations'}},
-        {"project" : {"recommendations" : "$recommendations", "_id" : 0}} 
+        {"$project" : {"recommendations" : "$recommendations", "_id" : 0}} 
     ]
     return(pipe)
 
