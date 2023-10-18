@@ -1560,9 +1560,11 @@ def q_find(coll):
         start = datetime.datetime.now()
         if "agg" in ARGS:
             res = coll.aggregate(q_pipe_lookup(it))
-        elif "join" in ARGS:
-            res = coll.aggregate(q_pipe_lookup_coupon(it))
         elif "coupon" in ARGS:
+            res = coll.aggregate(q_pipe_lookup_coupon(it))
+        elif "bigjoin" in ARGS:
+            res = coll.aggregate(q_pipe_join(it))
+        elif "join" in ARGS:
             res = coll.aggregate(q_pipe_join(it))
         else:
             res = coll.find_one({"XTRA_CARD_NBR" : it}) #,{"_id": 0,"XTRA_CARD_NBR":1}
