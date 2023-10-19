@@ -1055,7 +1055,6 @@ def update_skus(params):
     bb.logit(f'[{procid}] #------------ Starting id={startid} - {endid} ------------------------#')
     skus = db[tgt_coll].distinct("sku_nbr")
     bulk_updates = []
-    bulk_updates = []
     bb.logit(f'SKUs - {len(skus)} to do')
     for sku in skus:
         if totcnt < startid or totcnt > endid:
@@ -1431,7 +1430,46 @@ def add_tgt_mkt_code():
     res = db.stores.find({},{"_id": 1})
     for k in res:
         db.stores.update_one({"_id": k["_id"]},{"$set": {"TGT_GEO_MKT_CD" : random.choice(codes)}})
-    
+
+def fix_birthdate():
+    settings_file = "recommendations_settings.json"
+    coll = 'member'
+    bb = Util()
+    settings = bb.read_json(settings_file)
+    bstart_time = datetime.datetime.now()
+    conn = client_connection("uri", settings)
+    db = conn.healthcare_new
+    res = db.member.find({},{"dateOfBirth" : 1, "_id": 1})
+    batch_size = 2000
+    cnt = 0
+    totcnt = 0
+    b_cnt = 0
+    bulk_updates = []
+    for k in res:
+        age = random.randint(28,84)
+        year = 2023 - age
+        month = random.randint(1,12)
+        day = random.randint(1,28)
+        cur = f'{year}-{month}-{day}' #datetime.date(year,month,day)        
+        bulk_updates.append(
+            UpdateOne({"_id" : k["_id"]},{"$set": {"birthDate" : cur}})
+        )
+        if cnt == batch_size:
+            bulk_writer(db[coll], bulk_updates, f'lastId: {k["_id"]}')
+            bb.logit(f"Processed: {totcnt} batch: {b_cnt} - in {timer(bstart_time)} secs")
+            b_cnt += 1
+            bstart_time = datetime.datetime.now()
+            bulk_updates = []
+            cnt = 0
+        cnt += 1
+        totcnt += 1
+    # get the leftovers
+    if len(bulk_updates) > 0:
+        bulk_writer(db[coll], bulk_updates)
+        bb.logit(f'Final batch {len(bulk_updates)} to process')
+    msg = f' Completed batch: {b_cnt} - {totcnt} cards'
+
+
 #-----------------------------------------------------------------------#
 #  Utility
 #-----------------------------------------------------------------------#
@@ -1685,6 +1723,20 @@ def q_pipe_lookup_coupon(card_id):
     ]
     return(pipe)
 
+def q_pipe_search(lastname,birthdate,firstname,zip):
+    pipe = [
+          {"$search": {
+            "compound" : {
+              "should" : [
+                    {"text" : {"query" : lastname, "path" : "lastName"}},
+                    {"text" : {"query" : birthdate, "path" : "birthDate"}},
+                    {"text" : {"query" : firstname, "path" : "firstName"}},
+                    {"text" : {"query" : zip, "path" : "address.postalCode"}},
+                ]
+            }
+          }},
+        ]
+    return(pipe)
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
@@ -1762,6 +1814,8 @@ if __name__ == "__main__":
         build_enriched_data()
     elif ARGS["action"] == "mkt_codes":
         add_tgt_mkt_code()
+    elif ARGS["action"] == "fix_birthdate":
+        fix_birthdate()
     elif ARGS["action"] == "test":
         basictest()
     elif ARGS["action"] == "mergemulti":
