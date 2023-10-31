@@ -1,8 +1,8 @@
 {
   "miguri": "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
   "basicuri": "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
-  "cluri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
-  "uri": "mongodb://localhost:27017,localhost:27018,localhost:27019/test?authSource=admin&replicaSet=rs0",
+  "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+  "locuri": "mongodb://localhost:27017,localhost:27018,localhost:27019/test?authSource=admin&replicaSet=rs0",
   "database": "healthcare_new",
   "collection": "member",
   "username": "main_admin",
