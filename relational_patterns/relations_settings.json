@@ -7,14 +7,14 @@
   "collection": "member",
   "username": "main_admin",
   "password": "<secret>",
-  "postgres": {
+  "postgres_local": {
     "host": "localhost",
     "username": "bbadmin",
     "password": "<secret>",
     "database": "healthcare",
     "notes": "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
   },
-  "postgres_gcp": {
+  "postgres": {
     "host": "34.172.34.239",
     "username": "postgres",
     "password": "<secret>!",
