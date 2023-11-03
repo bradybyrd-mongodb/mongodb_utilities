@@ -1,0 +1,58 @@
+{
+    "miguri": "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+    "huri": "mongodb+srv://hackathon.ughh2.mongodb.net",
+    "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+    "database": "vector_demo",
+    "ndatabase": "mpsf_plan_docs",
+    "collection": "mpsf_plan_vectors_stvec768_all",
+    "search_index" : "default",
+    "username": "main_admin",
+    "password": "<secret>",
+    "version": "2.0",
+    "process_count": 1,
+    "batch_size": 1000,
+    "batches": 20,
+    "base_counter": 2000000,
+    "search_index_def" : {
+        "mappings": {
+          "dynamic": false,
+          "fields": {
+            "plan": {
+                "type": "string"
+            },
+            "lang": {
+                "type": "string"
+            },
+            "doc_type": {
+                "type": "string"
+            },
+            "sentence_vec": {
+                "dimensions": 768,
+                "similarity": "cosine",
+                "type": "knnVector"
+            }
+          }
+        }
+    },
+    "search_index_emr_def" : {
+        "mappings": {
+          "dynamic": false,
+          "fields": {
+            "plan": {
+                "type": "string"
+            },
+            "lang": {
+                "type": "string"
+            },
+            "doc_type": {
+                "type": "string"
+            },
+            "sentence_vec": {
+                "dimensions": 768,
+                "similarity": "cosine",
+                "type": "knnVector"
+            }
+          }
+        }
+    }
+}
