@@ -40,5 +40,25 @@ if "quantitativeHealth" not in doc:
         "AvgStepsPerDay" : "6857"}
     db.member.updateOne({_id : doc["_id"]},{$set: {"quantitativeHealth" : qhealth}})
 
+-- Query Comparisons
+
+select m.firstname, m.lastname, m.gender, m.dateofbirth, a.city, a.state, a.postalcode
+from member m left join member_address a on m.member_id = a.member_id
+where m.member_id = 'M-1000012'
+
+
+db.member.find({member_id: "M-2000012"})
+
+[
+  {$match: {member_id: {$in: ["M-2000014","M-2000015","M-2000016"]}}},
+  {$lookup: {
+    from: "provider",
+    localField: "primaryProvider_id",
+    foreignField: "provider_id",
+    as: "provider"
+  }},
+  {$unwind: "$provider"}
+]
+
 -- API
 -- 

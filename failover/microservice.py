@@ -47,9 +47,7 @@ def microservice_one():
 #  Populates collection with v1.0 records
 def create_documents():
     bb.message_box("Load Primary People", "title")
-    bb.logit(f'# Settings from: {settings_file}')
-    for item in settings:
-        bb.logit(f'# {item} => {settings[item]}')
+    collection = settings["collection"]
     db[collection].drop()
     db[collection].create_index([("employee_id", pymongo.ASCENDING) ], unique=True)
     batch_size = settings["batch_size"]
@@ -103,18 +101,21 @@ def write_data(docs):
     result = db[collection].insert_many(docs)
     return result
 
-def microservice():
+def microservice_report():
+    microservice("report")
+
+def microservice(r_type = "load"):
     retry = False
     region = "EAST"
-    DB_NAME = "failtest"
+    database = settings["database"]
+    collection = settings["collection"]
     if "retry" in ARGS and ARGS["retry"] == "true":
         retry = True
     if "region" in ARGS:
-        region = ARGSD["region"]
+        region = ARGS["region"]
     bb.message_box(f"Microservice running - {region}", "title")
     connection = client_connection("mdb_uri", {"retry" : retry})
-    collection = settings["collection"]
-    db = connection[DB_NAME]
+    db = connection[database]
     connect_problem = False
     count = 0
     elapsed = 0
@@ -123,18 +124,24 @@ def microservice():
     # Just ctrl-c to cancel
     while True:
         try:
-            curt = datetime.datetime.now()
-            elapsed =    
+            curt = datetime.datetime.now()                
             if (count % 10 == 0):
                 elapsed = timer(last_time, count)
-                last_time = curt
-            new_rec = create_model()
-            new_rec["region"] = region
-            new_rec["ts"] = curt
-            new_rec["elapsed"] = elapsed
-            db[collection].insert_one(new_rec)
+            else:
+                elapsed = timer(last_time, count, "quiet")
+            if r_type == "load":
+                new_rec = create_model()
+                new_rec["region"] = region
+                new_rec["ts"] = curt
+                new_rec["elapsed"] = elapsed
+                db[collection].insert_one(new_rec)
+            else:
+                bb.logit("# ------------------- Employees report ----------- [{region}]")
+                for i in range(5):
+                    item = db[collection].find({"employee_id" : random.choice(ids)}, {"_id": 0, "version": 1, "first_name": 1, "last_name": 1, "gender": 1})
+                    bb.logit(dumps(item))
             count += 1
-
+            last_time = curt
             if (connect_problem):
                 bb.logit(f'{datetime.datetime.now()} - RECONNECTED-TO-DB')
                 connect_problem = False
@@ -217,8 +224,8 @@ if __name__ == "__main__":
     elif ARGS["action"] == "populate":
         create_documents()
     elif ARGS["action"] == "microservice":
-        microservice_one()
-    elif ARGS["action"] == "fail":
-        failover()
+        microservice_report()
+    elif ARGS["action"] == "load_data":
+        microservice()
     else:
         print(f'{ARGS["action"]} not found')
