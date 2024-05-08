@@ -18,7 +18,7 @@ from bson.json_util import dumps
 from bbutil import Util
 from id_generator import Id_generator
 from pymongo import MongoClient
-import bigquery
+from google.cloud import bigquery
 
 # import psycopg2
 from faker import Faker
@@ -27,34 +27,6 @@ from deepmerge import Merger
 import uuid
 
 fake = Faker()
-letters = [
-    "A",
-    "B",
-    "C",
-    "D",
-    "E",
-    "F",
-    "G",
-    "H",
-    "I",
-    "J",
-    "K",
-    "L",
-    "M",
-    "N",
-    "O",
-    "P",
-    "Q",
-    "R",
-    "S",
-    "T",
-    "U",
-    "V",
-    "W",
-    "X",
-    "Y",
-    "Z",
-]
 providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
 
 #  BJB 5/15/23 Big Query
@@ -97,7 +69,7 @@ settings_file = "relations_settings.json"
 
 def load_bigquery_data():
     # read settings and echo back
-    bb.message_box("Loading Data", "title")
+    bb.message_box("Loading Data to BigQuery", "title")
     bb.logit(f"# Settings from: {settings_file}")
     passed_args = {"ddl_action": "info"}
     if "template" in ARGS:
@@ -111,9 +83,12 @@ def load_bigquery_data():
     execute_ddl()
     # Spawn processes
     num_procs = settings["process_count"]
+    if "size" in ARGS:
+        if int(ARGS["size"]) < 1000:
+            num_procs = 1
     jobs = []
     inc = 0
-    multiprocessing.set_start_method("fork", force=True)
+    #multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
         p = multiprocessing.Process(target=worker_load, args=(item, passed_args))
         jobs.append(p)
@@ -126,17 +101,22 @@ def load_bigquery_data():
     for i in jobs:
         i.join()
 
-
 def load_from_csv():
     # Provider.specialties().status,String,optional,"fake.random_element(('Active', 'Inactive'))","Active, Inactive",,,,Approved,,Provider.CredentialedSpecialties().Status,Embed-PegaHC-Stringlist,7.21
     boo = "boo"
 
-
 def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
+    global settings, bb, ARGS, IDGEN, id_map, base_counter
     cur_process = multiprocessing.current_process()
+    bb = Util()
+    ARGS = bb.process_args(sys.argv)
+    settings = bb.read_json(settings_file)
+    base_counter = settings["base_counter"]
+    IDGEN = Id_generator({"seed": base_counter})
+    id_map = defaultdict(int)
     bb.message_box(f"({cur_process.name}) Loading Synth Data in SQL", "title")
-    pgconn = bigquery_connection()
+    bqconn = bigquery_connection()
     settings = bb.read_json(settings_file)
     batches = settings["batches"]
     batch_size = settings["batch_size"]
@@ -156,13 +136,19 @@ def worker_load(ipos, args):
     # IDGEN = Id_generator({"seed" : base_counter, "size" : details["size"]})
     for domain in job_info:
         details = job_info[domain]
+        batches = 1
         template_file = details["path"]
         count = details["size"]
+        if "size" in ARGS:
+            count = int(ARGS["size"])
+        if "base" in ARGS:
+            base_counter = int(ARGS["base"])
         prefix = details["id_prefix"]
         base_counter = settings["base_counter"] + count * ipos
         bb.message_box(domain, "title")
-        table_info = ddl_from_template("none", pgconn, template_file, domain)
-        batches = int(details["size"] / batch_size)
+        table_info = ddl_from_template("none", bqconn, template_file, domain)
+        if count > batch_size:
+            batches = int(count / batch_size)
         IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
         for k in range(batches):
             bb.logit(f"Loading batch: {k} - size: {batch_size}")
@@ -170,7 +156,7 @@ def worker_load(ipos, args):
                 table_info,
                 {
                     "master": domain,
-                    "connection": pgconn,
+                    "connection": bqconn,
                     "template": template_file,
                     "batch": k,
                     "id_prefix": prefix,
@@ -182,7 +168,7 @@ def worker_load(ipos, args):
     end_time = datetime.datetime.now()
     time_diff = end_time - start_time
     execution_time = time_diff.total_seconds()
-    pgconn.close()
+    bqconn.close()
     # file_log(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
@@ -193,6 +179,8 @@ def worker_load(ipos, args):
 def build_sql_batch_from_template(tables, details={}):
     template_file = details["template"]
     batch_size = settings["batch_size"]
+    if details["size"] < batch_size:
+        batch_size = details["size"]
     base_counter = details["base_count"]
     num_procs = settings["process_count"]
     batch = details["batch"]
@@ -276,7 +264,6 @@ def build_sql_batch_from_template(tables, details={}):
     bb.logit(f"{cnt} records for {database} complete")
     return cnt
 
-
 def table_types(table_info):
     res = {}
     subs = []
@@ -292,7 +279,6 @@ def table_types(table_info):
         elif tab in subs:
             res[tab] = "submaster"
     return res
-
 
 def ddl_from_template(action, pgconn, template, domain):
     database = settings["postgres"]["database"]
@@ -363,10 +349,39 @@ def ddl_from_template(action, pgconn, template, domain):
     sql_action(pgconn, action, tables)
     return tables
 
-
 def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
 
+def bigquery_changer():
+    bb = Util()
+    ARGS = bb.process_args(sys.argv)
+    settings = bb.read_json(settings_file)
+    table = "bbwarehouse.Provider"
+    batch_no = 1000
+    bb.message_box(f"Simulate changes in BigQuery", "title")
+    bqconn = bigquery_connection()
+    settings = bb.read_json(settings_file)
+    tot_processed = 0
+    sql = f"SELECT * FROM {table} WHERE RAND() < 0.1 LIMIT 10"
+    for iter in range(1000):
+        cur_docs = []
+        bb.logit(f"Checking for changes ({cur_date}): ")
+        cur_date = datetime.datetime.now()
+        fmt_time = cur_date.strftime('%Y-%m-%d %H:%M:%S')
+        ids = ""
+        ans = bqconn.query(sql)
+        for row in ans.result():
+            cur_id = row.provider_id
+            ids += f"'{cur_id}', "
+            tot_processed += 1
+        ids = ids.rstrip(',')
+        sql_update = f"UPDATE {table} SET modified_at = '{fmt_time}' WHERE provider_id IN ({ids})"
+        batch_no += 1
+        bb.logit("Waiting to make changes")
+        time.sleep(10)
+        if iter > 3:
+            break
+    bb.logit("All done")
 
 def clean_field_data(data):
     tab = data["table"]
@@ -479,198 +494,6 @@ def execute_ddl(ddl_action="info"):
         table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
     mycon.close
 
-
-def create_foreign_keys():
-    #  Reads settings file and finds values
-    cur_process = multiprocessing.current_process()
-    bb.message_box(f"({cur_process.name}) Creating Foreign Keys in SQL", "title")
-    start_time = datetime.datetime.now()
-    pgconn = pg_connection()
-    settings = bb.read_json(settings_file)
-    cur = pgconn.cursor()
-    cur2 = pgconn.cursor()
-    sql = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
-    cur.execute(sql)
-    for item in cur:
-        bb.logit(f"item: {item}")
-        try:
-            fkey_sql = foreign_key_sql(item[0])
-            if fkey_sql != "none":
-                print(fkey_sql)
-                cur2.execute(fkey_sql)
-                pgconn.commit()
-        except psycopg2.DatabaseError as err:
-            bb.logit(f"{err}", "ERROR")
-            pgconn.commit()
-            # cur2.close()
-            # cur2 = pgconn.cursor()
-    cur.close()
-    cur2.close()
-    end_time = datetime.datetime.now()
-    time_diff = end_time - start_time
-    execution_time = time_diff.total_seconds()
-    pgconn.close()
-    bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
-
-
-def foreign_key_sql(table):
-    parts = table.split("_")
-    part_size = len(parts)
-    child = parts[-1]
-    if part_size == 1:
-        return "none"
-    elif part_size == 2:
-        parent = parts[0]
-    elif part_size == 3:
-        parent = f"{parts[0]}_{parts[1]}"
-    fkey = f"{parent}_id"
-    sql = (
-        f"ALTER TABLE IF EXISTS public.{table}\n"
-        f"ADD CONSTRAINT fky_{fkey} FOREIGN KEY ({fkey})\n"
-        f"REFERENCES public.{parent} ({fkey}) MATCH SIMPLE\n"
-        f"ON UPDATE NO ACTION\n"
-        f"ON DELETE NO ACTION\n"
-        f" NOT VALID"
-    )
-    return sql
-
-
-def fix_provider_ids():
-    num_provs = 50
-    base_val = 1000000
-    query_sql = "select id from claim_claimline"
-    rsql = "SELECT floor(random()*(1000050-1000000+1))+1000000"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    cur2 = mycon.cursor()
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            print(f"item: {item}")
-            pid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            rpid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            sql = f"update claim_claimline set attendingprovider_id = '{pid}', operatingprovider_id = '{pid}', "
-            sql += f" orderingprovider_id = '{rpid}',  referringprovider_id = '{rpid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            cur2.execute(sql)
-            mycon.commit()
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
-
-
-def add_primary_provider_ids():
-    num_provs = 200
-    base_val = 1000000
-    query_sql = "select m.id, m.member_id from member m;"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    update_cur = mycon.cursor()
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            # print(f'item: {item}')
-            pid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            sql = f"update member set primaryprovider_id = '{pid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            bb.logit(f"Update: {item[1]}")
-            update_cur.execute(sql)
-            mycon.commit()
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
-
-
-def fix_member_guardian_ids():
-    num_provs = 200
-    base_val = 1000000
-    # query_sql = "select id, m.member_guardian_id from member_guardian m;"
-    query_sql = "select id, m.claim_claimline_id from claim_claimline m;"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    update_cur = mycon.cursor()
-    cnt = 1
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            # print(f'item: {item}')
-            pid = f"ME-{base_val + cnt}"
-            # sql = f'update member_guardian set member_guardian_id = \'{pid}\' '
-            sql = f"update claim_claimline set claim_claimline_id = '{pid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            bb.logit(f"Update: {item[1]}")
-            update_cur.execute(sql)
-            mycon.commit()
-            cnt += 1
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
-
-
-# ----------------------------------------------------------------------#
-#   Queries
-# ----------------------------------------------------------------------#
-def member_claims_api():
-    sql = {}
-    csql = "select c.*, m.firstname, m.last_name, m.dateofbirth, m.gender, clv.* "
-    csql += "from vw_claim_claimline clv INNER JOIN claim c where c.patient_id = '__MEMBER_ID__'"
-    csql += "INNER JOIN member m on m.member_id = c.patient_id "
-    csql += "INNER JOIN"
-    sql["member_claims"] = csql
-
-
-def claimline_vw():
-    vwsql = "create or replace view vw_claim_claimline AS \n"
-    sql = "select cl.*, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate, "
-    sql += "op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate, "
-    sql += "rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate, "
-    sql += "opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate "
-    sql += "from claim_claimline cl INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id "
-    sql += "INNER JOIN provider op on cl.orderingprovider_id = op.provider_id "
-    sql += "INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id "
-    sql += "INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id "
-
-
-def member_api():
-    # show a single member and recent claims
-    # include the primary provider
-    d_member = {}
-    sql = "select m.*, p.nationalprovideridentifier, p.firstname, p.lastname, p.dateofbirth, p.gender from member m INNER JOIN provider p on p.provider_id = m.primaryprovider_id;"  # INNER JOIN providers p on m.primaryProvider_id = p.provider_id"
-    result = sql_query("healthcare", sql)
-    k = 0
-    for item in result:
-        if k < 20:
-            pprint.pprint(item)
-        k += 1
-
-
-def get_claims(conn=""):
-    conn = pg_connection()
-    sql = "select * from claim"
-    query_result = newsql_query(sql, conn)
-    num_results = query_result["num_records"]
-    print(f"Claims: {num_results}")
-    ids = []
-    for row in query_result["data"]:
-        ids.append(row[1])
-    result = get_claimlines(conn, ids)
-    data = result["data"]
-    inc = 0
-    for k in data:
-        print(f"#-------------------- {k} --------------------------")
-        pprint.pprint(data[k])
-        inc += 1
-        if inc > 10:
-            break
-    conn.close()
-
-
 def get_claimlines(conn, claim_ids):
     # payment_fields = sql_helper.column_names("claim_claimline_payment", conn)
     payment_fields = column_names("claim_claimline_payment", conn)
@@ -778,13 +601,7 @@ def record_loader(tables, table, recs, nconn=False):
     fields = list(recs[0])
     table_id = tables[table]["table_id"]
     vals = []
-    # for record in recs:
-    #    stg = list()
-    #    for k in record:
-    #        stg.append(record[k])
-    #    vals.append(tuple(stg))
-    # print(sql)
-    # print(vals)
+    bb.logit(f"Loading into BigQuery: {len(recs)}")
     try:
         errors = nconn.insert_rows_json(table_id, recs)
         if errors == []:
@@ -821,40 +638,6 @@ def value_codes(flds, special={}):
         else:
             result += f", {fmt}"
     return result
-
-
-def newsql_query(sql, conn):
-    # Simple query executor
-    cur = conn.cursor()
-    # print(sql)
-    try:
-        cur.execute(sql)
-        row_count = cur.rowcount
-        print(f"{row_count} records")
-    except psycopg2.DatabaseError as err:
-        print(f"{sql} - {err}")
-    result = {"num_records": row_count, "data": cur.fetchall()}
-    cur.close()
-    return result
-
-
-def column_names(table, conn):
-    sql = f"SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name   = '{table}'"
-    cur = conn.cursor()
-    # print(sql)
-    try:
-        cur.execute(sql)
-        row_count = cur.rowcount
-        print(f"{row_count} columns")
-    except psycopg2.DatabaseError as err:
-        print(f"{sql} - {err}")
-    rows = cur.fetchall()
-    result = []
-    for i in rows:
-        result.append(i[0])
-    cur.close()
-    return result
-
 
 def increment_version(old_ver):
     parts = old_ver.split(".")
@@ -923,7 +706,7 @@ def sql_action(conn, action, tables):
     return "success"
 
 def bigquery_connection(type="bigquery", sdb="none"):
-    # export GOOGLE_APPLICATION_CREDENTIALS="/Users/godwinekuma/tutorials/python-bigquery/service-account-file.json"
+    # export GOOGLE_APPLICATION_CREDENTIALS="/Users/brady.byrd/Documents/mongodb/dev/servers/gcp-pubsub-user/bradybyrd-poc-ac0790ea4120.json"
     client = bigquery.Client()
     return client
 
@@ -949,6 +732,8 @@ if __name__ == "__main__":
         print("Send action= argument")
         sys.exit(1)
     elif ARGS["action"] == "load_data":
+        # python3 load_sql_gcp.py action=load_data template=model-tables/provider.csv size=15 base=2002000
+        # python3 load_sql_gcp.py action=load_data - loads from "data" key in settings
         load_bigquery_data()
     elif ARGS["action"] == "test_csv":
         result = build_batch_from_template(
@@ -973,6 +758,8 @@ if __name__ == "__main__":
         create_foreign_keys()
     elif ARGS["action"] == "test":
         test_big_query()
+    elif ARGS["action"] == "changer":
+        bigquery_changer()
     else:
         print(f'{ARGS["action"]} not found')
     # conn.close()
@@ -983,4 +770,12 @@ if __name__ == "__main__":
 Create Database:
     python3 load_sql.py action=execute_ddl task=create
     python3 load_sql.py action=load_pg_data
+
+
+
+BigQuery:
+-- SELECT provider_id, modified_at FROM `bradybyrd-poc.bbwarehouse.Provider` where provider_id = 'P-2002001' LIMIT 1000
+--delete from bbwarehouse.Provider where modified_at > '2024-04-01'
+select * from bbwarehouse.Provider where provider_id > 'P-2001998'
+
 """

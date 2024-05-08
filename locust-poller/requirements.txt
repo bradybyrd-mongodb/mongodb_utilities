@@ -1,0 +1,16 @@
+dnspython>=2.1.0
+pymongo>=4.1.0
+locust==2.10.1
+Click==7.1.2
+deepmerge==0.0.5
+Faker==13.3.4
+mimesis==6.1.1
+itsdangerous==2.1.0
+Jinja2==3.0.3
+MarkupSafe==2.1.0
+python-dateutil==2.8.2
+six==1.16.0
+text-unidecode==1.2
+Werkzeug==2.0.3
+wheel==0.37.1
+#faker==24.9.0

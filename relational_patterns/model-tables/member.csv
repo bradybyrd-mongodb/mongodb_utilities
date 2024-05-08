@@ -58,9 +58,7 @@ Member.BankAccount.BankName,String ,Optional,"fake.company()",Random
 Member.BankAccount.BankAccountHolderName,String ,Optional,fake.name(),0
 Member.BankAccount.BankAccountNumber,String ,Optional,fake.iban(),0
 Member.BankAccount.BankAccountType,String ,Optional,"fake.random_element(('Checking', 'Savings'))",0
-Member.BankAccount.BankRoutingNumber,String ,Optional,"fake.iban()",
-Member.Employment().EmployeeIdentificationNumber,String,Optional,"fake.ssn()",Random
-Member.EmployeeIdentificationNumber",double,Optional,"fake.random_int(min=1000000, max=100000000)",0
+Member.BankAccount.BankRoutingNumber,String ,Optional,"fake.iban()",0
 Member.Weight,Integer,Optional,"fake.random_int(min=1, max=400)",1 - 400
 Member.PlanYear,Integer,Optional,"fake.random_int(min=2023, max=2023)",0
 Member.TotalPayments,double,Optional,"fake.random_int(min=20, max=1200)",0

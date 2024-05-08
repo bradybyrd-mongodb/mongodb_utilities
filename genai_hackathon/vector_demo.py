@@ -24,7 +24,7 @@ def vector_query():
     database = settings["database"]
     collection = settings["collection"]
     db = conn[database]
-    vector_index = "default"
+    vector_index = "vector_index"
     text_index = "full_text"
     prompt = "Lovely day!"
     num_results = 4
@@ -46,7 +46,7 @@ def vector_query():
             "queryVector": prompt_vector,
             "path": "sentence_vec",
             "limit": num_results,
-            "numCandidates": 5}
+            "numCandidates": num_results}
         },
         {"$project": {
             "_id": 0,
@@ -84,7 +84,7 @@ def hybrid_query():
     database = settings["database"]
     collection = settings["collection"]
     db = conn[database]
-    vector_index = "default"
+    vector_index = "vector_index"
     text_index = "full_text"
     if "num" in ARGS:
         num_results = int(ARGS["num"])
@@ -99,7 +99,7 @@ def hybrid_query():
               "queryVector": prompt_vector,
               "path": "sentence_vec",
               "limit": num_results,
-              "numCandidates": 5}
+              "numCandidates": num_results}
           }
     #  Text-based search    
     search_pipe = [
@@ -175,7 +175,7 @@ def extra_args(pipe):
         filter = ARGS["filter"]
         json_filter = json.loads(filter)    
     if json_filter != {}:
-        pipe[0]["$search"]["knnBeta"]["filter"] = json_filter 
+        pipe[0]["$vectorSearch"]["filter"] = json_filter 
     if "dedup" in ARGS:
         pipe.append({"$group" : {
             "_id" : "$sentence", 
@@ -187,6 +187,7 @@ def extra_args(pipe):
         }})
     if "len" in ARGS:
         pipe.append({"$match": {"$expr": {"$gte": [{"$strLenCP": "$sentence"},25]}}})
+    pprint.pprint(pipe)
   
 # --------------------------------------------------------- #
 #       UTILITY METHODS

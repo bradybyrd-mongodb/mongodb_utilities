@@ -5,6 +5,14 @@ import time
 import datetime
 from pymongo import MongoClient
 
+'''
+ Invoke: https://us-central1-bradybyrd-poc.cloudfunctions.net/PollClaims
+{
+    "message" : "Doing it",
+    "token" : "sdfjlhag;JH98Hiudhf65HiNug!!"
+}
+Granted allUsers | cloudFunctionInvoker
+'''
 #GCP Cloud Function!
 def claim_polling_trigger(request):
     """Responds to any HTTP request.
@@ -41,14 +49,14 @@ def claim_polling_trigger(request):
     processed = []
     new_recs = []
     # Timer will trigger every 2 minutes, for 10 sec operation run 12 times
-    for iter in range(3):
+    for iter in range(1):
         processed = []
         for table in tables:
             tot_processed = 0
             query =   f"""
             select * from `{warehouse_db}.{table}` 
             where modified_at > datetime("{last_check}") 
-            order by modified_at DESC 
+            order by modified_at ASC 
             limit 100"""
             #print(query)
 

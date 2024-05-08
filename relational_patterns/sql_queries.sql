@@ -60,5 +60,22 @@ db.member.find({member_id: "M-2000012"})
   {$unwind: "$provider"}
 ]
 
+[
+  {$match: {member_id: {$in: ["M-2000014","M-2000015","M-2000016"]}}},
+  {$lookup: {
+    from: "provider",
+      {$let: {provider_id: "$primaryProvider_id"}},
+      pipeline: [
+        {$match: {provider_id: $$provider_id}},
+        {$unwind: "$specialities"},
+        {$group: {_id: "$provider_id", "specialties" : {$addToSet: "$specialties.type"}
+        _id: 
+      }}
+      {$project: {}}
+    ]
+    as: "provider"
+  }},
+  {$unwind: "$provider"}
+]
 -- API
 -- 

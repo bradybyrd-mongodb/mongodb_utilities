@@ -36,11 +36,11 @@
   },
   "version": "2.0",
   "process_count": 1,
-  "batch_size": 1000,
+  "batch_size": 100,
   "batches": 20,
   "base_counter": 2000000,
   "gcp_project_id": "bradybyrd-poc",
-  "gcp_dataset": "claims_warehouse",
+  "gcp_dataset": "bbwarehouse",
   "limitdata": {
     "member": {
       "path": "model-tables/member.csv",

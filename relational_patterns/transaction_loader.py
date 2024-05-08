@@ -13,7 +13,7 @@ import random
 import pprint
 import pymongo
 import psycopg2
-import redis
+#import redis
 from bson.json_util import dumps
 from bson.objectid import ObjectId
 from pymongo import MongoClient
@@ -21,11 +21,18 @@ from pymongo import MongoClient
 from bbutil import Util
 
 faker = Faker()
-
+letters = string.ascii_uppercase
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("faker").setLevel(logging.ERROR)
 base_dir = os.path.dirname(os.path.abspath(__file__))
+'''
+# ----------------------------------------------------------- #
+#    Transactions Compare Postgres and MongoDB
+remember to set - _PWD_ and _PGPWD_ on command line
+Demo instructions in: transaction_demoscript.md
 
+
+'''
 def generate_payments(num):
     payments = [None] * num
     for i in range(0, num):
@@ -654,7 +661,7 @@ def pg_connection(type="postgres", sdb="none"):
 
 def redis_connection(type="redis_local"):
     rhost = settings[type]["host"]
-    r = redis.Redis(host=rhost, port=6379, db=0)
+    #r = redis.Redis(host=rhost, port=6379, db=0)
     return r
 
 def mongodb_connection(type="uri", details={}):
