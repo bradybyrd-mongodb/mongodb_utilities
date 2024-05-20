@@ -26,6 +26,9 @@ from bson import json_util
 from bson.json_util import loads
 from bson import ObjectId
 from locust import User, events, task, constant, tag, between
+from pymongo.errors import BulkWriteError
+from pymongo import UpdateOne
+from pymongo import UpdateMany
 import time
 from pickle import TRUE
 from datetime import datetime, timedelta
@@ -122,53 +125,44 @@ class MetricsLocust(User):
         print("Audit: ", msg)
         audit.insert_one({"type":type, "ts":datetime.now(), "version": version, "msg":str(msg)})
 
+
     ################################################################
-    # We need to simulate polling result
-    # this method will create polling response
-    # with 720 data points in the array
+    # We need to simulate polling update
+    # this method will update
+    # Strategy:
+    #  
     ################################################################
-    def generate_result(self, id_cnt, m_cnt = 720):
+    def generate_measurement(self, id_cnt):
         '''
-            Scenario - rooftop has 500 devices
-            each device reports per minute
-            devices have a 10% range of operation in differing absolute amount
+            Generate updates to add to measurement array
         '''
         dps = []
         cur = datetime.now()
-        start = cur - timedelta(hours=24)
         device_id = random.randint(1000,9999)
-        measurement_id = f"M-{id_cnt}"
         device_details = self.device_type(device_id)
         rlow = device_details["avg"] * 10
         rhigh = int(device_details["avg"] * 10 * 1.1)
-        for k in range(m_cnt):
+        for k in range(5):
             dps.append(random.randint(rlow,rhigh)/10)
-        minval = min(dps)
-        minpos = dps.index(minval)
-        mintime = start + timedelta(minutes=minpos)
-        maxval = max(dps)
-        maxpos = dps.index(maxval)
-        maxtime = start + timedelta(minutes=maxpos)
+        pipe = {"$addToSet" : {"dataPoints" : {"$each" : dps}},"$inc" : {"pointCount" : 5}, "$set" : { "lastPoint" : dps[-1], "maxDateTime" : "$$NOW"}}
+        return pipe
+    
+    def generate_measurement_new(self, id_cnt):
+        '''
+            Generate updates to add to measurement array
+        '''
+        cur = datetime.now()
+        device_id = random.randint(1000,9999)
+        device_details = self.device_type(device_id)
+        rlow = device_details["avg"] * 10
+        rhigh = int(device_details["avg"] * 10 * 1.1)
+        measurement_id = f"M-{id_cnt}"
+        cur_val = device_details["avg"] + ((random.randint(1,100)/100) * device_details["avg"])
         doc = {
-            "measurement_id": measurement_id,
-            "type": device_details["type"],
-            "unit": device_details["unit"],
-            "deviceDataID": device_id,
-            "date": datetime.now(),
-            "dataPoints": dps,
-            "pointCount": 720,
-            "pointMax": maxpos,
-            "pointMin": minpos,
-            "pointOffset": random.randint(0,720),
-            "lastPoint": cur,
-            "minValue": minval,
-            "minDateTime": mintime,
-            "maxValue": maxval,
-            "maxDateTime": maxtime,
-            "totalValue":  sum(dps),
-            "totalPoints": 720,
-            "lastPointValue": dps[719],
-            "version": version
+            "measurement_id" : measurement_id,
+            "datetime" : cur,
+            "cur_value" : cur_val,
+
         }
         return doc
 
@@ -191,6 +185,18 @@ class MetricsLocust(User):
             10000 : {"type" : "distribution", "avg" : 400, "unit" : "amps"}
         }
         return characteristics[brak]
+
+    def bulk_writer(self,collection, bulk_arr, msg = ""):
+        try:
+            result = collection.bulk_write(bulk_arr, ordered=False)
+            ## result = db.test.bulk_write(bulkArr, ordered=False)
+            # Opt for above if you want to proceed on all dictionaries to be updated, even though an error occured in between for one dict
+            #pprint.pprint(result.bulk_api_result)
+            note = f'BulkWrite - mod: {result.bulk_api_result["nModified"]} {msg}'
+            #file_log(note,locker,hfile)
+            print(note)
+        except BulkWriteError as bwe:
+            print("An exception occurred ::", bwe.details)
 
     def id_gen(self, icnt):
         # Get a bullk amount of ids
@@ -216,24 +222,32 @@ class MetricsLocust(User):
     # which will cause the workers to fall behind.
     ################################################################
     # TODO 0 this out if doing normal load
+ 
     @task(1)
     def _bulkinsert(self):
         # Note that you don't pass in self despite the signature above
         tic = self.get_time();
         name = "bulkinsert";
 
-        global coll, auditcoll, audit
+        global coll, auditcoll, audit, batch_size, settings
 
         try:
-            arr = []
+            update_arr = []
             base_size = int(batch_size * .01)
-            cur_id = self.id_gen(batch_size + base_size)
-            
+            # Now perform updates agains any value
             for _ in range(batch_size):
-                arr.append(self.generate_result(cur_id, 5))
+                upd_id = f"M-{random.randint(settings["base_id"],base_id + 5000000)}"
+                res = self.generate_measurement(cur_id)
+                update_arr.append(UpdateOne({"measurement_id": upd_id}, res))
+                bulk_updates.append(res)
+            bulk_writer(coll, update_arr)
+            update_arr = []
+        
+            for _ in range(batch_size):
+                arr.append(self.generate_result(cur_id))
                 cur_id += 1
             #pprint.pprint(arr)
-            coll.insert_many(arr, ordered=False)
+            
             #Note - swap for deployed - will crash mlocust
             #events.request_success.fire(request_type="pymongo", name=name, response_time=(time.time()-tic)*1000, response_length=0)
             events.request.fire(request_type="mlocust", name=name, response_time=(time.time()-tic)*1000, response_length=0)
