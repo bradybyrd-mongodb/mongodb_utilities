@@ -157,7 +157,7 @@ class MetricsLocust(User):
             self.bulk_size = batch_size
             print("Batch size from Host:",self.bulk_size)
             srv_check = _SETTINGS["uri_check"]
-            _SETTINGS["lclient"] = pymongo.MongoClient(srv_check)
+            _SETTINGS["lclient"] = None #pymongo.MongoClient(srv_check)
         
             print("SRV:",srv)
             self.audit("init", f'Starting Params: C:{database}.{collection}, B:{batch_size}, V:{_VERSION}')
@@ -208,6 +208,7 @@ class MetricsLocust(User):
         device_id = random.randint(1000,9999)
         measurement_id = f"M-{id_cnt}"
         device_details = _SETTINGS["device_types"][round(device_id, -3)]
+        device_id = f'{device_id}-{id_cnt}'
         rlow = device_details["avg"] * 10
         rhigh = int(device_details["avg"] * 10 * 1.1)
         for k in range(mcnt):
@@ -228,14 +229,11 @@ class MetricsLocust(User):
             "pointCount": mcnt,
             "pointMax": maxpos,
             "pointMin": minpos,
-            "pointOffset": random.randint(0,mcnt),
-            "lastPoint": cur,
             "minValue": minval,
             "minDateTime": mintime,
             "maxValue": maxval,
             "maxDateTime": maxtime,
-            "totalValue":  sum(dps),
-            "totalPoints": mcnt,
+            "lastPointDateTime": cur,
             "lastPointValue": dps[mcnt - 1],
             "version": _VERSION
         }
@@ -258,7 +256,7 @@ class MetricsLocust(User):
         rhigh = int(device_details["avg"] * 10 * 1.1)
         for k in range(5):
             dps.append(random.randint(rlow,rhigh)/10)
-        pipe = {"$addToSet" : {"dataPoints" : {"$each" : dps}},"$inc" : {"pointCount" : 5}, "$set" : { "lastPoint" : dps[-1], "maxDateTime" : cur, "date" : cur}}
+        pipe = {"$addToSet" : {"dataPoints" : {"$each" : dps}},"$inc" : {"pointCount" : 5}, "$set" : { "lastPointValue" : dps[-1], "lastPointDateTime" : cur}}
         return pipe
     
     def generate_measurement_insert(self, cur_id):
@@ -299,24 +297,6 @@ class MetricsLocust(User):
             {"$inc": {"counter": icnt }})
         return ans["counter"]
     
-    def execution_gate(self):
-        global _SETTINGS, _WORKER_ID
-        if _SETTINGS["gate"] == "off":
-            return True
-        lclient = _SETTINGS["lclient"]
-        ans = lclient.execution_gate.gates.find_one({"_id" : _WORKER_ID})
-        if ans is None:
-            lclient.execution_gate.gates.insert_one({"_id" : _WORKER_ID, "gate" : "off", "ts" : datetime.now()})
-            return True
-        elif ans["gate"] == "on" and ans["users"] > 3:
-            lclient.execution_gate.gates.update_one({"_id" : _WORKER_ID},{"$set" : { "gate" : "off", "ts" : datetime.now(), "users" : 0}})
-            return False
-        elif ans["gate"] == "on":
-            lclient.execution_gate.gates.update_one({"_id" : _WORKER_ID},{"$inc" : {"users" : 1}})
-            return True
-        else:
-            return False
-
     ################################################################
     # Since the loader is designed to be single threaded with 1 user
     # There's no need to set a weight to the task.
@@ -329,9 +309,9 @@ class MetricsLocust(User):
     # requests. The bulk inserts can take longer than 1s possibly
     # which will cause the workers to fall behind.
     ################################################################
-    @task(0)
+    @task(100)
     def _bulkinsert(self):
-        global _SETTINGS 
+        _VERSION, _SETTINGS, _WORKER_ID 
 
         # Note that you don't pass in self despite the signature above
         tic = self.get_time()
@@ -345,11 +325,8 @@ class MetricsLocust(User):
                 arr.append(self.generate_result(cur_id, 5))
                 cur_id += 1
             
-            self.db.insert_many(arr, ordered=False)
-            #Note - swap for deployed - will crash mlocust
-            #events.request_success.fire(request_type="pymongo", name=name, response_time=(time.time()-tic)*1000, response_length=0)
-            events.request.fire(request_type="mlocust", name=name, response_time=(time.time()-tic)*1000, response_length=0)
-            self.db.audit.insert_one({"ts" : datetime.now(), "type" : "success", "action" : f"bulk_insert - {batch_size}", "msg" : f"response_time={(time.time()-tic)*1000}", "version": version })
+            self.coll.insert_many(arr, ordered=False)
+            self.audit("tally", f"[{_WORKER_ID}] bulk_insert - {batch_size} - response_time={'{:.3f}'.format((time.time()-tic)*1000)}", {"tally" : batch_size} )
             arr = []
             events.request.fire(request_type="mlocust", name=name, response_time=(self.get_time()-tic)*1000, response_length=0)
         except Exception as e:
@@ -366,10 +343,6 @@ class MetricsLocust(User):
         '''
         global _VERSION, _SETTINGS, _WORKER_ID
         # Force to execute every 30 seconds using external gate
-        if False: #not self.execution_gate():
-            #print("Bypassing gate")
-            self.audit("info",f"Bypassing gate {_WORKER_ID}")
-            return True
         poll_time = int(30/_SETTINGS["users"])
         tic = self.get_time()
         name = "bulkupdate"
@@ -396,7 +369,7 @@ class MetricsLocust(User):
             events.request.fire(request_type="mlocust", name=name, response_time=(time.time()-tic)*1000, response_length=0)
             self.audit("success", f"[{_WORKER_ID}] bulk_update-done - {batch_size * batches} - response_time={'{:.3f}'.format((time.time()-tic)*1000)}" )
             interval = int(poll_time - (time.time() - tic))
-            if interval > 0:
+            if _SETTINGS["gate"] == "on" and interval > 0:
                 time.sleep(interval)
         except Exception as e:
             #events.request_failure.fire(request_type="pymongo", name=name, response_time=(time.time()-tic)*1000, response_length=0, exception=e)
