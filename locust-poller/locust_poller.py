@@ -39,7 +39,7 @@ import pprint
 # Change the connection string to point to the correct db
 # and double check the readpreference etc.
 ########################################################################
-client = "me" #None
+client = None
 coll = None
 # Log all application exceptions (and audits) to the same cluster
 audit = None
@@ -49,7 +49,7 @@ version = None
 # docs to insert per batch insert
 batch_size = 1000
 settings = {
-    "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+    "uri": "mongodb+srv://main_admin:bugsyBoo%21@iot-ingest.p3wh3.mongodb.net",
     "database": "building_monitor",
     "collection": "readings",
     "base_id" : 1000000,
@@ -82,12 +82,12 @@ class MetricsLocust(User):
         batch_size = settings["batch_size"]
         version = settings["version"]
         # Singleton
-        if (client is None):
+        if (self.host is not None):
             # Parse out env variables from the host
             vars = self.host.split("|")
             srv = vars[0]           
-            db = client[vars[1]]
-            coll = db[vars[2]]
+            database = vars[1]
+            collection = vars[2]
             # docs to insert per batch insert
             batch_size = int(vars[3])
             version = "1.0"
@@ -127,7 +127,7 @@ class MetricsLocust(User):
     # this method will create polling response
     # with 720 data points in the array
     ################################################################
-    def generate_result(self, id_cnt, m_cnt = 720):
+    def generate_result(self, id_cnt, mcnt = 720):
         '''
             Scenario - rooftop has 500 devices
             each device reports per minute
@@ -141,7 +141,7 @@ class MetricsLocust(User):
         device_details = self.device_type(device_id)
         rlow = device_details["avg"] * 10
         rhigh = int(device_details["avg"] * 10 * 1.1)
-        for k in range(m_cnt):
+        for k in range(mcnt):
             dps.append(random.randint(rlow,rhigh)/10)
         minval = min(dps)
         minpos = dps.index(minval)
@@ -156,18 +156,18 @@ class MetricsLocust(User):
             "deviceDataID": device_id,
             "date": datetime.now(),
             "dataPoints": dps,
-            "pointCount": 720,
+            "pointCount": mcnt,
             "pointMax": maxpos,
             "pointMin": minpos,
-            "pointOffset": random.randint(0,720),
+            "pointOffset": random.randint(0,mcnt),
             "lastPoint": cur,
             "minValue": minval,
             "minDateTime": mintime,
             "maxValue": maxval,
             "maxDateTime": maxtime,
             "totalValue":  sum(dps),
-            "totalPoints": 720,
-            "lastPointValue": dps[719],
+            "totalPoints": mcnt,
+            "lastPointValue": dps[mcnt - 1],
             "version": version
         }
         return doc
@@ -195,12 +195,9 @@ class MetricsLocust(User):
     def id_gen(self, icnt):
         # Get a bullk amount of ids
         idcoll = settings["db"][settings["count_coll"]]
-        idcoll.find_and_modify({
-            "query": { "_id": "UNIQUE COUNT DOCUMENT IDENTIFIER" },
-            "update": {
-                "$inc": {"counter": icnt },
-            }
-        })
+        ans = idcoll.find_one_and_update({ "_id": "UNIQUE COUNT DOCUMENT IDENTIFIER" },
+            {"$inc": {"counter": icnt }})
+        return ans["counter"]
 
 
     ################################################################
@@ -226,8 +223,7 @@ class MetricsLocust(User):
 
         try:
             arr = []
-            base_size = int(batch_size * .01)
-            cur_id = self.id_gen(batch_size + base_size)
+            cur_id = self.id_gen(batch_size)
             
             for _ in range(batch_size):
                 arr.append(self.generate_result(cur_id, 5))
@@ -237,11 +233,12 @@ class MetricsLocust(User):
             #Note - swap for deployed - will crash mlocust
             #events.request_success.fire(request_type="pymongo", name=name, response_time=(time.time()-tic)*1000, response_length=0)
             events.request.fire(request_type="mlocust", name=name, response_time=(time.time()-tic)*1000, response_length=0)
-            auditcoll.insert_one({"ts" : datetime.now(), "type" : "success", "action" : f"bulk_insert - {batch_size}", "msg" : f"response_time={(time.time()-tic)*1000}" })
+            auditcoll.insert_one({"ts" : datetime.now(), "type" : "success", "action" : f"bulk_insert - {batch_size}", "msg" : f"response_time={(time.time()-tic)*1000}", "version": version })
             arr = []
         except Exception as e:
             #events.request_failure.fire(request_type="pymongo", name=name, response_time=(time.time()-tic)*1000, response_length=0, exception=e)
             events.request.fire(request_type="mlocust", name=name, response_time=(time.time()-tic)*1000, response_length=0, exception=e)
             self.audit("exception", e)
+            #print(traceback.format_exc())
             # Add a sleep for just faker gen so we don't hammer the system with file not found ex
             #time.sleep(5)

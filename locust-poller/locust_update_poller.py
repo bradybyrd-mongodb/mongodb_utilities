@@ -42,7 +42,7 @@ import pprint
 # Change the connection string to point to the correct db
 # and double check the readpreference etc.
 ########################################################################
-client = "me" #None
+client = None
 coll = None
 # Log all application exceptions (and audits) to the same cluster
 audit = None
@@ -52,7 +52,7 @@ version = None
 # docs to insert per batch insert
 batch_size = 1000
 settings = {
-    "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+    "uri": "mongodb+srv://main_admin:bugsyBoo%21@iot-ingest.p3wh3.mongodb.net",
     "database": "building_monitor",
     "collection": "readings",
     "base_id" : 1000000,
@@ -85,12 +85,12 @@ class MetricsLocust(User):
         batch_size = settings["batch_size"]
         version = settings["version"]
         # Singleton
-        if (client is None):
+        if (self.host is not None):
             # Parse out env variables from the host
             vars = self.host.split("|")
             srv = vars[0]           
-            db = client[vars[1]]
-            coll = db[vars[2]]
+            database = vars[1]
+            collection = vars[2]
             # docs to insert per batch insert
             batch_size = int(vars[3])
             version = "1.0"
@@ -98,7 +98,8 @@ class MetricsLocust(User):
                 version = vars[4]
 
         print("SRV:",srv)
-        client = pymongo.MongoClient(srv)       
+        if client is None:
+            client = pymongo.MongoClient(srv)       
         db = client[database]
         settings["db"] = db
         coll = db[collection]
@@ -132,7 +133,7 @@ class MetricsLocust(User):
     # Strategy:
     #  
     ################################################################
-    def generate_measurement(self, id_cnt):
+    def generate_measurement(self, cur_id):
         '''
             Generate updates to add to measurement array
         '''
@@ -144,25 +145,25 @@ class MetricsLocust(User):
         rhigh = int(device_details["avg"] * 10 * 1.1)
         for k in range(5):
             dps.append(random.randint(rlow,rhigh)/10)
-        pipe = {"$addToSet" : {"dataPoints" : {"$each" : dps}},"$inc" : {"pointCount" : 5}, "$set" : { "lastPoint" : dps[-1], "maxDateTime" : "$$NOW"}}
+        pipe = {"$addToSet" : {"dataPoints" : {"$each" : dps}},"$inc" : {"pointCount" : 5}, "$set" : { "lastPoint" : dps[-1], "maxDateTime" : cur}}
         return pipe
     
-    def generate_measurement_new(self, id_cnt):
+    def generate_measurement_insert(self, cur_id):
         '''
             Generate updates to add to measurement array
         '''
+        global version
         cur = datetime.now()
         device_id = random.randint(1000,9999)
         device_details = self.device_type(device_id)
         rlow = device_details["avg"] * 10
         rhigh = int(device_details["avg"] * 10 * 1.1)
-        measurement_id = f"M-{id_cnt}"
         cur_val = device_details["avg"] + ((random.randint(1,100)/100) * device_details["avg"])
         doc = {
-            "measurement_id" : measurement_id,
-            "datetime" : cur,
+            "measurement_id" : cur_id,
+            "ts" : cur,
             "cur_value" : cur_val,
-
+            "version" : version
         }
         return doc
 
@@ -201,12 +202,10 @@ class MetricsLocust(User):
     def id_gen(self, icnt):
         # Get a bullk amount of ids
         idcoll = settings["db"][settings["count_coll"]]
-        idcoll.find_and_modify({
-            "query": { "_id": "UNIQUE COUNT DOCUMENT IDENTIFIER" },
-            "update": {
-                "$inc": {"counter": icnt },
-            }
-        })
+        ans = idcoll.find_one_and_update({ "_id": "UNIQUE COUNT DOCUMENT IDENTIFIER" },
+            {"$inc": {"counter": icnt }})
+        return ans["counter"]
+
 
 
     ################################################################
@@ -226,32 +225,29 @@ class MetricsLocust(User):
     @task(1)
     def _bulkinsert(self):
         # Note that you don't pass in self despite the signature above
+        global coll, auditcoll, audit, batch_size, settings, version
+        
         tic = self.get_time();
-        name = "bulkinsert";
-
-        global coll, auditcoll, audit, batch_size, settings
+        name = "bulkupdate";
 
         try:
             update_arr = []
-            base_size = int(batch_size * .01)
+            id_arr = []
+            base_id = settings["base_id"]
+            cur_id = self.id_gen(0)
             # Now perform updates agains any value
             for _ in range(batch_size):
-                upd_id = f"M-{random.randint(settings["base_id"],base_id + 5000000)}"
-                res = self.generate_measurement(cur_id)
+                upd_id = f"M-{random.randint(base_id, cur_id)}"
+                res = self.generate_measurement(upd_id)
                 update_arr.append(UpdateOne({"measurement_id": upd_id}, res))
-                bulk_updates.append(res)
-            bulk_writer(coll, update_arr)
+                id_arr.append(upd_id)
+            self.bulk_writer(coll, update_arr)
             update_arr = []
-        
-            for _ in range(batch_size):
-                arr.append(self.generate_result(cur_id))
-                cur_id += 1
-            #pprint.pprint(arr)
-            
+            #pprint.pprint(id_arr)
             #Note - swap for deployed - will crash mlocust
             #events.request_success.fire(request_type="pymongo", name=name, response_time=(time.time()-tic)*1000, response_length=0)
             events.request.fire(request_type="mlocust", name=name, response_time=(time.time()-tic)*1000, response_length=0)
-            auditcoll.insert_one({"ts" : datetime.now(), "type" : "success", "action" : f"bulk_insert - {batch_size}", "msg" : f"response_time={(time.time()-tic)*1000}" })
+            auditcoll.insert_one({"ts" : datetime.now(), "type" : "success", "action" : f"bulk_update - {batch_size}", "msg" : f"response_time={(time.time()-tic)*1000}", "version": version })
             arr = []
         except Exception as e:
             #events.request_failure.fire(request_type="pymongo", name=name, response_time=(time.time()-tic)*1000, response_length=0, exception=e)
