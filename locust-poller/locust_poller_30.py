@@ -49,7 +49,7 @@ from decimal import Decimal
 from pymongo.errors import BulkWriteError
 from pymongo import UpdateOne
 from pymongo import UpdateMany
-import string
+import pprint
 
 # Global vars
 # We can use this var to track the seq index of the worker in case we want to use it for generating unique seq keys in mimesis
@@ -71,7 +71,7 @@ _SETTINGS = {
     "collection": "readings",
     "base_id" : 1000000,
     "count_coll" : "counts",
-    "batch_size": 1000,
+    "batch_size": 500,
     "username": "main_admin",
     "password": "<secret>",
     "version" : "3.1",
@@ -244,18 +244,14 @@ class MetricsLocust(User):
     # this method will update
     #  
     ################################################################
-    def generate_measurement(self, cur_id):
+    def generate_measurement(self, cur_item):
         '''
             Generate updates to add to measurement array
         '''
         dps = []
         cur = datetime.now()
-        device_id = random.randint(1000,9999)
-        device_details = _SETTINGS["device_types"][round(device_id, -3)]
-        rlow = device_details["avg"] * 10
-        rhigh = int(device_details["avg"] * 10 * 1.1)
         for k in range(5):
-            dps.append(random.randint(rlow,rhigh)/10)
+            dps.append(cur_item["meas"] * (random.randint(8,12)/10))
         pipe = {"$addToSet" : {"dataPoints" : {"$each" : dps}},"$inc" : {"pointCount" : 5}, "$set" : { "lastPointValue" : dps[-1], "lastPointDateTime" : cur}}
         return pipe
     
@@ -296,6 +292,24 @@ class MetricsLocust(User):
         ans = idcoll.find_one_and_update({ "_id": "UNIQUE COUNT DOCUMENT IDENTIFIER" },
             {"$inc": {"counter": icnt }})
         return ans["counter"]
+    
+    def next_measurement(self, deviceid):
+        global _SETTINGS
+        avg = _SETTINGS["device_types"][round(int(deviceid.split("-")[0]), -3)]["avg"]
+        return random.randint(int(avg * 9),int(avg * 11))/10
+    
+    def id_sampler(self, siz):
+        # take 40k random items and store info
+        pipe = [
+            {"$sample" : {"size" : siz}},
+            {"$project" : {"measurement_id": 1, "deviceDataID": 1, "_id": 0}}
+        ]
+        result = list(self.coll.aggregate(pipe))
+        cnt = 0
+        for k in result:
+            result[cnt]["meas"] = self.next_measurement(k["deviceDataID"])
+            cnt += 1
+        return result
     
     ################################################################
     # Since the loader is designed to be single threaded with 1 user
@@ -350,22 +364,18 @@ class MetricsLocust(User):
         batches = int(_SETTINGS["devices"]/(batch_size * _SETTINGS["users"]))
         try:
             update_arr = []
-            id_arr = []
-            base_id = _SETTINGS["base_id"]
-            cur_id = self.id_gen(0)
             # Now perform updates agains any value
             for it in range(batches):
                 print(f'Performing batch {it}')
                 subtic = self.get_time()
-                for _ in range(batch_size):
-                    upd_id = f"M-{random.randint(base_id, cur_id)}"
-                    res = self.generate_measurement(upd_id)
-                    update_arr.append(UpdateOne({"measurement_id": upd_id}, res))
-                    id_arr.append(upd_id)
+                source_data = self.id_sampler(batch_size)
+                for item in source_data:
+                    clause = self.generate_measurement(item)
+                    update_arr.append(UpdateOne({"measurement_id": item["measurement_id"]}, clause))
                 self.bulk_writer(self.coll, update_arr)
                 self.audit("tally", f"[{_WORKER_ID}] bulk_update - {batch_size}-{it} - response_time={'{:.3f}'.format((time.time()-subtic)*1000)}", {"tally" : batch_size} )
+                pprint.pprint(update_arr)
                 update_arr = []
-            #pprint.pprint(id_arr)
             events.request.fire(request_type="mlocust", name=name, response_time=(time.time()-tic)*1000, response_length=0)
             self.audit("success", f"[{_WORKER_ID}] bulk_update-done - {batch_size * batches} - response_time={'{:.3f}'.format((time.time()-tic)*1000)}" )
             interval = int(poll_time - (time.time() - tic))
