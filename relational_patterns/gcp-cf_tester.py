@@ -3,8 +3,23 @@ from google.cloud import bigquery
 import os
 import time
 import datetime
+import multiprocessing
+import pprint
+import string
+import bson
+from bson.objectid import ObjectId
+from bson.json_util import dumps
+from bbutil import Util
+from id_generator import Id_generator
 from pymongo import MongoClient
 
+def get_settings():
+    return {
+        "process_count" : 3,
+        "batch_size" : 10,
+        "base_counter" : 1000,
+        "batches" : 2
+    }
 #GCP Cloud Function!
 def claim_polling_trigger(request):
     """Responds to any HTTP request.
@@ -75,5 +90,46 @@ def claim_polling_trigger(request):
     db["activity_log"].insert_one({"activity" : "data polling", "checked_at": orig_checked_at, "processed" : tot_processed})
     return Response({'message': 'successfully connected'}, status=200, mimetype='application/json')
 
+def thread_count():
+    # read settings and echo back
+    multiprocessing.set_start_method("fork", force=True)
+    passed_args = {"ddl_action": "info"}
+    settings = get_settings()
+    num_procs = settings["process_count"]
+    jobs = []
+    inc = 0
+    for item in range(num_procs):
+        p = multiprocessing.Process(target=worker_load, args=(item, passed_args))
+        jobs.append(p)
+        p.start()
+        time.sleep(1)
+        inc += 1
+
+    main_process = multiprocessing.current_process()
+    print("Main process is %s %s" % (main_process.name, main_process.pid))
+    for i in jobs:
+        i.join()
+
+def worker_load(ipos, args):
+    #  Reads EMR sample file and finds values
+    cur_process = multiprocessing.current_process()
+    pid = cur_process.name.replace("rocess","")
+    settings = get_settings()
+    batches = settings["batches"]
+    batch_size = settings["batch_size"]
+    base_counter = settings["base_counter"] + batch_size * batches * ipos
+    prefix = "QC-"
+    IDGEN = Id_generator({"seed": base_counter})
+    print(f"# -------------- ({cur_process.name} - {ipos}) Loading Synth Data ------------------ #")
+    count = batch_size * batches
+    IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
+    for b in range(batches):
+        for cnt in range(batch_size):
+            cur_id = IDGEN.get(prefix)
+            print(f'[{pid}] - {cur_id}, batch: {b}-{cnt}')
+
+ 
 # ---------------------------------- #
-claim_polling_trigger({})
+#claim_polling_trigger({})
+
+thread_count()

@@ -1,8 +1,6 @@
 import sys
 import os
 import csv
-
-# import vcf
 from collections import OrderedDict
 from collections import defaultdict
 import json
@@ -13,6 +11,7 @@ import time
 import re
 import multiprocessing
 import pprint
+import string
 import getopt
 import bson
 from bson.objectid import ObjectId
@@ -20,15 +19,24 @@ from bson.json_util import dumps
 from bbutil import Util
 from id_generator import Id_generator
 from pymongo import MongoClient
-import psycopg2
+from google.cloud import spanner, spanner_admin_database_v1
+from google.cloud.spanner_admin_database_v1.types.common import DatabaseDialect
+from google.cloud.spanner_v1 import param_types
+from google.cloud.spanner_v1.data_types import JsonObject
+from google.cloud.spanner_admin_database_v1.types import spanner_database_admin
+
+# import psycopg2
 from faker import Faker
 import itertools
 from deepmerge import Merger
 import uuid
 
+global settings_file, settings
+OPERATION_TIMEOUT_SECONDS = 240
 fake = Faker()
-#letters = string.ascii_uppercase
+letters = string.ascii_uppercase
 providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
+#settings_file = ""
 
 """
  #  Relations Demo
@@ -51,21 +59,13 @@ providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
     Claim_line
     Payments
 
-    python3 single_view.py action=load_mysql
-
 # Startup Env:
-    Atlas M10BasicAgain
-    PostgreSQL
-      export PATH="/usr/local/opt/postgresql@9.6/bin:$PATH"
-      pg_ctl -D /usr/local/var/postgresql@9.6 start
-      create database single_view with owner bbadmin;
-      psql --username bbadmin single_view
+    
 """
-settings_file = "relations_settings.json"
 
-def load_postgres_data():
+def load_spanner_data():
     # read settings and echo back
-    bb.message_box("Loading Data", "title")
+    bb.message_box("Loading Data to Spanner", "title")
     bb.logit(f"# Settings from: {settings_file}")
     passed_args = {"ddl_action": "info"}
     if "template" in ARGS:
@@ -81,7 +81,7 @@ def load_postgres_data():
     num_procs = settings["process_count"]
     jobs = []
     inc = 0
-    multiprocessing.set_start_method("fork", force=True)
+    #multiprocessing.set_start_method("fork", force=True)
     for item in range(num_procs):
         p = multiprocessing.Process(target=worker_load, args=(item, passed_args))
         jobs.append(p)
@@ -94,70 +94,80 @@ def load_postgres_data():
     for i in jobs:
         i.join()
 
+
 def load_from_csv():
     # Provider.specialties().status,String,optional,"fake.random_element(('Active', 'Inactive'))","Active, Inactive",,,,Approved,,Provider.CredentialedSpecialties().Status,Embed-PegaHC-Stringlist,7.21
     boo = "boo"
 
+
 def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
+    global settings, bb, ARGS, IDGEN, id_map, base_counter
     cur_process = multiprocessing.current_process()
-    bb.message_box(f"({cur_process.name}) Loading Synth Data in SQL", "title")
-    pgconn = pg_connection()
+    pid = cur_process.name.replace("rocess","")
+    bb = Util()
+    ARGS = bb.process_args(sys.argv)
+    settings = bb.read_json(settings_file)
+    id_map = defaultdict(int)
+    bb.message_box(f"({pid}) Loading Synth Data in SQL", "title")
+    db_client = spanner_connection()
     settings = bb.read_json(settings_file)
     batches = settings["batches"]
     batch_size = settings["batch_size"]
+    base_counter = settings["base_counter"] + batches * batch_size * ipos
     if "template" in args:
         template = args["template"]
         master_table = master_from_file(template)
         job_info = {
             master_table: {
                 "path": template,
-                "size": settings["batches"] * settings["batch_size"],
+                "size": batches * batch_size,
                 "id_prefix": f"{master_table[0].upper()}-"
             }
-            
         }
     else:
         job_info = settings["data"]
     start_time = datetime.datetime.now()
-    # IDGEN = Id_generator({"seed" : base_counter, "size" : details["size"]})
     for domain in job_info:
         details = job_info[domain]
+        IDGEN = Id_generator({"seed" : base_counter, "size" : details["size"]})
         template_file = details["path"]
         count = details["size"]
         prefix = details["id_prefix"]
-        base_counter = settings["base_counter"] + count * ipos
-        bb.message_box(domain, "title")
-        table_info = ddl_from_template("none", pgconn, template_file, domain)
         batches = int(details["size"] / batch_size)
-        IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
+        bb.message_box(domain, "title")
+        table_info = ddl_from_template("none", db_client, template_file, domain)
         for k in range(batches):
             bb.logit(f"Loading batch: {k} - size: {batch_size}")
             result = build_sql_batch_from_template(
                 table_info,
                 {
                     "master": domain,
-                    "connection": pgconn,
+                    "connection": db_client,
                     "template": template_file,
                     "batch": k,
                     "id_prefix": prefix,
                     "base_count": base_counter,
                     "size": count,
+                    "pid" : pid
                 },
             )
 
     end_time = datetime.datetime.now()
     time_diff = end_time - start_time
     execution_time = time_diff.total_seconds()
-    pgconn.close()
+    db_client.close()
     # file_log(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
+
 
 # -----------------------------------------------------------#
 #  CSV template sql translator
 # -----------------------------------------------------------#
 def build_sql_batch_from_template(tables, details={}):
+    global IDGEN, settings
     template_file = details["template"]
+    pid = details["pid"]
     batch_size = settings["batch_size"]
     base_counter = details["base_count"]
     num_procs = settings["process_count"]
@@ -166,48 +176,47 @@ def build_sql_batch_from_template(tables, details={}):
     master_id = f"{master_table}_id".lower()
     cnt = 0
     tab_types = table_types(tables)
+    #pprint.pprint(tab_types)
     bb.logit(f"Master: {master_table} - building: {batch_size}")
     master_ids = []
     rec_counts = {}
     g_id = ""
+    cur_id = ""
     database = "none"
     data = {}
     for item in tables:
         attrs = tables[item]
         cur_table = item
         parent = attrs["parent"]
-        sub_size = attrs["sub_size"]
         table_type = tab_types[cur_table]
+        pair = cur_table.split("_")
+        prefix = id_prefix(cur_table)
         recs = []
-        bb.logit(f"Table: {cur_table} building data")
+        counts = random.randint(1, 5) if len(cur_table.split("_")) > 1 else 1
+        bb.logit(f"Table: {cur_table} building data, factor: {counts}")
         database = attrs["database"]
         if table_type == "submaster":
-            prefx = cur_table[0:2].upper() + "-"
-            count = details["size"] * num_procs
-            IDGEN.set({"seed": base_counter, "size": count, "prefix": prefx})
+            count = details["size"] * num_procs * counts
+            IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
         elif table_type == "none" and len(parent.split("_")) > 1:
-            id_prefix = parent[0:2].upper() + "-"
+            boo = "boo"
         else:
-            id_prefix = details["id_prefix"]
-        #counts = random.randint(1, 5) if len(cur_table.split("_")) > 1 else 1
-        counts = sub_size if len(cur_table.split("_")) > 1 else 1
-        bb.logit(f"Table: {cur_table} building data, factor: {counts}")
-        sql = attrs["insert"]
+            prefix = details["id_prefix"]
         idpos = 0
         rec_counts[cur_table] = batch_size * counts * num_procs
-        for inc in range(
-            0, batch_size * counts
-        ):  # iterate through the bulk insert count
+        for inc in range(0, batch_size * counts):  # iterate through the bulk insert count
             fld_cnt = 0
             hsh = {}
             if idpos > batch_size - 1:
                 idpos = 0
             for cur_field in attrs["fields"]:
+                use_sequence = False
                 # bb.logit(f'Field: {cur_field} - gen {attrs["generator"][fld_cnt]}')
                 if table_type == "master" and cur_field.lower() == master_id:
                     # master e.g. claim_id
                     g_id = eval(attrs["generator"][fld_cnt])
                     cur_val = g_id
+                    cur_id = g_id
                     master_ids.append(g_id)
                     # bb.logit(f'[{cnt}] - GlobalID = {g_id}')
                     # is_master = False
@@ -217,35 +226,64 @@ def build_sql_batch_from_template(tables, details={}):
                     cur_val = master_ids[idpos]
                 elif cur_field.lower().replace("_id", "") == attrs["parent"].lower():
                     # child of e.g. claim_claimline.claim_id
-                    cur_val = IDGEN.random_value(id_prefix)
+                    cur_id = IDGEN.random_value(prefix)
+                    cur_val = cur_id
                     # bb.logit(f'IDsub[{cur_val}] {cur_table} - {attrs["parent"]}\n{IDGEN.value_history}')
                 elif cur_field.lower() == f"{cur_table.lower()}_id":
                     # Internal id for table
-                    prefx = cur_table[0:2].upper() + "-"
-                    if table_type == "submaster":
-                        cur_val = IDGEN.get(prefx)
+                    #prefx = cur_table[0:2].upper() + "-"
+                    if len(pair) == 2 or table_type == "submaster":
+                        cur_id = IDGEN.get(prefix)
+                        cur_val
                     else:
-                        cur_val = f"{prefx}{random.randint(1000,1000000)}"
+                        if len(pair) > 1:
+                            use_sequence = True       
+                        cur_id = f"{prefix}{random.randint(1000,1000000)}"
+                        cur_val = cur_id
                 else:
+                    #  Your basic field value
                     cur_val = eval(attrs["generator"][fld_cnt])
                     if type(cur_val) is bool:
-                        cur_val = "T" if cur_val == True else "F"
+                        #cur_val = 'true' if cur_val == True else "false"
+                        letitbe = "yes"
+                    elif cur_field == "modified_at":
+                        letitbe = "yes"
+                    elif type(cur_val) is datetime.datetime:
+                        cur_val = cur_val.strftime("%Y-%m-%d")
                     fld_cnt += 1
-                hsh[cur_field.lower()] = cur_val
+                if use_sequence:
+                    letitbe = "yes" #fld_cnt = fld_cnt - 1
+                    cur_id = "seq"
+                else:
+                    hsh[cur_field.lower()] = cur_val
+            print(f'[{pid}] - tot: {cnt} - ID: {cur_id}')
             idpos += 1
             cnt += 1
             recs.append(hsh)
-        record_loader(tables, cur_table, recs, details["connection"])
+        # print("# ----------- Data ---------------------- #")
+        # pprint.pprint(recs)
+        #record_loader(tables, cur_table, recs, details["connection"])
         bb.logit(f"{batch_size} {cur_table} batch complete (tot = {cnt})")
     bb.logit(f"{cnt} records for {database} complete")
     return cnt
+
+def id_prefix(table):
+    pair = table.split("_")
+    prefix = pair[0][0]
+    if len(pair) > 2:
+        prefix = f'{pair[0][0]}{pair[1][0]}{pair[2][0]}-'
+    elif len(pair) == 2:
+        prefix = f'{pair[0][0]}{pair[1][0]}-'
+    return prefix.upper()
+       
 
 def table_types(table_info):
     res = {}
     subs = []
     for tab in table_info:
-        if table_info[tab]["parent"] not in subs:
-            subs.append(table_info[tab]["parent"])
+        cur_parent = table_info[tab]["parent"]
+        if cur_parent != "" and cur_parent not in subs:
+            subs.append(cur_parent)
 
     for tab in table_info:
         res[tab] = "none"
@@ -256,59 +294,86 @@ def table_types(table_info):
             res[tab] = "submaster"
     return res
 
-def ddl_from_template(action, pgconn, template, domain):
-    database = settings["postgres"]["database"]
+
+def ddl_from_template(action, db_client, template, domain):
+    database = settings["spanner"]["database_id"]
     bb.message_box("Generating DDL")
     # Read the csv file and digest
     fields = fields_from_template(template)
     # pprint.pprint(fields)
     tables = {}
     last_table = "zzzzz"
-    ddl = ""
     for row in fields:
         table, field, ftype = clean_field_data(row)
         if table not in tables:
+            if last_table != "zzzzz":
+                ddl_post_actions(tables, last_table)
             # bb.logit("#--------------------------------------#")
             bb.logit(f"Building table: {table}")
             last_table = table
-            fkey = ""
-            flds = [field]
-            if len(table.split("_")) > 1:
+            flds = []
+            schema = []
+            sequence_id = ""
+            t_depth = len(table.split("_"))
+            schema.append(f'CREATE TABLE {table} (')
+            #  Add a self_id field
+            field_name = f"{table}_id".lower()
+            new_field = f'{field_name}   {gcp_type('string')} NOT NULL'
+            if t_depth > 2:
+                # use auto-seq for deep tables
+                sequence_id = f"CREATE SEQUENCE {field_name}_seq bit_reversed_positive;"
+                new_field = f"{field_name}   INT DEFAULT nextval('{field_name}_seq')"
+            schema.append(new_field)
+            flds.append(field_name)
+            if t_depth > 1:
                 #  Add a parent_id field
-                new_field = stripProp(f'{row["parent"]}_id')
-                fkey = f"  {new_field} varchar(20) NOT NULL,"
-                flds.append(new_field)
-                #  Add a self_id field
-                new_field = stripProp(f"{table}_id")
-                fkey += f"  {new_field} varchar(20) NOT NULL,"
-                flds.append(new_field)
-            ddl = (
-                f"CREATE TABLE {table} ("
-                "  id SERIAL PRIMARY KEY,"
-                f"{fkey}"
-                f"  {field} {ftype},"
-            )
+                field_name = f'{row["parent"]}_id'.lower()
+                new_field = f'{field_name}   {gcp_type('string')} NOT NULL'
+                flds.append(field_name)
+                schema.append(new_field)
+            if field != field_name:
+                new_field = f'{field}   {ftype}'
+                flds.append(field)
+                schema.append(new_field)
+
             tables[table] = {
-                "ddl": ddl,
+                "extra_ddl": sequence_id,
+                "schema": schema,
                 "database": database,
                 "fields": flds,
                 "generator": [row["generator"]],
                 "parent": row["parent"],
-                "sub_size" : row["sub_size"]
             }
 
         else:
             # bb.logit(f'Adding table data: {table}, {field}')
             if field not in tables[table]["fields"]:
-                tables[table]["ddl"] = tables[table]["ddl"] + f"  {field} {ftype},"
+                new_field = f'{field}   {ftype}'
+                tables[table]["schema"].append(new_field)
                 tables[table]["fields"].append(field)
                 tables[table]["generator"].append(row["generator"])
         first = False
+    ddl_post_actions(tables,table)
     clean_ddl(tables)
     bb.logit("Table DDL:")
     pprint.pprint(tables)
-    sql_action(pgconn, action, tables)
+    #print("# ------------- TYPES ----------------------- #")
+    #pprint.pprint(table_types(tables))
+    sql_action(db_client, action, tables)
     return tables
+
+def ddl_post_actions(tables, last_table):
+    # Add modified to each table:
+    closer = ")"
+    seq_ddl = ""
+    key_field = f"{last_table}_id".lower()
+    new_field = f"modified_at    {gcp_type('timestamp')}"
+    pair = last_table.split("_")
+    tables[last_table]["schema"].append(new_field)
+    closer = f" PRIMARY KEY ({key_field}))"  
+    tables[last_table]["schema"].append(closer)
+    tables[last_table]["fields"].append("modified_at")
+    tables[last_table]["generator"].append("datetime.datetime.now()")
 
 def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
@@ -323,32 +388,22 @@ def clean_field_data(data):
         tab = tab.split("_")[0]
     return tab, data["name"], data["type"]
 
+
 def clean_ddl(tables_obj):
     for tab in tables_obj:
-        ddl = tables_obj[tab]["ddl"]
-        l = len(ddl)
-        ddl = ddl[: l - 1] + ")"
-        tables_obj[tab]["ddl"] = ddl
+        # ddl = tables_obj[tab]["ddl"]
+        # l = len(ddl)
+        # ddl = ddl[:l-1] + ")"
+        # tables_obj[tab]["ddl"] = ddl
         fmts = value_codes(tables_obj[tab]["fields"])
         tables_obj[tab][
             "insert"
         ] = f'insert into {tab} ({",".join(tables_obj[tab]["fields"])}) values ({fmts});'
 
-def pg_type(mtype):
-    type_x = {
-        "string": "varchar(100)",
-        "boolean": "varchar(2)",
-        "date": "timestamp",
-        "integer": "integer",
-        "text": "text",
-        "double": "real",
-    }
-    ftype = type_x[mtype.lower().strip()]
-    return ftype
-
 def generator_values(gen):
     # substitute params for generic generator values
     return gen
+
 
 def fields_from_template(template):
     """
@@ -358,29 +413,20 @@ def fields_from_template(template):
     with open(template) as csvfile:
         propreader = csv.reader(itertools.islice(csvfile, 1, None))
         master = ""
-        sub_size = 1
         # support for parent.child.child.field, parent.children().field
         for row in propreader:
             result = {
                 "name": "",
                 "table": "",
                 "parent": "",
-                "type": pg_type(row[1]),
+                "type": gcp_type(row[1]),
                 "generator": generator_values(row[3]),
-                "sub_size" : sub_size
             }
             path = row[0].split(".")
             depth = len(path)
             for k in range(depth):
-                if path[k].endswith(')'):
-                    res = re.findall(r'\(.*\)',path[k])[0]
-                    if res != "()":
-                        sub_size = int(res.replace("(","").replace(")",""))
-                    else:
-                        sub_size = random.randint(1,5)
-                    path[k] = path[k].replace(res,"")
+                path[k] = path[k].strip("()").strip()
             result["name"] = path[-1]
-            result["sub_size"] = sub_size
             master = f"{path[0]}"
             if depth == 1:
                 bb = ""  # should never see this
@@ -398,166 +444,6 @@ def fields_from_template(template):
             ddl.append(result)
     return ddl
 
-def execute_ddl(ddl_action="info"):
-    ddl_action = "info"
-    if "template" in ARGS:
-        template = ARGS["template"]
-    elif "data" in settings:
-        goodtogo = True
-    else:
-        print("Send template=<pathToTemplate>")
-        sys.exit(1)
-    if "task" in ARGS:
-        ddl_action = ARGS["task"]
-    mycon = pg_connection()
-    if "template" in ARGS:
-        master_table = master_from_file(template)
-        job_info = {
-            master_table: {
-                "path": template,
-                "size": settings["batches"] * settings["batch_size"],
-                "id_prefix": f"{master_table[0].upper()}-",
-            }
-        }
-    else:
-        job_info = settings["data"]
-    start_time = datetime.datetime.now()
-    for domain in job_info:
-        details = job_info[domain]
-        bb.message_box(domain, "title")
-        bb.logit(details["path"])
-        template_file = details["path"]
-        table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
-    mycon.close
-
-def create_foreign_keys():
-    #  Reads settings file and finds values
-    cur_process = multiprocessing.current_process()
-    bb.message_box(f"({cur_process.name}) Creating Foreign Keys in SQL", "title")
-    start_time = datetime.datetime.now()
-    pgconn = pg_connection()
-    settings = bb.read_json(settings_file)
-    cur = pgconn.cursor()
-    cur2 = pgconn.cursor()
-    sql = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
-    cur.execute(sql)
-    for item in cur:
-        bb.logit(f"item: {item}")
-        try:
-            fkey_sql = foreign_key_sql(item[0])
-            if fkey_sql != "none":
-                print(fkey_sql)
-                cur2.execute(fkey_sql)
-                pgconn.commit()
-        except psycopg2.DatabaseError as err:
-            bb.logit(f"{err}", "ERROR")
-            pgconn.commit()
-            # cur2.close()
-            # cur2 = pgconn.cursor()
-    cur.close()
-    cur2.close()
-    end_time = datetime.datetime.now()
-    time_diff = end_time - start_time
-    execution_time = time_diff.total_seconds()
-    pgconn.close()
-    bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
-
-def foreign_key_sql(table):
-    parts = table.split("_")
-    part_size = len(parts)
-    child = parts[-1]
-    if part_size == 1:
-        return "none"
-    elif part_size == 2:
-        parent = parts[0]
-    elif part_size == 3:
-        parent = f"{parts[0]}_{parts[1]}"
-    fkey = f"{parent}_id"
-    sql = (
-        f"ALTER TABLE IF EXISTS public.{table}\n"
-        f"ADD CONSTRAINT fky_{fkey} FOREIGN KEY ({fkey})\n"
-        f"REFERENCES public.{parent} ({fkey}) MATCH SIMPLE\n"
-        f"ON UPDATE NO ACTION\n"
-        f"ON DELETE NO ACTION\n"
-        f" NOT VALID"
-    )
-    return sql
-
-def fix_provider_ids():
-    num_provs = 50
-    base_val = 1000000
-    query_sql = "select id from claim_claimline"
-    rsql = "SELECT floor(random()*(1000050-1000000+1))+1000000"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    cur2 = mycon.cursor()
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            print(f"item: {item}")
-            pid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            rpid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            sql = f"update claim_claimline set attendingprovider_id = '{pid}', operatingprovider_id = '{pid}', "
-            sql += f" orderingprovider_id = '{rpid}',  referringprovider_id = '{rpid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            cur2.execute(sql)
-            mycon.commit()
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
-
-def add_primary_provider_ids():
-    num_provs = 200
-    base_val = 1000000
-    query_sql = "select m.id, m.member_id from member m;"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    update_cur = mycon.cursor()
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            # print(f'item: {item}')
-            pid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            sql = f"update member set primaryprovider_id = '{pid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            bb.logit(f"Update: {item[1]}")
-            update_cur.execute(sql)
-            mycon.commit()
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
-
-def fix_member_guardian_ids():
-    num_provs = 200
-    base_val = 1000000
-    # query_sql = "select id, m.member_guardian_id from member_guardian m;"
-    query_sql = "select id, m.claim_claimline_id from claim_claimline m;"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    update_cur = mycon.cursor()
-    cnt = 1
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            # print(f'item: {item}')
-            pid = f"ME-{base_val + cnt}"
-            # sql = f'update member_guardian set member_guardian_id = \'{pid}\' '
-            sql = f"update claim_claimline set claim_claimline_id = '{pid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            bb.logit(f"Update: {item[1]}")
-            update_cur.execute(sql)
-            mycon.commit()
-            cnt += 1
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
-
 # ----------------------------------------------------------------------#
 #   Queries
 # ----------------------------------------------------------------------#
@@ -568,6 +454,7 @@ def member_claims_api():
     csql += "INNER JOIN member m on m.member_id = c.patient_id "
     csql += "INNER JOIN"
     sql["member_claims"] = csql
+
 
 def claimline_vw():
     vwsql = "create or replace view vw_claim_claimline AS \n"
@@ -580,6 +467,7 @@ def claimline_vw():
     sql += "INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id "
     sql += "INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id "
 
+
 def member_api():
     # show a single member and recent claims
     # include the primary provider
@@ -591,6 +479,7 @@ def member_api():
         if k < 20:
             pprint.pprint(item)
         k += 1
+
 
 def get_claims(conn=""):
     conn = pg_connection()
@@ -611,6 +500,7 @@ def get_claims(conn=""):
         if inc > 10:
             break
     conn.close()
+
 
 def get_claimlines(conn, claim_ids):
     # payment_fields = sql_helper.column_names("claim_claimline_payment", conn)
@@ -658,21 +548,18 @@ def get_claimlines(conn, claim_ids):
     result["data"] = data
     return result
 
+
 # ----------------------------------------------------------------------#
 #   CSV Loader Routines
 # ----------------------------------------------------------------------#
-#stripProp = lambda str: re.sub(r"\s+", "", (str[0].upper() + str[1:].strip("()")))
-def stripProp(str):
-    ans = str
-    if str[0].isupper() and str[1].islower():
-        ans = str[0].lower() + str[1:]
-    ans = re.sub(r'\s+', '', ans.strip('()'))
-    return ans
+stripProp = lambda str: re.sub(r"\s+", "", (str[0].upper() + str[1:].strip("()")))
+
 
 def ser(o):
     """Customize serialization of types that are not JSON native"""
     if isinstance(o, datetime.datetime.date):
         return str(o)
+
 
 def procpath(path, counts, generator):
     """Recursively walk a path, generating a partial tree with just this path's random contents"""
@@ -694,67 +581,74 @@ def procpath(path, counts, generator):
         # Return a nested page, of the specified type, populated recursively.
         return {stripped: procpath(path[1:], counts, generator)}
 
+
 def zipmerge(the_merger, path, base, nxt):
     """Strategy for deepmerge that will zip merge two lists. Assumes lists of equal length."""
     return [the_merger.merge(base[i], nxt[i]) for i in range(0, len(base))]
+
 
 def ID(key):
     id_map[key] += 1
     return key + str(id_map[key] + base_counter)
 
+
 def local_geo():
     coords = fake.local_latlng("US", True)
     return coords
+
 
 # ----------------------------------------------------------------------#
 #   Utility Routines
 # ----------------------------------------------------------------------#
 
+
 def record_loader(tables, table, recs, nconn=False):
     # insert_into table fields () values ();
-    if nconn:
-        conn = nconn
-    else:
-        conn = pg_connection("postgres", tables[table]["database"])
-    cur = conn.cursor()
-    fields = list(recs[0])
-    sql = tables[table]["insert"]
+    global settings
+    instance_id = settings["spanner"]["instance_id"]
+    database_id = settings["spanner"]["database_id"]
+    numtodo = len(recs)
+    cols = tuple(recs[0].keys())
     vals = []
-    for record in recs:
-        stg = list()
-        for k in record:
-            stg.append(record[k])
-        vals.append(tuple(stg))
-    # print(sql)
-    # print(vals)
+    for it in recs:
+        vals.append(tuple(it.values()))
+    instance = nconn.instance(instance_id)
+    database = instance.database(database_id)
+    pprint.pprint(cols)
+    pprint.pprint(vals)
+    fields = list(recs[0])
+    bb.logit(f"Loading into Spanner: {len(recs)}")
+    with database.batch() as batch:
+        batch.insert(
+            table=table,
+            columns=cols,
+            values=vals,
+        )
+    '''
     try:
-        cur.executemany(sql, vals)
-        conn.commit()
-        bb.logit(f"{cur.rowcount} inserted")
-    except psycopg2.DatabaseError as err:
+        errors = nconn.insert_rows_json(table_id, recs)
+        if errors == []:
+            bb.logit(f"{len(recs)} inserted")
+        else:
+            bb.logit("Encountered errors while inserting rows: {}".format(errors))
+    except Exception as err:
         bb.logit(f"{table} - {err}")
-    cur.close()
-    if not nconn:
-        conn.close()
+    '''
+
 
 def sql_query(database, sql, nconn=False):
     # insert_into table fields () values ();
-    if nconn:
-        conn = nconn
-    else:
-        conn = pg_connection("postgres", database)
-    cur = conn.cursor()
-    # print(sql)
+
     try:
-        cur.execute(sql)
+        nconn.execute(sql)
         bb.logit(f"{cur.rowcount} records")
-    except psycopg2.DatabaseError as err:
+    except Exception as err:
         bb.logit(f"{sql} - {err}")
-    result = cur.fetchall()
-    cur.close()
+    result = nconn.fetchall()
     if not nconn:
-        conn.close()
+        nconn.close()
     return result
+
 
 def value_codes(flds, special={}):
     result = ""
@@ -769,100 +663,205 @@ def value_codes(flds, special={}):
             result += f", {fmt}"
     return result
 
-def newsql_query(sql, conn):
-    # Simple query executor
-    cur = conn.cursor()
-    # print(sql)
-    try:
-        cur.execute(sql)
-        row_count = cur.rowcount
-        print(f"{row_count} records")
-    except psycopg2.DatabaseError as err:
-        print(f"{sql} - {err}")
-    result = {"num_records": row_count, "data": cur.fetchall()}
-    cur.close()
-    return result
-
-def column_names(table, conn):
-    sql = f"SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name   = '{table}'"
-    cur = conn.cursor()
-    # print(sql)
-    try:
-        cur.execute(sql)
-        row_count = cur.rowcount
-        print(f"{row_count} columns")
-    except psycopg2.DatabaseError as err:
-        print(f"{sql} - {err}")
-    rows = cur.fetchall()
-    result = []
-    for i in rows:
-        result.append(i[0])
-    cur.close()
-    return result
-
 def increment_version(old_ver):
     parts = old_ver.split(".")
     return f"{parts[0]}.{int(parts[1]) + 1}"
+
+def test_spanner():
+    sp_client = spanner_connection()
+    bb.logit("# --- Check Dataset --- #")
+    bb.logit("# --> Create Table")
+    instance_id = settings["spanner"]["instance_id"]
+    database_id = settings["spanner"]["database_id"]
+    database_admin_api = sp_client.database_admin_api
+    request = database_admin_api.UpdateDatabaseDdlRequest(
+        database=database_admin_api.database_path(
+            sp_client.project, instance_id, database_id
+        ),
+        statements=[sql],
+    )
+    operation = database_admin_api.update_database_ddl(request)
+
+    bb.logit("Waiting for operation to complete...")
+    operation.result(OPERATION_TIMEOUT_SECONDS)
+
+    bb.logit("DDL - complete")
+
+def sp_create_database_example(instance_id, database_id):
+    """Creates a database and tables for sample data."""
+
+    spanner_client = spanner.Client()
+    database_admin_api = spanner_client.database_admin_api
+    instance_id = settings["spanner"]["instance_id"]
+    database_id = settings["spanner"]["database_id"]
+    
+    request = spanner_database_admin.CreateDatabaseRequest(
+        parent=database_admin_api.instance_path(spanner_client.project, instance_id),
+        create_statement=f"CREATE DATABASE `{database_id}`",
+        extra_statements=[
+            """CREATE TABLE Singers (
+            SingerId     INT64 NOT NULL,
+            FirstName    STRING(1024),
+            LastName     STRING(1024),
+            SingerInfo   BYTES(MAX),
+            FullName   STRING(2048) AS (
+                ARRAY_TO_STRING([FirstName, LastName], " ")
+            ) STORED
+        ) PRIMARY KEY (SingerId)""",
+            """CREATE TABLE Albums (
+            SingerId     INT64 NOT NULL,
+            AlbumId      INT64 NOT NULL,
+            AlbumTitle   STRING(MAX)
+        ) PRIMARY KEY (SingerId, AlbumId),
+        INTERLEAVE IN PARENT Singers ON DELETE CASCADE""",
+        ],
+    )
+
+    operation = database_admin_api.create_database(request=request)
+
+    print("Waiting for operation to complete...")
+    database = operation.result(OPERATION_TIMEOUT_SECONDS)
+
+    print(
+        "Created database {} on instance {}".format(
+            database.name,
+            database_admin_api.instance_path(spanner_client.project, instance_id),
+        )
+    )
+
+def gcp_type(mtype):
+    type_pg = {
+        "string": "character varying(255)",
+        "boolean": "bool",
+        "date": "date",
+        "integer": "bigint",
+        "real" : "real",
+        "double": "numeric",
+        "timestamp" : "timestamptz",
+        "text" : "text"
+    }
+    type_bq = {
+        "string": "STRING(255)",
+        "boolean": "BOOL",
+        "date": "DATE",
+        "integer": "INT64",
+        "double": "FLOAT64",
+        "timestamp" : "TIMESTAMP",
+        "text" : "STRING(MAX)"
+    }
+    ftype = type_pg[mtype.lower().strip()]
+    return ftype
+
+def execute_ddl(ddl_action="info"):
+    if "template" in ARGS:
+        template = ARGS["template"]
+    elif "data" in settings:
+        goodtogo = True
+    else:
+        print("Send template=<pathToTemplate>")
+        sys.exit(1)
+    if "task" in ARGS:
+        ddl_action = ARGS["task"]
+    mycon = spanner_connection()
+    if "template" in ARGS:
+        master_table = master_from_file(template)
+        job_info = {
+            master_table: {
+                "path": template,
+                "size": settings["batches"] * settings["batch_size"],
+                "id_prefix": f"{master_table[0].upper()}-",
+            }
+        }
+    else:
+        job_info = settings["data"]
+    start_time = datetime.datetime.now()
+    for domain in job_info:
+        details = job_info[domain]
+        bb.message_box(domain, "title")
+        bb.logit(details["path"])
+        template_file = details["path"]
+        table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
+    mycon.close
 
 def sql_action(conn, action, tables):
     if action == "none" or action == "info":
         return "no action"
     sql = ""
-    cursor = conn.cursor()
     for table_name in tables:
         if action == "create":
-            sql = tables[table_name]["ddl"]
+            schema = tables[table_name]["schema"]
+            xtra = tables[table_name]["extra_ddl"]
+            if xtra != "":
+                result = spanner_ddl_action(conn, [xtra])
+            result = spanner_ddl_action(conn, schema)
+            
         elif action == "drop":
-            sql = f"DROP TABLE {table_name};"
+            conn.delete_table(tables[table_name]["table_id"], not_found_ok=True)
+            print(f"Deleted: {table_name}")
         elif action == "delete":
             sql = f"delete from {table_name};"
-        try:
-            bb.logit(f"Action: {action} {table_name}")
-            print(sql)
-            cursor.execute(sql)
-        except psycopg2.DatabaseError as err:
-            bb.logit(pprint.pformat(err))
-            print(sql)
-            conn.commit()
-            bb.logit(f"recovering...")
-        else:
-            print("OK")
-            conn.commit()
-    cursor.close()
     return "success"
 
-def create_indexes():
-    boo = "boo"
-    indexes = [
-        ["claim","claim_id"],
-        ["claim","patient_id"],
-        ["clamline","claim_id"],
-        ["claim_note","claim_id"],
-        ["claim_payment","claim_id"]
-    ]
-    return boo
+def spanner_connection(type="spanner", sdb="none"):
+    # export GOOGLE_APPLICATION_CREDENTIALS="/Users/brady.byrd/Documents/mongodb/dev/servers/gcp-pubsub-user/bradybyrd-poc-ac0790ea4120.json"
+    client = spanner.Client()
+    return client
 
-def pg_connection(type="postgres", sdb="none"):
-    # cur = mydb.cursor()
-    # cur.execute("select * from Customer")
-    # result = cursor.fetchall()
-    shost = settings[type]["host"]
-    susername = settings[type]["username"]
-    spwd = settings[type]["password"]
-    if "secret" in spwd:
-        spwd = os.environ.get("_PGPWD_")
-    if sdb == "none":
-        sdb = settings[type]["database"]
-    conn = psycopg2.connect(host=shost, database=sdb, user=susername, password=spwd)
-    return conn
+def spanner_ddl_action(sp_client, sql):
+    instance_id = settings["spanner"]["instance_id"]
+    database_id = settings["spanner"]["database_id"]
+    database_admin_api = sp_client.database_admin_api
+    sql = ",\n".join(sql)
+    sql = sql.replace("(,","(")
+    bb.logit(f'Creating Table ddl')
+    print(sql)
+    request = spanner_database_admin.UpdateDatabaseDdlRequest(
+        database=database_admin_api.database_path(
+            sp_client.project, instance_id, database_id
+        ),
+        statements=[sql],
+    )
+    operation = database_admin_api.update_database_ddl(request)
+
+    bb.logit("Waiting for operation to complete...")
+    operation.result(OPERATION_TIMEOUT_SECONDS)
+
+    bb.logit("DDL - complete")
+
+def spanner_create_database(sp_client, db_name):
+    instance_id = settings["spanner"]["instance_id"]
+    db_name = settings["spanner"]["database_name"]
+    database_admin_api = sp_client.database_admin_api
+    request = database_admin_api.CreateDatabaseRequest(
+        parent=database_admin_api.instance_path(sp_client.project, instance_id),
+        create_statement=f"CREATE DATABASE `{db_name}`"
+    )
+    operation = database_admin_api.create_database(request=request)
+
+    print("Waiting for operation to complete...")
+    database = operation.result(OPERATION_TIMEOUT_SECONDS)
+
+    print(
+        "Created database {} on instance {}".format(
+            database.name,
+            database_admin_api.instance_path(sp_client.project, instance_id),
+        )
+    )
+    bb.logit("Waiting for operation to complete...")
+    operation.result(OPERATION_TIMEOUT_SECONDS)
+
+    bb.logit("DDL - complete")
+
 
 # ------------------------------------------------------------------#
 #     MAIN
 # ------------------------------------------------------------------#
+settings_file = "relations_settings.json"
+bb = Util()
+ARGS = bb.process_args(sys.argv)
+settings = bb.read_json(settings_file)
+
 if __name__ == "__main__":
-    bb = Util()
-    ARGS = bb.process_args(sys.argv)
-    settings = bb.read_json(settings_file)
     base_counter = settings["base_counter"]
     IDGEN = Id_generator({"seed": base_counter})
     id_map = defaultdict(int)
@@ -876,8 +875,8 @@ if __name__ == "__main__":
     if "action" not in ARGS:
         print("Send action= argument")
         sys.exit(1)
-    elif ARGS["action"] == "load_pg_data":
-        load_postgres_data()
+    elif ARGS["action"] == "load_data":
+        load_spanner_data()
     elif ARGS["action"] == "test_csv":
         result = build_batch_from_template(
             {
@@ -889,6 +888,8 @@ if __name__ == "__main__":
         pprint.pprint(result)
     elif ARGS["action"] == "execute_ddl":
         execute_ddl()
+    elif ARGS["action"] == "create_database":
+        spanner_create_database()
     elif ARGS["action"] == "show_ddl":
         action = "none"
         pgconn = None
@@ -905,8 +906,8 @@ if __name__ == "__main__":
         get_claims()
     elif ARGS["action"] == "foreign_keys":
         create_foreign_keys()
-    elif ARGS["action"] == "microservice":
-        microservice_one()
+    elif ARGS["action"] == "test":
+        test_big_query()
     else:
         print(f'{ARGS["action"]} not found')
     # conn.close()

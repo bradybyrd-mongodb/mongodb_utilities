@@ -62,6 +62,7 @@ def claim_polling_trigger(request):
 
             query_job = client.query(query)
             curt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            last_checked_at = datetime.datetime.now()
             results = query_job.result()  # Waits for job to complete.
             ids = []
             print(f"#---------------- RESULTS {table} ---------------#")
@@ -78,14 +79,14 @@ def claim_polling_trigger(request):
             answer = ",".join(ids)
             print(answer)
             processed.append({"table" : table, "modified" : tot_processed})
-            time.sleep(10)
+            #time.sleep(10)
             last_checked_at = datetime.datetime.now() #last_checked_at + datetime.timedelta(seconds=10)
             last_check = last_checked_at.strftime("%Y-%m-%d %H:%M:%S")
             if len(new_recs) > 0:
                 print(f'{tot_processed} records processed')
                 db["change_activity"].insert_many(new_recs)
                 new_recs = []
-        db["preferences"].update_one({"doc_type" : "last_check"},{"$set" : {"checked_at" : last_checked_at}})
+        db["preferences"].update_one({"doc_type" : "last_check"},{"$set" : {"checked_at" : ISODate(max_time)}})
         db["activity_log"].insert_one({"activity" : "data polling", "checked_at": orig_checked_at, "processed" : processed})
     return Response({'message': 'successfully connected'}, status=200, mimetype='application/json')
 

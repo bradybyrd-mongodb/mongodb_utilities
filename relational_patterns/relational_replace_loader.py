@@ -12,6 +12,7 @@ import time
 import re
 import multiprocessing
 import pprint
+import uuid
 import bson
 from bson.objectid import ObjectId
 from decimal import Decimal
@@ -606,24 +607,25 @@ def load_query():
         i.join()
 
 def run_query():
+    quotes = ['P-2016127','P-2049723','P-2049772','P-2049770','P-2049884','P-2049893','P-2049834','P-2049768','P-2049993','P-2047765','P-2049991','P-2049862','P-2049977','P-2018808','P-2049965','P-2049818','P-2049932','P-2049852','P-2049788','P-2049990''P-2001490','P-2049718','P-2049989','P-2049940','P-2049927','P-2049959','P-2049967','P-2049816','P-2049954','P-2049937','P-2049975','P-2049972','P-2049846','P-2049988','P-2049822','P-2049725','P-2049930','P-2049985','P-2003470','P-2049905''P-2049693','P-2049982','P-2049912','P-2049890','P-2049882','P-2049800','P-2049885','P-2049726','P-2015704','P-2049872','P-2049735','P-2038890','P-2049909','P-2001723','P-2049899','P-2049850','P-2049806','P-2049804','P-2049767','P-2014746''P-2036198','P-2049861','P-2049833','P-2001972','P-2049762','P-2049970','P-2006118','P-2049813','P-2045490','P-2012698','P-2049920','P-2013444','P-2049941','P-2049949','P-2049964','P-2049979','P-2049943','P-2044278','P-2049708','P-2049986''P-2049875','P-2006814','P-2049894','P-2049874','P-2049925','P-2049815','P-2049836','P-2049849','P-2049935','P-2049841','P-2043169','P-2049791','P-2049961','P-2049971','P-2010675','P-2049948','P-2031167','P-2049945','P-2049790','P-2049942']
+
     cur_process = multiprocessing.current_process()
     bb.logit('Current process is %s %s' % (cur_process.name, cur_process.pid))
     bb.logit("Performing 5000 queries")
     conn = client_connection()
     db = conn[settings["database"]]
-    num = len(cc.lexicon)
+    num = len(quotes)
     cnt = 0
-    for k in range(int(5000/num)):
-        for term in cc.lexicon:
+    for k in range(int(1000/num)):
+        for curid in quotes:
             start = datetime.datetime.now()
-            output = db.emr.find({"disease" : {"$regex" : f'^{term}.*'}}).count()
+            output = db.quote.find_one({"quote_id" : curid })
             if cnt % 100 == 0:
-                end = datetime.datetime.now()
-                elapsed = end - start
-                secs = (elapsed.seconds) + elapsed.microseconds * .000001
-                bb.logit(f"{cur_process.name} - Query: Disease: {term} - Elapsed: {format(secs,'f')} recs: {output} - cnt: {cnt}")
+                bb.timer(start, 100)
+                #bb.logit(f"{cur_process.name} - Query: Disease: {term} - Elapsed: {format(secs,'f')} recs: {output} - cnt: {cnt}")
             cnt += 1
             #time.sleep(.5)
+    conn.close()
 
 def client_connection(type = "uri", details = {}):
     mdb_conn = settings[type]
@@ -677,8 +679,8 @@ if __name__ == "__main__":
         add_primary_provider_ids()
     elif ARGS["action"] == "update_birthdate":
         update_birthdate()
-    elif ARGS["action"] == "update_phi":
-        add_phi_data()
+    elif ARGS["action"] == "query":
+        run_query()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()

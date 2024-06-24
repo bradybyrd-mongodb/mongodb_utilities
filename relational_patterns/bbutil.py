@@ -124,21 +124,21 @@ class Util:
            
         if typ == "border":
             if log_format:
-                bb.logit(border)
+                self.logit(border)
             else:
                 print(border)
         elif typ == "title":
             if log_format:
-                bb.logit(border)
-                bb.logit(data)
-                bb.logit(border)
+                self.logit(border)
+                self.logit(data)
+                self.logit(border)
             else:
                 print(border)
                 print(data)
                 print(border)
         else:
             if log_format:
-                bb.logit(data)
+                self.logit(data)
             else:
                 print(data)
 
@@ -188,3 +188,20 @@ class Util:
             if "stop" in status:
                 result = False
         return(result)
+
+    def timer(self, starttime,cnt = 1, ttype = "sub"):
+        elapsed = datetime.datetime.now() - starttime
+        secs = elapsed.seconds
+        msecs = elapsed.microseconds
+        print(f'Elapsed: {secs} seconds, {msecs} microseconds')
+        if secs == 0:
+            elapsed = msecs * .001
+            unit = "ms"
+        else:
+            elapsed = secs + (msecs * .000001)
+            unit = "s"
+        if ttype == "sub":
+            self.logit(f"query ({cnt} recs) took: {'{:.3f}'.format(elapsed)} {unit}")
+        else:
+            print(f"# --- Complete: query took: {'{:.3f}'.format(elapsed)} {unit} ---- #")
+            print(f"#   {cnt} items {'{:.3f}'.format((elapsed)/cnt)} {unit} avg")
