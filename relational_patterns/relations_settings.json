@@ -45,9 +45,9 @@
     "host": "10.213.30.107"
   },
   "version": "2.0",
-  "process_count": 1,
+  "process_count": 2,
   "batch_size": 10,
-  "batches": 20,
+  "batches": 3,
   "base_counter": 2030000,
   "limitdata": {
     "member": {

@@ -4,6 +4,20 @@ Member.lastName,String,Required,fake.last_name(),Smith
 Member.firstName,String,Optional,fake.first_name(),Sam
 Member.middleName,String,Optional,fake.first_name(),Elijah
 Member.suffix,String,Optional,fake.suffix(),esq
+Member.SSN,String,Optional,fake.ssn(),0
+Member.dateOfBirth,date,Required,"fake.past_datetime() - datetime.timedelta(365*20)",0
+Member.gender,String,Required,"fake.random_element(('Male', 'Female', 'Other'))","Male, Female, Other"
+Member.ethnicity,String,Optional,"fake.random_element(('White', 'American Indian', 'Asian', 'Hispanic', 'African American'))","White, American Indian, Asian, Hispanic, African American"
+Member.maritialStatus,String,Optional,"fake.random_element(('Married', 'Widow', 'Single'))","Married, Widow, Single"
+Member.primaryProvider_id,String,Optional,"IDGEN.random_value(""P-"")",0
+Member.EffectiveDate,Date,Optional,fake.past_datetime(),0
+Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+8y"")",0
+Member.CitizenshipStatusCode,String,Optional,"fake.random_element(('Native', 'Naturalised', 'Alien Permanent', 'Alien Temporary', 'Citizen', 'Foreign Worker', 'Permanent Resident', 'Foreigh ID Card Holder'))","Native, Naturalised, Alien Permanent, Alien Temporary, Citizen, Foreign Worker, Permanent Resident, Foreigh ID Card Holder"
+Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+10y"")",Random
+Member.SitusState,String,Optional,"fake.state_abbr()",Random
+Member.Weight,Integer,Optional,"fake.random_int(min=1, max=400)",1 - 400
+Member.PlanYear,Integer,Optional,"fake.random_int(min=2023, max=2023)",0
+Member.TotalPayments,double,Optional,"fake.random_int(min=20, max=1200)",0
 Member.Address().name,String,Optional,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old"
 Member.Address().addressLine1,String,Optional,fake.street_address(),0
 Member.Address().addressLine2,String,Optional,fake.secondary_address(),0
@@ -21,17 +35,8 @@ Member.Communication().emailAddress,String,Optional,fake.email(),0
 Member.Communication().emailtype,String,Optional,"fake.random_element(('Home', 'Work'))","Home, Work"
 Member.Communication().SocialMediaID,String,Optional,fake.user_name(),0
 Member.Communication().SocialMediaType,String,Optional,"fake.random_element(('Facebook', 'Academia.edu', 'Bebo', 'CaringBridge', 'GoodReads', 'DailyStrength', 'Google+'))","Facebook,GoodReads"
-Member.SSN,String,Optional,fake.ssn(),0
-Member.dateOfBirth,date,Required,"fake.past_datetime() - datetime.timedelta(365*20)",0
-Member.gender,String,Required,"fake.random_element(('Male', 'Female', 'Other'))","Male, Female, Other"
-Member.ethnicity,String,Optional,"fake.random_element(('White', 'American Indian', 'Asian', 'Hispanic', 'African American'))","White, American Indian, Asian, Hispanic, African American"
-Member.maritialStatus,String,Optional,"fake.random_element(('Married', 'Widow', 'Single'))","Married, Widow, Single"
-Member.primaryProvider_id,String,Optional,"IDGEN.random_value(""P-"")",0
-Member.EffectiveDate,Date,Optional,fake.past_datetime(),0
-Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+8y"")",0
 Member.languages().language,String,Optional,"fake.random_element(('Albanian', 'Farsi', 'Hindi', 'Korean', 'Polish', 'Spanish', 'Arabic', 'French', 'Hmong', 'Laotian', 'Portuguese', 'Tagalog', 'Armenian', 'German', 'Italian', 'Lithuanian', 'Punjabi', 'Thai', 'Bengali', 'Greek', 'Japanese', 'Malay', 'Romanian', 'Turkish', 'Burmese', 'Haitian Creole'))","Albanian,Farsi"
 Member.languages().Usage,String,Optional,"fake.random_element(('Spoken', 'Reading', 'Writing', 'Native'))","Spoken, Reading, Writing, Native"
-Member.CitizenshipStatusCode,String,Optional,"fake.random_element(('Native', 'Naturalised', 'Alien Permanent', 'Alien Temporary', 'Citizen', 'Foreign Worker', 'Permanent Resident', 'Foreigh ID Card Holder'))","Native, Naturalised, Alien Permanent, Alien Temporary, Citizen, Foreign Worker, Permanent Resident, Foreigh ID Card Holder"
 Member.Disability().DisabilityPeriodStartDate,date,Optional,fake.past_datetime(),Random
 Member.Disability().DisabilityPeriodEndDate,date,Optional,"fake.future_datetime(end_date=""+3y"")",
 Member.Disability().DisabilityTypeCode,String ,Optional,"fake.random_element(('Autism', 'Emotional Disability', 'Hearing Impairement', 'Intellectual Disability', 'Other Health Imparement', 'Traumatic Brain Injury', 'Visual Imparement'))","Autism, Emotional Disability, Hearing Imparement, Intellectual Disability, Other Health Imparement, Traumatic Brain Injury, Visual Imparement"
@@ -52,13 +57,8 @@ Member.Guardian().AddresswheelchairAccess,boolean,Optional,fake.boolean(chance_o
 Member.Payment().claim_id,String ,Optional,"fake.random_int(min=40, max=1000)",0
 Member.Payment().payment_date,date ,Optional,fake.past_datetime(),0
 Member.Payment().amount,double ,Optional,"fake.random_int(min=40, max=1000)",0
-Member.EndDate,Date,Optional,"fake.future_datetime(end_date=""+10y"")",Random
-Member.SitusState,String,Optional,"fake.state_abbr()",Random
 Member.BankAccount.BankName,String ,Optional,"fake.company()",Random
 Member.BankAccount.BankAccountHolderName,String ,Optional,fake.name(),0
 Member.BankAccount.BankAccountNumber,String ,Optional,fake.iban(),0
 Member.BankAccount.BankAccountType,String ,Optional,"fake.random_element(('Checking', 'Savings'))",0
 Member.BankAccount.BankRoutingNumber,String ,Optional,"fake.iban()",0
-Member.Weight,Integer,Optional,"fake.random_int(min=1, max=400)",1 - 400
-Member.PlanYear,Integer,Optional,"fake.random_int(min=2023, max=2023)",0
-Member.TotalPayments,double,Optional,"fake.random_int(min=20, max=1200)",0

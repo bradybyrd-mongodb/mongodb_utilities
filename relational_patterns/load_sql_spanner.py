@@ -114,7 +114,8 @@ def worker_load(ipos, args):
     settings = bb.read_json(settings_file)
     batches = settings["batches"]
     batch_size = settings["batch_size"]
-    base_counter = settings["base_counter"] + batches * batch_size * ipos
+    base_counter = settings["base_counter"] + batches * batch_size * ipos * 5
+    base_counter_sub = settings["base_counter"] + batches * batch_size * ipos * 5
     if "template" in args:
         template = args["template"]
         master_table = master_from_file(template)
@@ -136,7 +137,7 @@ def worker_load(ipos, args):
         prefix = details["id_prefix"]
         batches = int(details["size"] / batch_size)
         bb.message_box(domain, "title")
-        table_info = ddl_from_template("none", db_client, template_file, domain)
+        table_info = ddl_from_template("none", db_client, template_file, domain)        
         for k in range(batches):
             bb.logit(f"Loading batch: {k} - size: {batch_size}")
             result = build_sql_batch_from_template(
@@ -148,6 +149,7 @@ def worker_load(ipos, args):
                     "batch": k,
                     "id_prefix": prefix,
                     "base_count": base_counter,
+                    "base_count_sub": base_counter_sub,
                     "size": count,
                     "pid" : pid
                 },
@@ -171,78 +173,77 @@ def build_sql_batch_from_template(tables, details={}):
     batch_size = settings["batch_size"]
     base_counter = details["base_count"]
     num_procs = settings["process_count"]
-    batch = details["batch"]
-    master_table = details["master"]
-    master_id = f"{master_table}_id".lower()
+    master_table = details["master"].lower()
+    master_id_field = f"{master_table}_id".lower()
     cnt = 0
     tab_types = table_types(tables)
     #pprint.pprint(tab_types)
     bb.logit(f"Master: {master_table} - building: {batch_size}")
     master_ids = []
     rec_counts = {}
-    g_id = ""
     cur_id = ""
     database = "none"
-    data = {}
     for item in tables:
         attrs = tables[item]
         cur_table = item
         parent = attrs["parent"]
         table_type = tab_types[cur_table]
+        generator = ""
+        batch = details["batch"]
         pair = cur_table.split("_")
         prefix = id_prefix(cur_table)
+        id_field = f"{cur_table}_id".lower()
+        parent_id_field = f"{parent}_id".lower() if parent != "" else ""
         recs = []
         counts = random.randint(1, 5) if len(cur_table.split("_")) > 1 else 1
         bb.logit(f"Table: {cur_table} building data, factor: {counts}")
         database = attrs["database"]
-        if table_type == "submaster":
-            count = details["size"] * num_procs * counts
-            IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
-        elif table_type == "none" and len(parent.split("_")) > 1:
-            boo = "boo"
-        else:
+        if table_type == "master":
             prefix = details["id_prefix"]
+        elif table_type == "submaster":
+            #bb.logit("set submaster: ")
+            count = details["size"] * num_procs * counts * batch
+            #IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
         idpos = 0
         rec_counts[cur_table] = batch_size * counts * num_procs
         for inc in range(0, batch_size * counts):  # iterate through the bulk insert count
+            use_sequence = False
             fld_cnt = 0
             hsh = {}
             if idpos > batch_size - 1:
                 idpos = 0
+            # Clarify the ID
+            if table_type == "master":
+                generator = attrs["generator"][fld_cnt]
+                cur_id = eval(generator)
+                master_ids.append(cur_id)
+                fld_cnt += 1
+            elif len(pair) == 2 or table_type == "submaster":
+                cur_id = IDGEN.get(prefix)
+                generator = f"IDGEN({prefix})"
+                #fld_cnt += 1
+            else:
+                cur_id = "seq" #IDGEN.random_value(prefix)
+                use_sequence = True
+                generator = f"sequence"
+            # Loop through each field and gen a value
             for cur_field in attrs["fields"]:
-                use_sequence = False
-                # bb.logit(f'Field: {cur_field} - gen {attrs["generator"][fld_cnt]}')
-                if table_type == "master" and cur_field.lower() == master_id:
-                    # master e.g. claim_id
-                    g_id = eval(attrs["generator"][fld_cnt])
-                    cur_val = g_id
-                    cur_id = g_id
-                    master_ids.append(g_id)
-                    # bb.logit(f'[{cnt}] - GlobalID = {g_id}')
-                    # is_master = False
-                    fld_cnt += 1
-                elif cur_field.lower() == master_id:
-                    # bb.logit(f'IDPOS: {idpos}')
-                    cur_val = master_ids[idpos]
-                elif cur_field.lower().replace("_id", "") == attrs["parent"].lower():
-                    # child of e.g. claim_claimline.claim_id
-                    cur_id = IDGEN.random_value(prefix)
-                    cur_val = cur_id
-                    # bb.logit(f'IDsub[{cur_val}] {cur_table} - {attrs["parent"]}\n{IDGEN.value_history}')
-                elif cur_field.lower() == f"{cur_table.lower()}_id":
-                    # Internal id for table
-                    #prefx = cur_table[0:2].upper() + "-"
-                    if len(pair) == 2 or table_type == "submaster":
-                        cur_id = IDGEN.get(prefix)
-                        cur_val
+                if cur_field.lower().endswith("_id") and master_table in cur_field:
+                    if table_type != "master" and cur_field.lower() == master_id_field:
+                        # related to master - bb.logit(f'IDPOS: {idpos}')
+                        cur_val = master_ids[idpos]
+                        generator = f"random-master"
+                    elif cur_field == parent_id_field:
+                        # parent_id = child of e.g. claim_claimline.claim_id
+                        cur_val = IDGEN.random_value(id_prefix(parent))
+                        generator = f"random-{parent}"
+                        #fld_cnt += 1
                     else:
-                        if len(pair) > 1:
-                            use_sequence = True       
-                        cur_id = f"{prefix}{random.randint(1000,1000000)}"
                         cur_val = cur_id
                 else:
                     #  Your basic field value
-                    cur_val = eval(attrs["generator"][fld_cnt])
+                    generator = attrs["generator"][fld_cnt]
+                    cur_val = eval(generator)
                     if type(cur_val) is bool:
                         #cur_val = 'true' if cur_val == True else "false"
                         letitbe = "yes"
@@ -251,18 +252,19 @@ def build_sql_batch_from_template(tables, details={}):
                     elif type(cur_val) is datetime.datetime:
                         cur_val = cur_val.strftime("%Y-%m-%d")
                     fld_cnt += 1
-                if use_sequence:
-                    letitbe = "yes" #fld_cnt = fld_cnt - 1
-                    cur_id = "seq"
+                if use_sequence and cur_field == id_field:
+                    letitbe = "yes" #Ignore auto-inc field
                 else:
                     hsh[cur_field.lower()] = cur_val
-            print(f'[{pid}] - tot: {cnt} - ID: {cur_id}')
+                bb.logit(f'{cur_table}: {cur_field} | {cur_val} | gen {generator}')
+                
+            #print(f'[{pid}] - tot: {cnt} - ID: {cur_id}')
             idpos += 1
             cnt += 1
             recs.append(hsh)
         # print("# ----------- Data ---------------------- #")
         # pprint.pprint(recs)
-        #record_loader(tables, cur_table, recs, details["connection"])
+        record_loader(tables, cur_table, recs, details["connection"])
         bb.logit(f"{batch_size} {cur_table} batch complete (tot = {cnt})")
     bb.logit(f"{cnt} records for {database} complete")
     return cnt
@@ -275,7 +277,6 @@ def id_prefix(table):
     elif len(pair) == 2:
         prefix = f'{pair[0][0]}{pair[1][0]}-'
     return prefix.upper()
-       
 
 def table_types(table_info):
     res = {}
@@ -614,8 +615,9 @@ def record_loader(tables, table, recs, nconn=False):
         vals.append(tuple(it.values()))
     instance = nconn.instance(instance_id)
     database = instance.database(database_id)
-    pprint.pprint(cols)
-    pprint.pprint(vals)
+    #pprint.pprint(cols)
+    if table.lower() == "quote_coverage_deductibleconditions":
+        pprint.pprint(vals)
     fields = list(recs[0])
     bb.logit(f"Loading into Spanner: {len(recs)}")
     with database.batch() as batch:
