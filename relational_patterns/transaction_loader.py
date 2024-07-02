@@ -2,6 +2,7 @@ import json
 import logging
 import sys
 import os
+import string
 import time
 import multiprocessing
 from collections import OrderedDict, defaultdict
@@ -17,6 +18,12 @@ import psycopg2
 from bson.json_util import dumps
 from bson.objectid import ObjectId
 from pymongo import MongoClient
+# -------- Spanner ---------- #
+from google.cloud import spanner, spanner_admin_database_v1
+from google.cloud.spanner_admin_database_v1.types.common import DatabaseDialect
+from google.cloud.spanner_v1 import param_types
+from google.cloud.spanner_v1.data_types import JsonObject
+from google.cloud.spanner_admin_database_v1.types import spanner_database_admin
 
 from bbutil import Util
 
@@ -142,7 +149,6 @@ def get_claims_sql(conn, query, patient_id, r, skip_cache, iters = 1):
     logging.debug("# --------------------- SQL --------------------------- #")
     logging.debug(SQL)
     timer(start,iters,"tot")
-
 
 def get_claims_mongodb(client, query, patient_id, iters = 1):
     claim = client["claim"]
@@ -647,6 +653,12 @@ def column_names(table, conn):
     cur.close()
     return result
 
+#Spanner Additions
+def spanner_connection(type="spanner", sdb="none"):
+    # export GOOGLE_APPLICATION_CREDENTIALS="/Users/brady.byrd/Documents/mongodb/dev/servers/gcp-pubsub-user/bradybyrd-poc-ac0790ea4120.json"
+    client = spanner.Client()
+    return client
+
 def pg_connection(type="postgres", sdb="none"):
     shost = settings[type]["host"]
     susername = settings[type]["username"]
@@ -684,6 +696,10 @@ def mongodb_connection(type="uri", details={}):
     return client
 
 def sql_query(sql, conn):
+    return postgres_query(conn,sql) if platform == "postgres" else spanner_query(conn,sql)
+        
+
+def postgres_query(conn, sql):
     cur = conn.cursor()
     try:
         cur.execute(sql)
@@ -696,19 +712,38 @@ def sql_query(sql, conn):
         print(f"{sql} - {err}")
     cur.close()
 
+def spanner_query(conn, sql):
+    # Queries sample data from spanner using SQL.
+    instance_id = settings["spanner"]["instance_id"]
+    database_id = settings["spanner"]["database_id"]
+    instance = conn.instance(instance_id)
+    database = instance.database(database_id)
+    result = {"num_records": 0, "data": []}
+    with database.snapshot() as snapshot:
+        results = snapshot.execute_sql(
+            sql
+        )
+        #for row in results:
+            #print("SingerId: {}, AlbumId: {}, AlbumTitle: {}".format(*row))
+        print(sql)
+        result = {"num_records": 0, "data": results}    
+    return result
+
 
 # --------------------------------------------------------- #
 #       MAIN
 # --------------------------------------------------------- #
 if __name__ == "__main__":
     settings_file = "relations_settings.json"
+    platform = "spanner"
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
     id_map = defaultdict(int)
     r_conn = None
     client = {"empty": True}
-    conn = pg_connection()
+    #conn = pg_connection()
+    conn = spanner_connection()
     skip_cache = True
     skip_mongo = False
     iters = 1

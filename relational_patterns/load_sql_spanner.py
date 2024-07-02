@@ -128,13 +128,14 @@ def worker_load(ipos, args):
         }
     else:
         job_info = settings["data"]
+    IDGEN = Id_generator({"seed" : base_counter, "size" : batches * batch_size})
     start_time = datetime.datetime.now()
     for domain in job_info:
         details = job_info[domain]
-        IDGEN = Id_generator({"seed" : base_counter, "size" : details["size"]})
+        prefix = details["id_prefix"]
+        IDGEN.set({"seed": base_counter, "size": details["size"], "prefix": prefix})
         template_file = details["path"]
         count = details["size"]
-        prefix = details["id_prefix"]
         batches = int(details["size"] / batch_size)
         bb.message_box(domain, "title")
         table_info = ddl_from_template("none", db_client, template_file, domain)        
@@ -151,7 +152,8 @@ def worker_load(ipos, args):
                     "base_count": base_counter,
                     "base_count_sub": base_counter_sub,
                     "size": count,
-                    "pid" : pid
+                    "pid" : pid,
+                    "id_gen" : IDGEN
                 },
             )
 
@@ -167,11 +169,14 @@ def worker_load(ipos, args):
 #  CSV template sql translator
 # -----------------------------------------------------------#
 def build_sql_batch_from_template(tables, details={}):
-    global IDGEN, settings
+    global settings
+    IDGEN = details["id_gen"]
     template_file = details["template"]
     pid = details["pid"]
     batch_size = settings["batch_size"]
     base_counter = details["base_count"]
+    ID_MIN = base_counter
+    ID_MAX = base_counter + details["size"]
     num_procs = settings["process_count"]
     master_table = details["master"].lower()
     master_id_field = f"{master_table}_id".lower()
@@ -256,9 +261,8 @@ def build_sql_batch_from_template(tables, details={}):
                     letitbe = "yes" #Ignore auto-inc field
                 else:
                     hsh[cur_field.lower()] = cur_val
-                bb.logit(f'{cur_table}: {cur_field} | {cur_val} | gen {generator}')
+                #bb.logit(f'{cur_table}: {cur_field} | {cur_val} | gen {generator}')
                 
-            #print(f'[{pid}] - tot: {cnt} - ID: {cur_id}')
             idpos += 1
             cnt += 1
             recs.append(hsh)
@@ -616,9 +620,8 @@ def record_loader(tables, table, recs, nconn=False):
     instance = nconn.instance(instance_id)
     database = instance.database(database_id)
     #pprint.pprint(cols)
-    if table.lower() == "quote_coverage_deductibleconditions":
-        pprint.pprint(vals)
-    fields = list(recs[0])
+    #if table.lower() == "quote_coverage_deductibleconditions":
+    #    pprint.pprint(vals)
     bb.logit(f"Loading into Spanner: {len(recs)}")
     with database.batch() as batch:
         batch.insert(

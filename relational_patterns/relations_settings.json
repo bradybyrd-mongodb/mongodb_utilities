@@ -46,9 +46,9 @@
   },
   "version": "2.0",
   "process_count": 2,
-  "batch_size": 10,
-  "batches": 3,
-  "base_counter": 2030000,
+  "batch_size": 500,
+  "batches": 5,
+  "base_counter": 2000000,
   "limitdata": {
     "member": {
       "path": "model-tables/member.csv",
