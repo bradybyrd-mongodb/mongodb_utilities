@@ -230,7 +230,8 @@ def mongodb_connection(type="uri", details={}):
         password = details["password"]
     if "secret" in password:
         password = os.environ.get("_PWD_")
-    password = urllib.parse.quote_plus(password)
+    if "%" not in password:
+        password = urllib.parse.quote_plus(password)
     mdb_conn = mdb_conn.replace("//", f"//{username}:{password}@")
     bb.logit(f"Connecting: {mdb_conn}")
     if "readPreference" in details:

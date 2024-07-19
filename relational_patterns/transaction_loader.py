@@ -91,6 +91,9 @@ def get_claims_sql(conn, query, patient_id, r, skip_cache, iters = 1):
     start = datetime.datetime.now()
     SQL = ""
     query_result = None
+    increment = 1
+    if "inc" in ARGS:
+        increment = int(ARGS["inc"])
     cache_hit = False
     pair = patient_id.split("-")
     idnum = int(pair[1])
@@ -144,7 +147,7 @@ def get_claims_sql(conn, query, patient_id, r, skip_cache, iters = 1):
                 # print(result)
                 cnt += 1
             timer(instart, cnt)
-            idnum += 1
+            idnum += increment
     #logging.debug(f"records fetched from psql")
     logging.debug("# --------------------- SQL --------------------------- #")
     logging.debug(SQL)
@@ -156,13 +159,16 @@ def get_claims_mongodb(client, query, patient_id, iters = 1):
     last_result = {}
     start = datetime.datetime.now()
     pair = patient_id.split("-")
+    pipe = {}
     idnum = int(pair[1])
     for inc in range(iters):
         patient_id = f'{pair[0]}-{idnum}'
         instart = datetime.datetime.now()
         if query == "claim":  # Claim - only
-            result = claim.find({'patient_id': patient_id})
+            pipe = {'patient_id': patient_id}
+            result = claim.find(pipe)
         elif query == "claimLinePayments":  # Claim + Claimlines + Claimpayments
+            pipe = {'patient_id': patient_id}
             result = claim.find(
                 {'patient_id': patient_id}, {'claimLine': 1})
         elif query == "claimMemberProvider":  # Claim + Member + Provider
@@ -725,7 +731,7 @@ def spanner_query(conn, sql):
         )
         #for row in results:
             #print("SingerId: {}, AlbumId: {}, AlbumTitle: {}".format(*row))
-        print(sql)
+        #print(sql)
         result = {"num_records": 0, "data": results}    
     return result
 
@@ -735,15 +741,15 @@ def spanner_query(conn, sql):
 # --------------------------------------------------------- #
 if __name__ == "__main__":
     settings_file = "relations_settings.json"
-    platform = "spanner"
+    platform = "postgres" #"spanner"
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
     id_map = defaultdict(int)
     r_conn = None
     client = {"empty": True}
-    #conn = pg_connection()
-    conn = spanner_connection()
+    conn = pg_connection()
+    #conn = spanner_connection()
     skip_cache = True
     skip_mongo = False
     iters = 1
