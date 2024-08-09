@@ -741,7 +741,7 @@ def spanner_query(conn, sql):
 # --------------------------------------------------------- #
 if __name__ == "__main__":
     settings_file = "relations_settings.json"
-    platform = "postgres" #"spanner"
+    platform = "postgres" #"spanner" #
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)

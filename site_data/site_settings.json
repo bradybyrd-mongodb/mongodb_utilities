@@ -1,0 +1,62 @@
+{
+    "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+    "database": "buildings",
+    "collection": "building",
+    "username": "main_admin",
+    "password": "<secret>",
+    "postgres_local": {
+      "host": "localhost",
+      "username": "bbadmin",
+      "password": "<secret>",
+      "database": "healthcare",
+      "notes": "To startup - export PATH='/usr/local/opt/postgresql@9.6/bin:$PATH' pg_ctl -D /usr/local/var/postgresql@9.6 start"
+    },
+    "postgres": {
+      "host": "34.172.34.239",
+      "username": "postgres",
+      "password": "<secret>",
+      "database": "healthcare",
+      "notes": "GCP CloudSQL Database"
+    },
+    "version": "2.0",
+    "process_count": 2,
+    "batch_size": 20,
+    "batches": 5,
+    "base_counter": 2000000,
+    "portfolios" : 0.01,
+    "sites" : 0.1,
+    "data": {
+      "building": {
+        "path": "models/building.csv",
+        "size": 2000,
+        "id_prefix": "B-"
+      },
+      "monitoring": {
+        "path": "models/monitoring.csv",
+        "size": 10000,
+        "id_prefix": "M-"
+      }
+    },
+    "device_types" : {
+        "chiller" : { "avg" : 55, "unit" : "degrees"},
+        "air_handler" : {"avg" : 230, "unit" : "cfm"},
+        "boiler": {"avg" : 180, "unit" : "degrees"},
+        "vav": {"avg" : 85, "unit" : "degrees"},
+        "air_handler": {"avg" : 35, "unit" : "bars"},
+        "fan": {"avg" : 2600, "unit" : "rpm"},
+        "room_temp": {"avg" : 65, "unit" : "degrees"},
+        "set_point": {"avg" : 90, "unit" : "percent"},
+        "power": {"avg" : 40, "unit" : "amps"},
+        "distribution": {"avg" : 400, "unit" : "amps"},
+        "backup_generator": {"avg" : 55, "unit" : "amps"},
+        "air_pressure": {"avg" : 230, "unit" : "cfm"},
+        "solar_panel": {"avg" : 180, "unit" : "voltage"},
+        "solar_regulator": {"avg" : 85, "unit" : "efficiency"},
+        "back_pressure": {"avg" : 35, "unit" : "bars"},
+        "water_pump": {"avg" : 2600, "unit" : "rpm"},
+        "water_pressure": {"avg" : 65, "unit" : "psi"},
+        "battery_status": {"avg" : 90, "unit" : "percent"},
+        "heat_calling": {"avg" : 100, "unit" : "rooms"},
+        "cooling_calling": {"avg" : 100, "unit" : "rooms"}
+    }
+  }

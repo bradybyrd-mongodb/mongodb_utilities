@@ -1,0 +1,33 @@
+Resource.Property,Property Type, / Required,Generator,Sample Data
+Building.building_id,String,,"cur_info.set_cur_id(IDGEN.get(""B-""))","C-101"
+Building.name,string,,"IDGEN.random_value(""P-"")","P-101"
+Building.floors,double,,"fake.random_int(min=1, max=44)",0
+Building.constructed_on,Date,,fake.past_datetime(),0
+Building.size,double,,"fake.random_int(min=10000, max=200000)",0
+Building.modified_at,Date,,"datetime.datetime.now()",0
+Building.modified_by,String,,"""Brady""",0
+Building.portfolio.portfolio_id,String,,"cur_info.get_item(""portfolio_id"")",0
+Building.portfolio.portfolio_name,String,,"cur_info.get_item(""portfolio_name"")",0
+Building.portfolio.site_id,String,,"cur_info.get_item(""site_id"")",0
+Building.portfolio.site_name,String,,"cur_info.get_item(""site_name"")",0
+Building.address.name,String,,"fake.random_element(('Main', 'Summer', 'Old'))","Main, Summer, Old"
+Building.address.addressLine1,String,,fake.street_address(),0
+Building.address.addressLine2,String,,fake.secondary_address(),0
+Building.address.city,String,,fake.city(),0
+Building.address.state,String,,fake.state_abbr(),0
+Building.address.postalCode,String,,fake.postcode(),0
+Building.address.country,String,,fake.country(),0
+Building.address.effectiveDate,date,,fake.past_datetime(),0
+Building.address.location.type,string,,"""point""",0
+Building.address.coordinates.type,array,,"cur_info.get_item(""coord"")",0
+Building.assets().asset_id,String,,"IDGEN.get(""A-"")",M-00000
+Building.assets().asset_alias,String,,"IDGEN.get(""A-"")",M-00000
+Building.assets().name,String,,"IDGEN.get(""A-"")",M-00000
+Building.assets().make,String,,"IDGEN.get(""A-"")",M-00000
+Building.assets().model,String,,"IDGEN.get(""A-"")",M-00000
+Building.assets().in_service_at,Date,,"fake.past_datetime()",date
+Building.assets().location,array,,"cur_info.get_item.location",M-00000
+Building.assets().coverage,String,,"fake.random_element(('None', 'Full', 'Limited'))",Full
+Building.assets().condition,String,,"fake.random_element(('Excellent', 'Good', 'Fair','Poor'))",Good
+Building.assets().health,String,,"fake.random_element(('Invest', 'Maintain', 'Replace'))",Invest
+

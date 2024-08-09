@@ -1,0 +1,6 @@
+Resource.Property,Property Type, Optional/Required,Generator,Sample Data
+Monitoring.building_id,String,,"IDGEN.get(""B-"")","C-101"
+Monitoring.asset_id,String,,"IDGEN.get(""A-"")","A-101"
+Monitoring.name,String,,"fake.bs()",0
+Monitoring.asset_type,String,,"fake.bs()",0
+Monitoring.measurements,String,,"get_measurements()",M-00000
