@@ -16,18 +16,20 @@ Building.address.addressLine2,String,,fake.secondary_address(),0
 Building.address.city,String,,fake.city(),0
 Building.address.state,String,,fake.state_abbr(),0
 Building.address.postalCode,String,,fake.postcode(),0
-Building.address.country,String,,fake.country(),0
+Building.address.country,String,,"""US""",0
 Building.address.effectiveDate,date,,fake.past_datetime(),0
 Building.address.location.type,string,,"""point""",0
-Building.address.coordinates.type,array,,"cur_info.get_item(""coord"")",0
+Building.address.location.coordinates,double,,"cur_info.get_item(""coord"")",0
+Building.assets().CONTROL,50,0,0,0
 Building.assets().asset_id,String,,"IDGEN.get(""A-"")",M-00000
-Building.assets().asset_alias,String,,"IDGEN.get(""A-"")",M-00000
-Building.assets().name,String,,"IDGEN.get(""A-"")",M-00000
-Building.assets().make,String,,"IDGEN.get(""A-"")",M-00000
-Building.assets().model,String,,"IDGEN.get(""A-"")",M-00000
+Building.assets().asset_alias,String,,"fake.bs()",M-00000
+Building.assets().name,String,,"fake.bs()",M-00000
+Building.assets().make,String,,"""Carrier""",M-00000
+Building.assets().model,String,,"""Improved""",M-00000
 Building.assets().in_service_at,Date,,"fake.past_datetime()",date
-Building.assets().location,array,,"cur_info.get_item.location",M-00000
+Building.assets().last_service_at,Date,,"fake.past_datetime()",date
+Building.assets().last_service,String,,"fake.random_element(('Compressor replacement', 'Motor service', 'Output pressure sensor','input valve','dc inverter'))",date
+Building.assets().location,String,,"cur_info.get_item(""coord"")",M-00000
 Building.assets().coverage,String,,"fake.random_element(('None', 'Full', 'Limited'))",Full
 Building.assets().condition,String,,"fake.random_element(('Excellent', 'Good', 'Fair','Poor'))",Good
 Building.assets().health,String,,"fake.random_element(('Invest', 'Maintain', 'Replace'))",Invest
-

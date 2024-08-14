@@ -155,6 +155,10 @@ def build_batch_from_template(cur_coll, details = {}):
                 path = row[0].split('.')
                 if ")" in row[0]: #path[-2].endswith('()'):  
                     islist = True
+                    if "CONTROL" in row[0]:
+                        counts = random.randint(1, int(row[1])) 
+                        icnt += 1
+                        continue
                 else:
                     islist = False
                     counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))

@@ -17,6 +17,9 @@ import getopt
 import bson
 from bson.objectid import ObjectId
 from bson.json_util import dumps
+base_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(base_dir))
+
 from bbutil import Util
 from id_generator import Id_generator
 from pymongo import MongoClient
@@ -61,7 +64,104 @@ providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
       create database single_view with owner bbadmin;
       psql --username bbadmin single_view
 """
-settings_file = "relations_settings.json"
+settings_file = "site_settings.json"
+
+class CurItem:
+    # Use an instance to track the current record being processed
+    def __init__(self, details = {}):
+        self.addr_info = {}
+        self.sites = []
+        self.id_map = {}
+        self.cur_id = False
+        self.ipos = 0
+        self.version = "1.0"
+        self.counter = 0
+        if "addr_info" in details:
+            self.addr_info = details["addr_info"]
+        if "sites" in details:
+            self.sites = details["sites"]
+        if "version" in details:
+            self.version = details["version"]
+
+    def set_addr_info(self, info):
+        self.addr_info = info
+
+    def set_cur_id(self, id_val):
+        #for each record generated, store the current id as a local value so you can lookup multiple 
+        #items
+        self.cur_id = id_val
+        if self.counter >= len(self.sites) - 1:
+            self.counter = 0 
+        else:
+            self.counter += 1
+        self.ipos += 1
+        return(id_val)
+
+    def get_site(self):
+        return self.sites[self.counter] 
+
+    def get_item(self, i_type = "none", passed_id = None):
+        item = None
+        ans = None
+        if passed_id is not None:
+            self.cur_id = passed_id
+            #item = self.addr_info[self.id_map[passed_id]]
+        try:
+            if self.cur_id not in id_map:
+                item = self.addr_info[self.ipos]
+                self.ipos += 1
+            else:
+                item = self.addr_info[self.id_map[self.cur_id]]
+            if i_type == "none":
+                ans = item
+            elif i_type == "portfolio_id":
+                ans = self.sites[self.counter]["portfolio_id"]
+            elif i_type == "portfolio_name":
+                ans = self.sites[self.counter]["portfolio_name"]
+            elif i_type == "site_id":
+                ans = self.sites[self.counter]["site_id"]
+            elif i_type == "site_name":
+                ans = self.sites[self.counter]["site_name"]
+            elif i_type == "version":
+                ans = self.version
+            elif i_type == "coord":
+                ans = f"{item["address"]["coord"][0]}|{item["address"]["coord"][1]}"
+            else:
+                ans = item["address"][i_type]
+        except Exception as e:
+            print("---- ERROR --------")
+            print("---- Vals --------")
+            print(f'Type: {i_type}, Counter: {self.counter}, pos: {self.ipos}')
+            print("---- error --------")
+            print(e)
+            exit(1)
+        return ans
+
+def init_seed_data(conn):
+    ans = {"addr_info": list(conn["sample_restaurants"]["restaurants"].find({},{"_id": 0, "address": 1, "borough": 1})),
+           "sites" : generate_sites()
+    }
+    return ans
+
+def generate_sites():
+    port_ratio = settings["portfolios"]
+    site_ratio = settings["sites"]
+    batch_size = settings["batch_size"]
+    batches = settings["batches"]
+    num_to_do = int(batches * batch_size * site_ratio)
+    bb.logit(f"Generating Portfolio/Sites - {num_to_do}")
+    ans = []
+    for k in range(num_to_do):
+        if k % 10 == 0:
+            cur_portfolio_id = IDGEN.get("P-")
+            cur_portfolio = fake.company()
+        ans.append({
+            "portfolio_id" : cur_portfolio_id,
+            "portfolio_name" : cur_portfolio,
+            "site_id" : IDGEN.get("S-"),
+            "site_name" : fake.street_name()
+        })
+    return ans
 
 def load_postgres_data():
     # read settings and echo back
@@ -103,6 +203,7 @@ def worker_load(ipos, args):
     cur_process = multiprocessing.current_process()
     bb.message_box(f"({cur_process.name}) Loading Synth Data in SQL", "title")
     pgconn = pg_connection()
+    conn = client_connection()
     settings = bb.read_json(settings_file)
     batches = settings["batches"]
     batch_size = settings["batch_size"]
@@ -120,16 +221,22 @@ def worker_load(ipos, args):
     else:
         job_info = settings["data"]
     start_time = datetime.datetime.now()
+    seed_data = init_seed_data(conn)
+    CurInfo = CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
+    pprint.pprint(CurInfo.get_item("none", "A-107"))
+    bb.logit(f'Portfolio: {CurInfo.get_item("portfolio_name")}, len: {len(seed_data["sites"])}')
+    
     # IDGEN = Id_generator({"seed" : base_counter, "size" : details["size"]})
     for domain in job_info:
         details = job_info[domain]
         template_file = details["path"]
-        count = details["size"]
+        multiplier = details["multiplier"]
+        count = batches * batch_size * multiplier
+        
         prefix = details["id_prefix"]
         base_counter = settings["base_counter"] + count * ipos
         bb.message_box(domain, "title")
         table_info = ddl_from_template("none", pgconn, template_file, domain)
-        batches = int(details["size"] / batch_size)
         IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
         for k in range(batches):
             bb.logit(f"Loading batch: {k} - size: {batch_size}")
@@ -143,6 +250,7 @@ def worker_load(ipos, args):
                     "id_prefix": prefix,
                     "base_count": base_counter,
                     "size": count,
+                    "cur_info" : CurInfo
                 },
             )
 
@@ -166,6 +274,11 @@ def build_sql_batch_from_template(tables, details={}):
     master_id = f"{master_table}_id".lower()
     cnt = 0
     tab_types = table_types(tables)
+    cur_info = None
+    if "size" in details and details["size"] < batch_size:
+        batch_size = details["size"]
+    if "cur_info" in details:
+        cur_info = details["cur_info"]
     bb.logit(f"Master: {master_table} - building: {batch_size}")
     master_ids = []
     rec_counts = {}
@@ -361,6 +474,9 @@ def fields_from_template(template):
         sub_size = 1
         # support for parent.child.child.field, parent.children().field
         for row in propreader:
+            path = row[0].split(".")
+            if "CONTROL" in row[0]:
+                continue
             result = {
                 "name": "",
                 "table": "",
@@ -369,9 +485,6 @@ def fields_from_template(template):
                 "generator": generator_values(row[3]),
                 "sub_size" : sub_size
             }
-            path = row[0].split(".")
-            if "CONTROL" in row[0]:
-                continue
             depth = len(path)
             for k in range(depth):
                 if path[k].endswith(')'):
@@ -510,55 +623,38 @@ def fix_provider_ids():
     cur.close()
     mycon.close
 
-def add_primary_provider_ids():
-    num_provs = 200
-    base_val = 1000000
-    query_sql = "select m.id, m.member_id from member m;"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    update_cur = mycon.cursor()
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            # print(f'item: {item}')
-            pid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            sql = f"update member set primaryprovider_id = '{pid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            bb.logit(f"Update: {item[1]}")
-            update_cur.execute(sql)
-            mycon.commit()
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
+def get_measurements():
+    return "placeholder"
 
-def fix_member_guardian_ids():
-    num_provs = 200
-    base_val = 1000000
-    # query_sql = "select id, m.member_guardian_id from member_guardian m;"
-    query_sql = "select id, m.claim_claimline_id from claim_claimline m;"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    update_cur = mycon.cursor()
-    cnt = 1
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            # print(f'item: {item}')
-            pid = f"ME-{base_val + cnt}"
-            # sql = f'update member_guardian set member_guardian_id = \'{pid}\' '
-            sql = f"update claim_claimline set claim_claimline_id = '{pid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            bb.logit(f"Update: {item[1]}")
-            update_cur.execute(sql)
-            mycon.commit()
-            cnt += 1
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
+def get_measurements_new(item_type = "chiller"):
+    icnt = 12 * 24
+    base_time = datetime.datetime.now() - datetime.timedelta(days = 1)
+    arr = []
+    for k in range(icnt):
+        arr.append({
+            "timestamp" : base_time + datetime.timedelta(seconds = 300 * k),
+            "temperature" : random.randint(60,80),
+            "rotor_rpm" : random.randint(1200,3500),
+            "input_temp" : random.randint(45,70),
+            "output_temp" : random.randint(42,50),
+            "output_pressure" : random.randint(60,110),
+            "alarm" : "no"
+        })
+    return(arr)
+
+def get_building():
+    prefix = "B-"
+    base = settings["base_counter"]
+    tot = settings["batch_size"] * settings["batches"] * settings["process_count"]
+    val = random.randint(base, base + tot)
+    return(f'{prefix}{val}')
+
+def get_asset():
+    prefix = "A-"
+    base = settings["base_counter"]
+    tot = settings["batch_size"] * settings["batches"] * settings["process_count"] * 20
+    val = random.randint(base, base + tot)
+    return(f'{prefix}{val}')
 
 # ----------------------------------------------------------------------#
 #   Queries
@@ -858,6 +954,23 @@ def pg_connection(type="postgres", sdb="none"):
     conn = psycopg2.connect(host=shost, database=sdb, user=susername, password=spwd)
     return conn
 
+def client_connection(type = "uri", details = {}):
+    mdb_conn = settings[type]
+    username = settings["username"]
+    password = settings["password"]
+    if "secret" in password:
+        password = os.environ.get("_PWD_")
+    if "username" in details:
+        username = details["username"]
+        password = details["password"]
+    mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
+    bb.logit(f'Connecting: {mdb_conn}')
+    if "readPreference" in details:
+        client = MongoClient(mdb_conn, readPreference=details["readPreference"]) #&w=majority
+    else:
+        client = MongoClient(mdb_conn)
+    return client
+
 # ------------------------------------------------------------------#
 #     MAIN
 # ------------------------------------------------------------------#
@@ -907,8 +1020,6 @@ if __name__ == "__main__":
         get_claims()
     elif ARGS["action"] == "foreign_keys":
         create_foreign_keys()
-    elif ARGS["action"] == "microservice":
-        microservice_one()
     else:
         print(f'{ARGS["action"]} not found')
     # conn.close()

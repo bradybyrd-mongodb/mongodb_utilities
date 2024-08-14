@@ -72,6 +72,140 @@ Strategy:
         x per portfolio/site
     generate measurements
         every x-mins
+
+DevOps:
+db.building.createIndex({
+  "portfolio.portfolio_id": 1,
+  "building_id": 1
+})
+db.building.createIndex({
+  "location.coordinates": "2dsphere"
+})
+db.monitoring.createIndex({
+  "building_id": 1,
+  "asset_id": 1,
+  "measurement_ts": 1
+})
+db.monitoring.updateMany({},
+   [
+    {
+     "$set": {measurement_ts: {
+        $dateAdd: {
+            startDate: "$$NOW",
+            unit: "day",
+            amount: -1
+            }
+    }}}
+  ])
+
+  db.building.updateMany({},
+   [
+    {
+     "$set": {"address.location.coordinates": "$address.location.coordinates.type"}
+    }
+  ])
+
+# -------------------------------------------------- #
+#   Aggregations
+['B-2000026','B-2000203','B-2000486','B-2000884','B-2000542','B-2000926','B-2000426','B-2000491','B-2000375','B-2000757','B-2000254','B-2000989','B-2000459','B-2000309','B-2000226','B-2000545','B-2000093','B-2000706','B-2000631','B-2000414','B-2000015','B-2000674','B-2000256','B-2000554','B-2000760','B-2000094','B-2000967','B-2000774','B-2000580','B-2000307','B-2000911','B-2000415','B-2000319','B-2000906','B-2000585','B-2000403','B-2000145','B-2000054','B-2000950','B-2000698','B-2000740','B-2000456','B-2000328','B-2000523','B-2000869','B-2000711','B-2000896','B-2000257','B-2000151','B-2000434','B-2000215','B-2000725','B-2000828','B-2000918','B-2000372','B-2000506','B-2000250','B-2000079','B-2000941','B-2000190']
+
+pipe = [
+    {$sample: {size: 100}},
+    {$project: { _id:0, building_id: 1}}
+]
+db.building.aggregate(pipe)
+
+db.building.find({building_id: {$in: ['B-2000026','B-2000203','B-2000486','B-2000884','B-2000542','B-2000926']}})
+db.monitoring.find({building_id: {$in: ['B-2000026','B-2000203','B-2000486','B-2000884','B-2000542','B-2000926']}})
+
+db.building.find( {
+   "address.location.coordinates": {
+      $geoWithin: {
+         $centerSphere: [
+            [ -73.935242, 40.730610 ],
+            3 / 6378.1
+         ]
+      }
+   }
+},{building_id: 1, "coords" : "$address.location.coordinates", "city": "$address.city",_id: 0 } )
+
+-------
+# Find all the buildings in a 3 mile radius of NYC with temp > 78degrees
+[
+  {
+    $match: {
+      "address.location.coordinates": {
+        $geoWithin: {
+          $centerSphere: [
+            [-73.935242, 40.73061],
+            3 / 6378.1
+          ]
+        }
+      }
+    }
+  },
+  {
+    $project: {
+      building_id: 1,
+      coords: "$address.location.coordinates",
+      _id: 0
+    }
+  },
+  {
+    $lookup: {
+      from: "monitoring",
+      let: {
+        bldg_id: "$building_id"
+      },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $eq: ["$building_id", "$$bldg_id"]
+            }
+          }
+        },
+        {
+          $project: {
+            asset_id: 1,
+            measurements: 1
+          }
+        },
+        {
+          $unwind: {
+            path: "$measurements"
+          }
+        },
+        {
+          $project: {
+            asset_id: 1,
+            ts: "$measurements.timestamp",
+            rotor_rpm: "$measurements.rotor_rpm",
+            input_temp:
+              "$measurements.input_temp",
+            temp: "$measurements.temperature",
+            alarm: "$measurements.alarm"
+          }
+        }
+      ],
+      as: "measurements"
+    }
+  },
+  {
+    $unwind:
+      {
+        path: "$measurements"
+      }
+  },
+  {
+    $match:
+      {
+        "measurements.temp": {
+          $gt: 78
+        }
+      }
+  }
+]
 '''
 import sys
 import os
@@ -124,47 +258,57 @@ class CurItem:
         if "version" in details:
             self.version = details["version"]
 
-    def set_addr_info(info):
+    def set_addr_info(self, info):
         self.addr_info = info
 
-    def set_cur_id(id_val):
+    def set_cur_id(self, id_val):
         #for each record generated, store the current id as a local value so you can lookup multiple 
         #items
         self.cur_id = id_val
-        if self.counter >= len(sites):
+        if self.counter >= len(self.sites) - 1:
             self.counter = 0 
-        self.counter += 1
+        else:
+            self.counter += 1
         self.ipos += 1
         return(id_val)
 
-    def get_site():
+    def get_site(self):
         return self.sites[self.counter] 
 
     def get_item(self, i_type = "none", passed_id = None):
         item = None
+        ans = None
         if passed_id is not None:
             self.cur_id = passed_id
-            item = self.addr_info[self.id_map[passed_id]]
-        if self.cur_id not in id_map:
-            item = self.addr_info[self.ipos]
-            self.ipos += 1
-        else:
-            item = self.addr_info[self.id_map[self.cur_id]]
-        if i_type == "none":
-            ans = item
-        elif i_type == "portfolio_id":
-            ans = self.sites[self.counter]["portfolio_id"]
-        elif i_type == "portfolio_name":
-            ans = self.sites[self.counter]["portfolio_name"]
-        elif i_type == "site_id":
-            ans = self.sites[self.counter]["site_id"]
-        elif i_type == "site_name":
-            ans = self.sites[self.counter]["site_name"]
-        elif i_type == "version":
-            ans = self.version
-        else:
-            ans = item["address"][i_type]
-        return item
+            #item = self.addr_info[self.id_map[passed_id]]
+        try:
+            if self.cur_id not in id_map:
+                item = self.addr_info[self.ipos]
+                self.ipos += 1
+            else:
+                item = self.addr_info[self.id_map[self.cur_id]]
+            if i_type == "none":
+                ans = item
+            elif i_type == "portfolio_id":
+                ans = self.sites[self.counter]["portfolio_id"]
+            elif i_type == "portfolio_name":
+                ans = self.sites[self.counter]["portfolio_name"]
+            elif i_type == "site_id":
+                ans = self.sites[self.counter]["site_id"]
+            elif i_type == "site_name":
+                ans = self.sites[self.counter]["site_name"]
+            elif i_type == "version":
+                ans = self.version
+            else:
+                ans = item["address"][i_type]
+        except Exception as e:
+            print("---- ERROR --------")
+            print("---- Vals --------")
+            print(f'Type: {i_type}, Counter: {self.counter}, pos: {self.ipos}')
+            print("---- error --------")
+            print(e)
+            exit(1)
+        return ans
 
 def init_seed_data(conn):
     ans = {"addr_info": list(conn["sample_restaurants"]["restaurants"].find({},{"_id": 0, "address": 1, "borough": 1})),
@@ -178,6 +322,7 @@ def generate_sites():
     batch_size = settings["batch_size"]
     batches = settings["batches"]
     num_to_do = int(batches * batch_size * site_ratio)
+    bb.logit(f"Generating Portfolio/Sites - {num_to_do}")
     ans = []
     for k in range(num_to_do):
         if k % 10 == 0:
@@ -189,6 +334,7 @@ def generate_sites():
             "site_id" : IDGEN.get("S-"),
             "site_name" : fake.street_name()
         })
+    return ans
 
 def synth_data_load():
     # python3 site_models.py action=load_data
@@ -237,7 +383,8 @@ def worker_load(ipos, args):
     db = conn[settings["database"]]
     seed_data = init_seed_data(conn)
     CurInfo = CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
-    #pprint.pprint(CurInfo.get_item("A-107"))
+    pprint.pprint(CurInfo.get_item("none", "A-107"))
+    bb.logit(f'Portfolio: {CurInfo.get_item("portfolio_name")}, len: {len(seed_data["sites"])}')
     bulk_docs = []
     ts_start = datetime.datetime.now()
     job_size = batches * batch_size
@@ -249,14 +396,15 @@ def worker_load(ipos, args):
     if "template" in args:
         template = args["template"]
         master_table = master_from_file(template)
-        job_info = {master_table : {"path" : template, "size" : job_size, "id_prefix" : f'{master_table[0].upper()}-'}}
+        job_info = {master_table : {"path" : template, "multiplier" : 1, "id_prefix" : f'{master_table[0].upper()}-'}}
     else:
         job_info = settings["data"]
     # Loop through collection files
     for domain in job_info:
         details = job_info[domain]
         prefix = details["id_prefix"]
-        count = details["size"]
+        multiplier = details["multiplier"]
+        count = batches * batch_size * multiplier
         template_file = details["path"]
         base_counter = settings["base_counter"] + count * ipos
         IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
@@ -311,11 +459,15 @@ def build_batch_from_template(cur_coll, details = {}):
                 path = row[0].split('.')
                 if ")" in row[0]: #path[-2].endswith('()'):  
                     islist = True
+                    if "CONTROL" in row[0]:
+                        counts = random.randint(1, int(row[1])) 
+                        icnt += 1
+                        continue
                 else:
                     islist = False
                     counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
                 #print(f"# -- Procpath {path}")
-                partial = procpath_new(path, counts, row[3]) # Note, later version of files may not include required field
+                partial = procpath_new(path, counts, row[3], cur_info) # Note, later version of files may not include required field
                 #print(f'{row[0]}-{islist}: {partial}')
                 # Merge partial trees.
                 try:
@@ -341,20 +493,34 @@ def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
 
 def get_measurements(item_type = "chiller"):
-    icnt = 10
+    icnt = 12 * 24
     base_time = datetime.datetime.now() - datetime.timedelta(days = 1)
     arr = []
     for k in range(icnt):
         arr.append({
-            "timestamp" : base_time + datetime.timedelta(seconds = 300),
+            "timestamp" : base_time + datetime.timedelta(seconds = 300 * k),
             "temperature" : random.randint(60,80),
             "rotor_rpm" : random.randint(1200,3500),
             "input_temp" : random.randint(45,70),
             "output_temp" : random.randint(42,50),
             "output_pressure" : random.randint(60,110),
-            "alarm" : "no"
+            "alarm" : fake.random_element(('no', 'no', 'no','no','no','yes','no'))
         })
     return(arr)
+
+def get_building():
+    prefix = "B-"
+    base = settings["base_counter"]
+    tot = settings["batch_size"] * settings["batches"] * settings["process_count"]
+    val = random.randint(base, base + tot)
+    return(f'{prefix}{val}')
+
+def get_asset():
+    prefix = "A-"
+    base = settings["base_counter"]
+    tot = settings["batch_size"] * settings["batches"] * settings["process_count"] * 20
+    val = random.randint(base, base + tot)
+    return(f'{prefix}{val}')
 
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
@@ -375,7 +541,7 @@ def ser(o):
     if isinstance(o, datetime.datetime.date):
         return str(o)
 
-def procpath_new(path, counts, generator):
+def procpath_new(path, counts, generator, cur_info):
     """Recursively walk a path, generating a partial tree with just this path's random contents"""
     stripped = stripProp(path[0])
     if len(path) == 1:
@@ -393,11 +559,11 @@ def procpath_new(path, counts, generator):
             lcnt = int(res.replace("(","").replace(")",""))
         #print(f"lcnt: {lcnt}")
         return {            
-            stripped: [ procpath_new([ path[0].replace(res,"") ] + path[1:], counts, generator)[stripped] for X in range(0, lcnt) ]
+            stripped: [ procpath_new([ path[0].replace(res,"") ] + path[1:], counts, generator, cur_info)[stripped] for X in range(0, lcnt) ]
         }
     else:
         # Return a nested page, of the specified type, populated recursively.
-        return {stripped: procpath_new(path[1:], counts, generator)}
+        return {stripped: procpath_new(path[1:], counts, generator, cur_info)}
 
 def ID(key):
     id_map[key] += 1
