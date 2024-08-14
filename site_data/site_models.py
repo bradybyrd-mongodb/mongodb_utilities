@@ -236,105 +236,10 @@ sys.path.append(os.path.dirname(base_dir))
 
 from bbutil import Util
 from id_generator import Id_generator
-
+import bldg_mix as mix
 fake = Faker()
 
 settings_file = "site_settings.json"
-
-class CurItem:
-    # Use an instance to track the current record being processed
-    def __init__(self, details = {}):
-        self.addr_info = {}
-        self.sites = []
-        self.id_map = {}
-        self.cur_id = False
-        self.ipos = 0
-        self.version = "1.0"
-        self.counter = 0
-        if "addr_info" in details:
-            self.addr_info = details["addr_info"]
-        if "sites" in details:
-            self.sites = details["sites"]
-        if "version" in details:
-            self.version = details["version"]
-
-    def set_addr_info(self, info):
-        self.addr_info = info
-
-    def set_cur_id(self, id_val):
-        #for each record generated, store the current id as a local value so you can lookup multiple 
-        #items
-        self.cur_id = id_val
-        if self.counter >= len(self.sites) - 1:
-            self.counter = 0 
-        else:
-            self.counter += 1
-        self.ipos += 1
-        return(id_val)
-
-    def get_site(self):
-        return self.sites[self.counter] 
-
-    def get_item(self, i_type = "none", passed_id = None):
-        item = None
-        ans = None
-        if passed_id is not None:
-            self.cur_id = passed_id
-            #item = self.addr_info[self.id_map[passed_id]]
-        try:
-            if self.cur_id not in id_map:
-                item = self.addr_info[self.ipos]
-                self.ipos += 1
-            else:
-                item = self.addr_info[self.id_map[self.cur_id]]
-            if i_type == "none":
-                ans = item
-            elif i_type == "portfolio_id":
-                ans = self.sites[self.counter]["portfolio_id"]
-            elif i_type == "portfolio_name":
-                ans = self.sites[self.counter]["portfolio_name"]
-            elif i_type == "site_id":
-                ans = self.sites[self.counter]["site_id"]
-            elif i_type == "site_name":
-                ans = self.sites[self.counter]["site_name"]
-            elif i_type == "version":
-                ans = self.version
-            else:
-                ans = item["address"][i_type]
-        except Exception as e:
-            print("---- ERROR --------")
-            print("---- Vals --------")
-            print(f'Type: {i_type}, Counter: {self.counter}, pos: {self.ipos}')
-            print("---- error --------")
-            print(e)
-            exit(1)
-        return ans
-
-def init_seed_data(conn):
-    ans = {"addr_info": list(conn["sample_restaurants"]["restaurants"].find({},{"_id": 0, "address": 1, "borough": 1})),
-           "sites" : generate_sites()
-    }
-    return ans
-
-def generate_sites():
-    port_ratio = settings["portfolios"]
-    site_ratio = settings["sites"]
-    batch_size = settings["batch_size"]
-    batches = settings["batches"]
-    num_to_do = int(batches * batch_size * site_ratio)
-    bb.logit(f"Generating Portfolio/Sites - {num_to_do}")
-    ans = []
-    for k in range(num_to_do):
-        if k % 10 == 0:
-            cur_portfolio_id = IDGEN.get("P-")
-            cur_portfolio = fake.company()
-        ans.append({
-            "portfolio_id" : cur_portfolio_id,
-            "portfolio_name" : cur_portfolio,
-            "site_id" : IDGEN.get("S-"),
-            "site_name" : fake.street_name()
-        })
-    return ans
 
 def synth_data_load():
     # python3 site_models.py action=load_data
@@ -372,7 +277,7 @@ def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
     cur_process = multiprocessing.current_process()
     pid = cur_process.pid
-    conn = client_connection()
+    conn = None #client_connection()
     bb.message_box(f"[{pid}] Worker Data", "title")
     settings = bb.read_json(settings_file)
     batch_size = settings["batch_size"]
@@ -380,9 +285,9 @@ def worker_load(ipos, args):
     bb.logit('Current process is %s %s' % (cur_process.name, pid))
     start_time = datetime.datetime.now()
     collection = settings["collection"]
-    db = conn[settings["database"]]
-    seed_data = init_seed_data(conn)
-    CurInfo = CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
+    db = None #conn[settings["database"]]
+    seed_data = mix.init_seed_data(conn, IDGEN, settings)
+    CurInfo = mix.CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
     pprint.pprint(CurInfo.get_item("none", "A-107"))
     bb.logit(f'Portfolio: {CurInfo.get_item("portfolio_name")}, len: {len(seed_data["sites"])}')
     bulk_docs = []
@@ -431,6 +336,7 @@ def worker_load(ipos, args):
 def build_batch_from_template(cur_coll, details = {}):
     template_file = details["template"]
     batch_size = settings["batch_size"]
+    target = "mongo"
     cur_info = None
     if "size" in details and details["size"] < batch_size:
         batch_size = details["size"]
@@ -491,36 +397,6 @@ def build_batch_from_template(cur_coll, details = {}):
 
 def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
-
-def get_measurements(item_type = "chiller"):
-    icnt = 12 * 24
-    base_time = datetime.datetime.now() - datetime.timedelta(days = 1)
-    arr = []
-    for k in range(icnt):
-        arr.append({
-            "timestamp" : base_time + datetime.timedelta(seconds = 300 * k),
-            "temperature" : random.randint(60,80),
-            "rotor_rpm" : random.randint(1200,3500),
-            "input_temp" : random.randint(45,70),
-            "output_temp" : random.randint(42,50),
-            "output_pressure" : random.randint(60,110),
-            "alarm" : fake.random_element(('no', 'no', 'no','no','no','yes','no'))
-        })
-    return(arr)
-
-def get_building():
-    prefix = "B-"
-    base = settings["base_counter"]
-    tot = settings["batch_size"] * settings["batches"] * settings["process_count"]
-    val = random.randint(base, base + tot)
-    return(f'{prefix}{val}')
-
-def get_asset():
-    prefix = "A-"
-    base = settings["base_counter"]
-    tot = settings["batch_size"] * settings["batches"] * settings["process_count"] * 20
-    val = random.randint(base, base + tot)
-    return(f'{prefix}{val}')
 
 #----------------------------------------------------------------------#
 #   CSV Loader Routines

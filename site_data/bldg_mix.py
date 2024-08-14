@@ -80,9 +80,9 @@ class CurItem:
             exit(1)
         return ans
 
-def init_seed_data(conn):
+def init_seed_data(conn, idgen, settings):
     ans = {"addr_info": list(conn["sample_restaurants"]["restaurants"].find({},{"_id": 0, "address": 1, "borough": 1})),
-           "sites" : generate_sites()
+           "sites" : generate_sites(idgen, settings)
     }
     return ans
 
@@ -92,7 +92,7 @@ def generate_sites(idgen,settings):
     batch_size = settings["batch_size"]
     batches = settings["batches"]
     num_to_do = int(batches * batch_size * site_ratio)
-    bb.logit(f"Generating Portfolio/Sites - {num_to_do}")
+    print(f"# - Generating Portfolio/Sites - {num_to_do}")
     ans = []
     for k in range(num_to_do):
         if k % 10 == 0:
@@ -105,3 +105,35 @@ def generate_sites(idgen,settings):
             "site_name" : fake.street_name()
         })
     return ans
+
+def get_measurements(target_type, item_type = "chiller"):
+    if target_type != "mongo":
+        return "placeholder"
+    icnt = 12 * 24
+    base_time = datetime.datetime.now() - datetime.timedelta(days = 1)
+    arr = []
+    for k in range(icnt):
+        arr.append({
+            "timestamp" : base_time + datetime.timedelta(seconds = 300 * k),
+            "temperature" : random.randint(60,80),
+            "rotor_rpm" : random.randint(1200,3500),
+            "input_temp" : random.randint(45,70),
+            "output_temp" : random.randint(42,50),
+            "output_pressure" : random.randint(60,110),
+            "alarm" : fake.random_element(('no', 'no', 'no','no','no','yes','no'))
+        })
+    return(arr)
+
+def get_building(settings):
+    prefix = "B-"
+    base = settings["base_counter"]
+    tot = settings["batch_size"] * settings["batches"] * settings["process_count"]
+    val = random.randint(base, base + tot)
+    return(f'{prefix}{val}')
+
+def get_asset(settings):
+    prefix = "A-"
+    base = settings["base_counter"]
+    tot = settings["batch_size"] * settings["batches"] * settings["process_count"] * 20
+    val = random.randint(base, base + tot)
+    return(f'{prefix}{val}')

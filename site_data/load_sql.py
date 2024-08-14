@@ -28,140 +28,11 @@ from faker import Faker
 import itertools
 from deepmerge import Merger
 import uuid
+import bldg_mix as mix
 
 fake = Faker()
-#letters = string.ascii_uppercase
-providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
 
-"""
- #  Relations Demo
-
-  Providers
-    provider
-    provider_license
-    provider_speciality
-    provider_medicaid
-    provider_hospitals
-  Members
-    member
-    member_address
-    member_communication
-    member_guardian
-    member_disability
-    member_payment_methods
-  Claims
-    Claim_header
-    Claim_line
-    Payments
-
-    python3 single_view.py action=load_mysql
-
-# Startup Env:
-    Atlas M10BasicAgain
-    PostgreSQL
-      export PATH="/usr/local/opt/postgresql@9.6/bin:$PATH"
-      pg_ctl -D /usr/local/var/postgresql@9.6 start
-      create database single_view with owner bbadmin;
-      psql --username bbadmin single_view
-"""
 settings_file = "site_settings.json"
-
-class CurItem:
-    # Use an instance to track the current record being processed
-    def __init__(self, details = {}):
-        self.addr_info = {}
-        self.sites = []
-        self.id_map = {}
-        self.cur_id = False
-        self.ipos = 0
-        self.version = "1.0"
-        self.counter = 0
-        if "addr_info" in details:
-            self.addr_info = details["addr_info"]
-        if "sites" in details:
-            self.sites = details["sites"]
-        if "version" in details:
-            self.version = details["version"]
-
-    def set_addr_info(self, info):
-        self.addr_info = info
-
-    def set_cur_id(self, id_val):
-        #for each record generated, store the current id as a local value so you can lookup multiple 
-        #items
-        self.cur_id = id_val
-        if self.counter >= len(self.sites) - 1:
-            self.counter = 0 
-        else:
-            self.counter += 1
-        self.ipos += 1
-        return(id_val)
-
-    def get_site(self):
-        return self.sites[self.counter] 
-
-    def get_item(self, i_type = "none", passed_id = None):
-        item = None
-        ans = None
-        if passed_id is not None:
-            self.cur_id = passed_id
-            #item = self.addr_info[self.id_map[passed_id]]
-        try:
-            if self.cur_id not in id_map:
-                item = self.addr_info[self.ipos]
-                self.ipos += 1
-            else:
-                item = self.addr_info[self.id_map[self.cur_id]]
-            if i_type == "none":
-                ans = item
-            elif i_type == "portfolio_id":
-                ans = self.sites[self.counter]["portfolio_id"]
-            elif i_type == "portfolio_name":
-                ans = self.sites[self.counter]["portfolio_name"]
-            elif i_type == "site_id":
-                ans = self.sites[self.counter]["site_id"]
-            elif i_type == "site_name":
-                ans = self.sites[self.counter]["site_name"]
-            elif i_type == "version":
-                ans = self.version
-            elif i_type == "coord":
-                ans = f"{item["address"]["coord"][0]}|{item["address"]["coord"][1]}"
-            else:
-                ans = item["address"][i_type]
-        except Exception as e:
-            print("---- ERROR --------")
-            print("---- Vals --------")
-            print(f'Type: {i_type}, Counter: {self.counter}, pos: {self.ipos}')
-            print("---- error --------")
-            print(e)
-            exit(1)
-        return ans
-
-def init_seed_data(conn):
-    ans = {"addr_info": list(conn["sample_restaurants"]["restaurants"].find({},{"_id": 0, "address": 1, "borough": 1})),
-           "sites" : generate_sites()
-    }
-    return ans
-
-def generate_sites():
-    port_ratio = settings["portfolios"]
-    site_ratio = settings["sites"]
-    batch_size = settings["batch_size"]
-    batches = settings["batches"]
-    num_to_do = int(batches * batch_size * site_ratio)
-    bb.logit(f"Generating Portfolio/Sites - {num_to_do}")
-    ans = []
-    for k in range(num_to_do):
-        if k % 10 == 0:
-            cur_portfolio_id = IDGEN.get("P-")
-            cur_portfolio = fake.company()
-        ans.append({
-            "portfolio_id" : cur_portfolio_id,
-            "portfolio_name" : cur_portfolio,
-            "site_id" : IDGEN.get("S-"),
-            "site_name" : fake.street_name()
-        })
-    return ans
 
 def load_postgres_data():
     # read settings and echo back
@@ -202,8 +73,8 @@ def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
     cur_process = multiprocessing.current_process()
     bb.message_box(f"({cur_process.name}) Loading Synth Data in SQL", "title")
-    pgconn = pg_connection()
-    conn = client_connection()
+    pgconn = None #pg_connection()
+    conn = None #client_connection()
     settings = bb.read_json(settings_file)
     batches = settings["batches"]
     batch_size = settings["batch_size"]
@@ -221,8 +92,8 @@ def worker_load(ipos, args):
     else:
         job_info = settings["data"]
     start_time = datetime.datetime.now()
-    seed_data = init_seed_data(conn)
-    CurInfo = CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
+    seed_data = mix.init_seed_data(conn, IDGEN, settings)
+    CurInfo = mix.CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
     pprint.pprint(CurInfo.get_item("none", "A-107"))
     bb.logit(f'Portfolio: {CurInfo.get_item("portfolio_name")}, len: {len(seed_data["sites"])}')
     
@@ -270,6 +141,7 @@ def build_sql_batch_from_template(tables, details={}):
     base_counter = details["base_count"]
     num_procs = settings["process_count"]
     batch = details["batch"]
+    target = "sql"
     master_table = details["master"]
     master_id = f"{master_table}_id".lower()
     cnt = 0
@@ -515,6 +387,7 @@ def fields_from_template(template):
 
 def execute_ddl(ddl_action="info"):
     ddl_action = "info"
+    mycon = None
     if "template" in ARGS:
         template = ARGS["template"]
     elif "data" in settings:
@@ -524,7 +397,8 @@ def execute_ddl(ddl_action="info"):
         sys.exit(1)
     if "task" in ARGS:
         ddl_action = ARGS["task"]
-    mycon = pg_connection()
+    if ddl_action != "info":
+        mycon = pg_connection()
     if "template" in ARGS:
         master_table = master_from_file(template)
         job_info = {
@@ -543,7 +417,8 @@ def execute_ddl(ddl_action="info"):
         bb.logit(details["path"])
         template_file = details["path"]
         table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
-    mycon.close
+    if mycon != None:
+        mycon.close
 
 def create_foreign_keys():
     #  Reads settings file and finds values
@@ -597,164 +472,6 @@ def foreign_key_sql(table):
         f" NOT VALID"
     )
     return sql
-
-def fix_provider_ids():
-    num_provs = 50
-    base_val = 1000000
-    query_sql = "select id from claim_claimline"
-    rsql = "SELECT floor(random()*(1000050-1000000+1))+1000000"
-    mycon = pg_connection()
-    cur = mycon.cursor()
-    cur2 = mycon.cursor()
-    try:
-        cur.execute(query_sql)
-        for item in cur:
-            print(f"item: {item}")
-            pid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            rpid = f"P-{random.randint(base_val, base_val + num_provs)}"
-            sql = f"update claim_claimline set attendingprovider_id = '{pid}', operatingprovider_id = '{pid}', "
-            sql += f" orderingprovider_id = '{rpid}',  referringprovider_id = '{rpid}' "
-            sql += f"where id = {item[0]}"
-            # print(sql)
-            cur2.execute(sql)
-            mycon.commit()
-    except psycopg2.DatabaseError as err:
-        bb.logit(f"{err}")
-    cur.close()
-    mycon.close
-
-def get_measurements():
-    return "placeholder"
-
-def get_measurements_new(item_type = "chiller"):
-    icnt = 12 * 24
-    base_time = datetime.datetime.now() - datetime.timedelta(days = 1)
-    arr = []
-    for k in range(icnt):
-        arr.append({
-            "timestamp" : base_time + datetime.timedelta(seconds = 300 * k),
-            "temperature" : random.randint(60,80),
-            "rotor_rpm" : random.randint(1200,3500),
-            "input_temp" : random.randint(45,70),
-            "output_temp" : random.randint(42,50),
-            "output_pressure" : random.randint(60,110),
-            "alarm" : "no"
-        })
-    return(arr)
-
-def get_building():
-    prefix = "B-"
-    base = settings["base_counter"]
-    tot = settings["batch_size"] * settings["batches"] * settings["process_count"]
-    val = random.randint(base, base + tot)
-    return(f'{prefix}{val}')
-
-def get_asset():
-    prefix = "A-"
-    base = settings["base_counter"]
-    tot = settings["batch_size"] * settings["batches"] * settings["process_count"] * 20
-    val = random.randint(base, base + tot)
-    return(f'{prefix}{val}')
-
-# ----------------------------------------------------------------------#
-#   Queries
-# ----------------------------------------------------------------------#
-def member_claims_api():
-    sql = {}
-    csql = "select c.*, m.firstname, m.last_name, m.dateofbirth, m.gender, clv.* "
-    csql += "from vw_claim_claimline clv INNER JOIN claim c where c.patient_id = '__MEMBER_ID__'"
-    csql += "INNER JOIN member m on m.member_id = c.patient_id "
-    csql += "INNER JOIN"
-    sql["member_claims"] = csql
-
-def claimline_vw():
-    vwsql = "create or replace view vw_claim_claimline AS \n"
-    sql = "select cl.*, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate, "
-    sql += "op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate, "
-    sql += "rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate, "
-    sql += "opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate "
-    sql += "from claim_claimline cl INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id "
-    sql += "INNER JOIN provider op on cl.orderingprovider_id = op.provider_id "
-    sql += "INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id "
-    sql += "INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id "
-
-def member_api():
-    # show a single member and recent claims
-    # include the primary provider
-    d_member = {}
-    sql = "select m.*, p.nationalprovideridentifier, p.firstname, p.lastname, p.dateofbirth, p.gender from member m INNER JOIN provider p on p.provider_id = m.primaryprovider_id;"  # INNER JOIN providers p on m.primaryProvider_id = p.provider_id"
-    result = sql_query("healthcare", sql)
-    k = 0
-    for item in result:
-        if k < 20:
-            pprint.pprint(item)
-        k += 1
-
-def get_claims(conn=""):
-    conn = pg_connection()
-    sql = "select * from claim"
-    query_result = newsql_query(sql, conn)
-    num_results = query_result["num_records"]
-    print(f"Claims: {num_results}")
-    ids = []
-    for row in query_result["data"]:
-        ids.append(row[1])
-    result = get_claimlines(conn, ids)
-    data = result["data"]
-    inc = 0
-    for k in data:
-        print(f"#-------------------- {k} --------------------------")
-        pprint.pprint(data[k])
-        inc += 1
-        if inc > 10:
-            break
-    conn.close()
-
-def get_claimlines(conn, claim_ids):
-    # payment_fields = sql_helper.column_names("claim_claimline_payment", conn)
-    payment_fields = column_names("claim_claimline_payment", conn)
-    pfields = ", p.".join(payment_fields)
-    ids_list = "','".join(claim_ids)
-    sql = f"select c.*, p.{pfields} from claim_claimline c "
-    sql += "INNER JOIN claim_claimline_payment p on c.claim_claimline_id = p.claim_claimline_id "
-    sql += f"WHERE c.claim_id IN ('{ids_list}') "
-    sql += "order by c.claim_id"
-    # query_result = sql_helper.sql_query(sql, conn)
-    query_result = newsql_query(sql, conn)
-    num_results = query_result["num_records"]
-    # claimline_fields = sql_helper.column_names("claim_claimline", conn)
-    claimline_fields = column_names("claim_claimline", conn)
-    num_cfields = len(claimline_fields)
-    # Check if the records are found
-    result = {"num_records": num_results, "data": []}
-    data = {}
-    if num_results > 0:
-        last_id = "zzzzzz"
-        firsttime = True
-        for row in query_result["data"]:
-            cur_id = row[1]
-            doc = {}
-            if cur_id != last_id:
-                if not firsttime:
-                    data[last_id] = docs
-                    docs = []
-                else:
-                    docs = []
-                    firsttime = False
-                last_id = cur_id
-            # print(row)
-            for k in range(num_cfields):
-                # print(claimline_fields[k])
-                doc[claimline_fields[k]] = row[k]
-            sub_doc = {}
-            for k in range(len(payment_fields)):
-                # print(payment_fields[k])
-                sub_doc[payment_fields[k]] = row[k + num_cfields]
-            doc["payment"] = sub_doc
-            docs.append(doc)
-
-    result["data"] = data
-    return result
 
 # ----------------------------------------------------------------------#
 #   CSV Loader Routines
