@@ -618,17 +618,36 @@ def run_query():
     bb.logit("Performing 5000 queries")
     conn = client_connection()
     db = conn[settings["database"]]
+    coll = settings["collection"]
     num = len(quotes)
     cnt = 0
     for k in range(int(1000/num)):
         for curid in quotes:
             start = datetime.datetime.now()
-            output = db.quote.find_one({"quote_id" : curid })
+            output = db.claim.find_one({"quote_id" : curid })
             if cnt % 100 == 0:
                 bb.timer(start, 100)
                 #bb.logit(f"{cur_process.name} - Query: Disease: {term} - Elapsed: {format(secs,'f')} recs: {output} - cnt: {cnt}")
             cnt += 1
             #time.sleep(.5)
+    conn.close()
+
+def time_query():
+    cur_process = multiprocessing.current_process()
+    bb.logit('Current process is %s %s' % (cur_process.name, cur_process.pid))
+    bb.logit("Performing 100 queries")
+    conn = client_connection()
+    query = json.loads(ARGS["query"])
+    db = conn[settings["database"]]
+    cnt = 0
+    for k in range(100):
+        start = datetime.datetime.now()
+        output = db.claim.find(query)
+        inc = 0
+        for it in output:
+            inc += 1
+        bb.timer(start, inc)
+        cnt += 1
     conn.close()
 
 def client_connection(type = "uri", details = {}):
@@ -685,6 +704,9 @@ if __name__ == "__main__":
         update_birthdate()
     elif ARGS["action"] == "query":
         run_query()
+        update_birthdate()
+    elif ARGS["action"] == "timer":
+        time_query()
     else:
         print(f'{ARGS["action"]} not found')
     #conn.close()

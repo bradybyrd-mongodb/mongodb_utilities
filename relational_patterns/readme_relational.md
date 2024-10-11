@@ -1,5 +1,19 @@
-#-------------------------------------------------------#
+# -------------------------------------------------------#
 #  Relational Replace Demo
+
+# -------------------------------------------------------#
+#  9/30/24 Side by Side comparison
+Development - Springboot with Postgres and MongoDB
+GOAL: A side by side video that shows progress in developing an app
+Assumption: Working with MongoDB is massively more efficient, as app development
+proceeds, we should see mongodb jump way out in front.
+SETTING: An established Postgres application is getting a 2.0 upgrade
+The upgrade involves considerable refactoring of data as well as new development
+The application
+
+
+
+
 
 
 Common Relational Use Cases

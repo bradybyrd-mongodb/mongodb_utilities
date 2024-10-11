@@ -1,7 +1,8 @@
 {
   "miguri": "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
   "basicuri": "mongodb+srv://m10basicagain-vmwqj.mongodb.net",
-  "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+  "uri6": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+  "uri" : "mongodb+srv://bbdemo.vmwqj.mongodb.net",
   "locuri": "mongodb://localhost:27017,localhost:27018,localhost:27019/test?authSource=admin&replicaSet=rs0",
   "database": "healthcare_new",
   "qdatabase": "quoting",
@@ -45,10 +46,10 @@
     "host": "10.213.30.107"
   },
   "version": "2.0",
-  "process_count": 2,
-  "batch_size": 500,
-  "batches": 5,
-  "base_counter": 2000000,
+  "process_count": 5,
+  "batch_size": 1000,
+  "batches": 10,
+  "base_counter": 4000000,
   "limitdata": {
     "member": {
       "path": "model-tables/member.csv",
