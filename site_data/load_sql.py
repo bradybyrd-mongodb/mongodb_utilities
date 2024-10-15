@@ -257,7 +257,7 @@ def ddl_from_template(action, pgconn, template, domain):
             bb.logit(f"Building table: {table}")
             last_table = table
             fkey = ""
-            flds = [field]
+            flds = []
             if len(table.split("_")) > 1:
                 #  Add a parent_id field
                 new_field = stripProp(f'{row["parent"]}_id')
@@ -267,6 +267,7 @@ def ddl_from_template(action, pgconn, template, domain):
                 new_field = stripProp(f"{table}_id")
                 fkey += f"  {new_field} varchar(20) NOT NULL,"
                 flds.append(new_field)
+                flds.append(field)
             ddl = (
                 f"CREATE TABLE {table} ("
                 "  id SERIAL PRIMARY KEY,"
