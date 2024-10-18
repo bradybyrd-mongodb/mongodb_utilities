@@ -1,0 +1,39 @@
+Resource.Property,Property Type,Generator
+Policy.policy_id,String,"IDGEN.get(""P-"")"
+Policy.name,String,fake.bs()
+Policy.effectiveDate,date,"fake.past_datetime()"
+Policy.expirationDate,date,"fake.past_datetime() - datetime.timedelta(365*20)"
+Policy.statusCode,String,"fake.random_element(('10','20','30','40','50','1011','2011'))"
+Policy.version,String,"1.0"
+Policy.isActive,String,"""true"""
+Policy.premium,double,"fake.random_int(min=40, max=1000)"
+Policy.holder.firstName,String,fake.first_name()
+Policy.holder.lastName,String,fake.last_name()
+Policy.holder.middleName,String,fake.first_name()
+Policy.holder.suffix,String,fake.suffix(),esq
+Policy.holder.member_id,String,"IDGEN.random_value(""M-"",2000000,10000)","M-1010"
+Policy.holder.Address().name,String,"fake.random_element(('Main', 'Summer', 'Old'))"
+Policy.holder.Address().addressLine1,String,fake.street_address()
+Policy.holder.Address().addressLine2,String,fake.secondary_address()
+Policy.holder.Address().city,String,fake.city()
+Policy.holder.Address().state,String,fake.state_abbr()
+Policy.holder.Address().postalCode,String,fake.postcode()
+Policy.holder.Address().country,String,fake.country()
+Policy.holder.Address().type,String,"fake.random_element(('Main', 'Summer', 'Old'))"
+Policy.holder.Address().effectiveDate,date,fake.past_datetime()
+Policy.holder.Address().endDate,date,"fake.future_datetime(end_date=""+3y"")"
+Policy.insurableAssets().asset_id,double,"fake.random_int(min=40, max=1000)"
+Policy.insurableAssets().category,double,"fake.random_int(min=40, max=1000)"
+Policy.insurableAssets().type,double,"fake.random_int(min=40, max=1000)"
+Policy.insurableAssets().value,double,"fake.random_int(min=40, max=1000)"
+Policy.insurableAssets().created_at,double,"fake.past_datetime(start_date=""-90d"")"
+Policy.insurableAssets().updated_at,double,"fake.past_datetime(start_date=""-30d"")"
+Policy.insurableAssets().coverageType,double,"fake.random_element((""Comperehensive"",""Limited"",""Liability-only"",""Umbrella""))"
+Policy.coverage(20).coverage_id,String,"fake.random_int(min=40, max=1000)"
+Policy.coverage(20).assset_id,String,"fake.random_int(min=40, max=1000)"
+Policy.coverage(20).category,double,"fake.random_int(min=40, max=1000)"
+Policy.coverage(20).type,double,"fake.random_int(min=40, max=1000)"
+Policy.coverage(20).value,double,"fake.random_int(min=40, max=1000)"
+Policy.coverage(20).created_at,double,"fake.past_datetime(start_date=""-90d"")"
+Policy.coverage(20).updated_at,double,"fake.past_datetime(start_date=""-30d"")"
+Policy.coverage(20).coverageType,double,"fake.random_element((""Comperehensive"",""Limited"",""Liability-only"",""Umbrella""))"

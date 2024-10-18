@@ -1,23 +1,26 @@
 import sys
 import os
 import csv
-#import vcf
 from collections import OrderedDict
 from collections import defaultdict
 from deepmerge import Merger
-import itertools
 import json
 import random
 import time
 import re
 import multiprocessing
 import pprint
+import urllib
+import copy
 import uuid
 import bson
 from bson.objectid import ObjectId
 from decimal import Decimal
+base_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(base_dir))
 from bbutil import Util
 from id_generator import Id_generator
+import process_csv_model as csvmod
 import datetime
 from pymongo import MongoClient
 from pymongo.errors import BulkWriteError
@@ -29,7 +32,7 @@ fake = Faker()
 
 '''
   Relations Loader
-  4/25/22 BJB
+  4/25/22 BJB, 10/15/24 BJB - separated module for CSV processing
 Using the Members/Providers/Claims model, walk through relational patterns from SQL to MongoDB
 
 One-One => Simple
@@ -105,18 +108,26 @@ def worker_load(ipos, args):
         prefix = details["id_prefix"]
         count = details["size"]
         template_file = details["path"]
+        design = csvmod.doc_from_template(template_file, domain)
         base_counter = settings["base_counter"] + count * ipos
         IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
         bb.message_box(f'[{pid}] {domain} - base: {base_counter}', "title")
         tot = 0
+        tot_ops = 0
         batches = int(count/batch_size)
         if batches == 0:
             batches = 1
-        for k in range(batches):
+        for k in range(1): #range(batches):
             #bb.logit(f"[{pid}] - {domain} Loading batch: {k} - size: {batch_size}")
-            bulk_docs = build_batch_from_template(domain, {"connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter, "size" : count})
+            bulk_docs = build_batch_from_template(domain, {"design": design, "connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter, "size" : count})
             #print(bulk_docs)
             db[domain].insert_many(bulk_docs)
+            tot_ops += 1
+            if tot_ops > 2000:
+                conn.close()
+                tot_ops = 0
+                conn = client_connection()
+                db = conn[settings["database"]]
             tot += len(bulk_docs)
             bulk_docs = []
             cnt = 0
@@ -127,7 +138,64 @@ def worker_load(ipos, args):
     conn.close()
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
+def test_deepcopy(domain, details):
+    design = details["design"]
+    sub_size = random.randint(2, 5)
+    print("# --------------------------- Initial Doc -------------------------------- #")
+    pprint.pprint(design)
+    print("# --------------------------- End -------------------------------- #")
+    result = []
+    for k in range(3):
+        cdesign = copy.deepcopy(design)
+        ans = render_design(cdesign, sub_size)
+        result.append(ans)
+    print("# --------------------------- RESULT -------------------------------- #")
+    pprint.pprint(result)
+
 def build_batch_from_template(cur_coll, details = {}):
+    batch_size = settings["batch_size"]
+    if "size" in details and details["size"] < batch_size:
+        batch_size = details["size"]
+    design = details["design"]
+    sub_size = 5
+    cnt = 0
+    records = []
+    print("# --------------------------- Initial Doc -------------------------------- #")
+    pprint.pprint(design)
+    print("# --------------------------- End -------------------------------- #")
+    result = []
+    for J in range(0, 3): #batch_size): # iterate through the bulk insert count
+        # A dictionary that will provide consistent, random list lengths
+        counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
+        data = {}
+        cdesign = copy.deepcopy(design)
+        data = render_design(cdesign, counts)
+        
+        #data = list(data.values())[0]
+        data["doc_version"] = settings["version"]
+        cnt += 1
+        records.append(data)
+    #bb.logit(f'{batch_size} {cur_coll} batch complete')
+
+    return(records)
+
+def render_design(design, count):
+    # Takes template and evals the gnerators
+    #pprint.pprint(design)
+    for key, val in design.items():
+        if isinstance(val, dict):
+            render_design(val,count)
+        elif isinstance(val, list):
+            render_design(val[0],count)
+        else:
+            try:
+                design[key] = eval(val)
+            except Exception as e:
+                print(f'ERROR: eval: {val}')
+    return design
+
+
+def build_batch_from_template_old(cur_coll, details = {}):
     template_file = details["template"]
     batch_size = settings["batch_size"]
     if "size" in details and details["size"] < batch_size:
@@ -469,48 +537,6 @@ def update_birthdate():
 
     bb.logit(f"All done - {numtodo} completed")
 
-#----------------------------------------------------------------------#
-#   CSV Loader Routines
-#----------------------------------------------------------------------#
-#stripProp = lambda str: re.sub(r'\s+', '', (str[0].lower() + str[1:].strip('()')))
-def stripProp(str):
-    ans = str
-    if str[0].isupper() and str[1].islower():
-        ans = str[0].lower() + str[1:]
-    if str.endswith(")"):
-        stg = re.findall(r'\(.*\)',ans)[0]
-        ans = ans.replace(stg,"")
-    ans = re.sub(r'\s+', '', ans)
-    return ans
-
-def ser(o):
-    """Customize serialization of types that are not JSON native"""
-    if isinstance(o, datetime.datetime.date):
-        return str(o)
-
-def procpath_new(path, counts, generator):
-    """Recursively walk a path, generating a partial tree with just this path's random contents"""
-    stripped = stripProp(path[0])
-    if len(path) == 1:
-        # Base case. Generate a random value by running the Python expression in the text file
-        #bb.logit(generator)
-        return { stripped: eval(generator) }
-    elif path[0].endswith(')'):
-        # Lists are slightly more complex. We generate a list of the length specified in the
-        # counts map. Note that what we pass recursively is _the exact same path_, but we strip
-        # off the ()s, which will cause us to hit the `else` block below on recursion.
-        res = re.findall(r'\(.*\)',path[0])[0]
-        if res == "()":
-            lcnt = counts
-        else:
-            lcnt = int(res.replace("(","").replace(")",""))
-        #print(f"lcnt: {lcnt}")
-        return {            
-            stripped: [ procpath_new([ path[0].replace(res,"") ] + path[1:], counts, generator)[stripped] for X in range(0, lcnt) ]
-        }
-    else:
-        # Return a nested page, of the specified type, populated recursively.
-        return {stripped: procpath_new(path[1:], counts, generator)}
 
 def ID(key):
     id_map[key] += 1
@@ -659,6 +685,8 @@ def client_connection(type = "uri", details = {}):
     if "username" in details:
         username = details["username"]
         password = details["password"]
+    if "%" not in password:
+        password = urllib.parse.quote_plus(password)
     mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
     bb.logit(f'Connecting: {mdb_conn}')
     if "readPreference" in details:

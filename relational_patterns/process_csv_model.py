@@ -1,18 +1,14 @@
 import sys
 import os
 import csv
-import json
 import re
 import random
 from collections import defaultdict
 import time
 import pprint
-import uuid
-import bson
 base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(base_dir))
 from bbutil import Util
-import datetime
 bb = Util()
     
 '''
@@ -21,8 +17,9 @@ bb = Util()
     # -------------------------------------------------------------- #
     #   Reads model csvs and produces template for either
     #   relational or mongodb documents
+    #   NOTE: only support 5-levels of depth
 
-File Format:
+File Format Example:
 Resource.Property,Property Type,Generator
 Product.product_id,String,"IDGEN.get(""PR-"")"
 Product.name,String,"fake.bs()",Smith
@@ -170,6 +167,7 @@ def fields_from_template(template):
                 "sub_size" : sub_size
             }
             depth = len(path)
+            sub_size = 1
             for k in range(depth):
                 if path[k].endswith(')'):
                     res = re.findall(r'\(.*\)',path[k])[0]
@@ -179,6 +177,7 @@ def fields_from_template(template):
                     else:
                         sub_size = random.randint(2,5)
                     path[k] = path[k].replace(res,"")
+                    
             result["name"] = path[-1]
             result["sub_size"] = sub_size
             master = f"{path[0]}"
@@ -201,42 +200,74 @@ def fields_from_template(template):
 def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
 
+def doc_from_template(template, domain):
+    design = ddl_from_template("none", template, domain)
+    doc = doc_from_csv(design)
+    return doc
+
 def doc_from_csv(design):
     doc = {}
     doc_name = "none"
+    print(f'# --------------------------- Starting Doc ----------------------- #')
     icnt = 0
-    root = {}
     for key in design:
         parts = key.split("_")
-        root = ""
+        sub_size = design[key]["sub_size"]
         if icnt == 0: 
             doc_name = key
-        if len(parts) == 1: # Root document
-            root = doc
-        else:
-            root = {}
-        scnt = 0
-        for fld in design[key]["fields"]:
-            if icnt > 0 and fld.startswith(doc_name.lower()) and fld.endswith("_id"):
-                continue
-            else:
-                try:
-                    root[fld] = design[key]["generator"][scnt]
-                except Exception as e:
-                    print(f"ERROR: field: {fld}")
-                scnt += 1
-        if len(parts) == 2:
-            doc[parts[1]] = root if design[key]["sub_size"] == 1 else [root]
-        if len(parts) == 3:
-            doc[parts[1]][parts[2]] = root if design[key]["sub_size"] == 1 else [root]
-        if len(parts) == 4:
-            doc[parts[1]][parts[2]][parts[3]] = root if design[key]["sub_size"] == 1 else [root]
-        if len(parts) == 5:
-            doc[parts[1]][parts[2]][parts[3]][parts[4]] = root if design[key]["sub_size"] == 1 else [root]      
+        print(f'Table: {doc_name}|{key}, cnt: {sub_size}')
+        if len(parts) == 1: # ROOT of doc
+            doc = generate_field_values(design[key], doc_name, icnt)
+        elif len(parts) == 2:
+            doc[parts[1]] = generate_field_values(design[key], doc_name, icnt)
+        elif len(parts) == 3:
+            pprint.pprint(doc[parts[1]])
+            ecnt = 0
+            for item in doc[parts[1]]:
+                doc[parts[1]][ecnt][parts[2]] = generate_field_values(design[key], doc_name, icnt)
+                ecnt += 1
+        elif len(parts) == 4:
+            ecnt = 0
+            for item in doc[parts[1]]:
+                fcnt = 0
+                for fitem in item:
+                    doc[parts[1]][ecnt][parts[2]][fcnt] = generate_field_values(design[key], doc_name, icnt)
+                    fcnt += 1
+                ecnt += 1
+    
+        elif len(parts) == 5:
+            ecnt = 0
+            for item in doc[parts[1]]:
+                fcnt = 0
+                for fitem in item:
+                    gcnt = 0
+                    for gitem in fitem:
+                        doc[parts[1]][ecnt][parts[2]][fcnt][parts[3]][gcnt] = generate_field_values(design[key], doc_name, icnt)
+                        gcnt += 1
+                    fcnt += 1
+                ecnt += 1     
         icnt += 1
-        pprint.pprint(doc, sort_dicts=False)
+        #pprint.pprint(doc, sort_dicts=False)
     return(doc)
 
+def generate_field_values(subdesign, doc_name, icnt):
+    subs = []
+    root = {}
+    sub_size = subdesign["sub_size"]
+    for iters in range(sub_size):
+            scnt = 0
+            for fld in subdesign["fields"]:
+                if icnt > 0 and fld.lower().startswith(doc_name.lower()) and fld.endswith("_id"):
+                    continue
+                else:
+                    try:
+                        root[fld] = subdesign["generator"][scnt]
+                    except Exception as e:
+                        print(f"ERROR: field: {fld}, {scnt}")
+                    scnt += 1
+            subs.append(root)
+    subs = subs[0] if sub_size == 1 else subs
+    return subs
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
 #----------------------------------------------------------------------#
@@ -250,39 +281,6 @@ def stripProp(str):
         ans = ans.replace(stg,"")
     ans = re.sub(r'\s+', '', ans)
     return ans
-
-def ser(o):
-    """Customize serialization of types that are not JSON native"""
-    if isinstance(o, datetime.datetime.date):
-        return str(o)
-
-def procpath_new(path, counts, generator):
-    """Recursively walk a path, generating a partial tree with just this path's random contents"""
-    stripped = stripProp(path[0])
-    if len(path) == 1:
-        # Base case. Generate a random value by running the Python expression in the text file
-        #bb.logit(generator)
-        return { stripped: eval(generator) }
-    elif path[0].endswith(')'):
-        # Lists are slightly more complex. We generate a list of the length specified in the
-        # counts map. Note that what we pass recursively is _the exact same path_, but we strip
-        # off the ()s, which will cause us to hit the `else` block below on recursion.
-        res = re.findall(r'\(.*\)',path[0])[0]
-        if res == "()":
-            lcnt = counts
-        else:
-            lcnt = int(res.replace("(","").replace(")",""))
-        #print(f"lcnt: {lcnt}")
-        return {            
-            stripped: [ procpath_new([ path[0].replace(res,"") ] + path[1:], counts, generator)[stripped] for X in range(0, lcnt) ]
-        }
-    else:
-        # Return a nested page, of the specified type, populated recursively.
-        return {stripped: procpath_new(path[1:], counts, generator)}
-
-def zipmerge(the_merger, path, base, nxt):
-    """Strategy for deepmerge that will zip merge two lists. Assumes lists of equal length."""
-    return [ the_merger.merge(base[i], nxt[i]) for i in range(0, len(base)) ]
 
 #------------------------------------------------------------------#
 #     MAIN
@@ -313,5 +311,5 @@ if __name__ == "__main__":
         domain = "bugsy"
         design = ddl_from_template(action, template, domain)
         doc_design = doc_from_csv(design)
-        pprint.pprint(doc_design)
+        pprint.pprint(doc_design, sort_dicts=False)
     

@@ -4,7 +4,7 @@
   "uri6": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
   "uri" : "mongodb+srv://bbdemo.vmwqj.mongodb.net",
   "locuri": "mongodb://localhost:27017,localhost:27018,localhost:27019/test?authSource=admin&replicaSet=rs0",
-  "database": "healthcare_new",
+  "database": "healthcare_test",
   "qdatabase": "quoting",
   "collection": "member",
   "username": "main_admin",
@@ -46,7 +46,7 @@
     "host": "10.213.30.107"
   },
   "version": "2.0",
-  "process_count": 5,
+  "process_count": 1,
   "batch_size": 1000,
   "batches": 10,
   "base_counter": 4000000,
