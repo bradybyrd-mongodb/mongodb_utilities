@@ -160,23 +160,20 @@ def build_batch_from_template(cur_coll, details = {}):
     sub_size = 5
     cnt = 0
     records = []
-    print("# --------------------------- Initial Doc -------------------------------- #")
-    pprint.pprint(design)
-    print("# --------------------------- End -------------------------------- #")
+    #print("# --------------------------- Initial Doc -------------------------------- #")
+    #pprint.pprint(design)
+    #print("# --------------------------- End -------------------------------- #")
     result = []
-    for J in range(0, 3): #batch_size): # iterate through the bulk insert count
+    for J in range(batch_size): # iterate through the bulk insert count
         # A dictionary that will provide consistent, random list lengths
         counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
         data = {}
         cdesign = copy.deepcopy(design)
         data = render_design(cdesign, counts)
-        
-        #data = list(data.values())[0]
         data["doc_version"] = settings["version"]
         cnt += 1
         records.append(data)
-    #bb.logit(f'{batch_size} {cur_coll} batch complete')
-
+    bb.logit(f'{batch_size} {cur_coll} batch complete')
     return(records)
 
 def render_design(design, count):
@@ -193,65 +190,6 @@ def render_design(design, count):
             except Exception as e:
                 print(f'ERROR: eval: {val}')
     return design
-
-
-def build_batch_from_template_old(cur_coll, details = {}):
-    template_file = details["template"]
-    batch_size = settings["batch_size"]
-    if "size" in details and details["size"] < batch_size:
-        batch_size = details["size"]
-    sub_size = 5
-    cnt = 0
-    records = []
-    islist = False
-    merger = Merger([
-        (dict, "merge"),
-        (list, zipmerge)
-    ], [ "override" ], [ "override" ])
-    for J in range(0, batch_size): # iterate through the bulk insert count
-        # A dictionary that will provide consistent, random list lengths
-        counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
-        data = {}
-        with open(template_file) as csvfile:
-            propreader = csv.reader(csvfile)
-            icnt = 0
-            for row in propreader:
-                if icnt == 0:
-                    icnt += 1
-                    continue
-                #print(row)
-                path = row[0].split('.')
-                if ")" in row[0]: #path[-2].endswith('()'):  
-                    islist = True
-                    if "CONTROL" in row[0]:
-                        counts = random.randint(1, int(row[1])) 
-                        icnt += 1
-                        continue
-                else:
-                    islist = False
-                    counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
-                #print(f"# -- Procpath {path}")
-                partial = procpath_new(path, counts, row[3]) # Note, later version of files may not include required field
-                #print(f'{row[0]}-{islist}: {partial}')
-                # Merge partial trees.
-                try:
-                    data = merger.merge(data, partial)
-                except Exception as e:
-                    print("---- ERROR --------")
-                    pprint.pprint(data)
-                    print("---- partial --------")
-                    pprint.pprint(partial)
-                    print("---- error --------")
-                    print(e)
-                    exit(1)
-                icnt += 1
-                
-        data = list(data.values())[0]
-        data["doc_version"] = settings["version"]
-        cnt += 1
-        records.append(data)
-    #bb.logit(f'{batch_size} {cur_coll} batch complete')
-    return(records)
 
 def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
