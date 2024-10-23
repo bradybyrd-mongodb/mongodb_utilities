@@ -17,9 +17,6 @@ import getopt
 import bson
 from bson.objectid import ObjectId
 from bson.json_util import dumps
-base_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.dirname(base_dir))
-
 from bbutil import Util
 from id_generator import Id_generator
 from pymongo import MongoClient
@@ -28,11 +25,43 @@ from faker import Faker
 import itertools
 from deepmerge import Merger
 import uuid
-import bldg_mix as mix
 
 fake = Faker()
+#letters = string.ascii_uppercase
+providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
 
-settings_file = "site_settings.json"
+"""
+ #  Relations Demo
+
+  Providers
+    provider
+    provider_license
+    provider_speciality
+    provider_medicaid
+    provider_hospitals
+  Members
+    member
+    member_address
+    member_communication
+    member_guardian
+    member_disability
+    member_payment_methods
+  Claims
+    Claim_header
+    Claim_line
+    Payments
+
+    python3 single_view.py action=load_mysql
+
+# Startup Env:
+    Atlas M10BasicAgain
+    PostgreSQL
+      export PATH="/usr/local/opt/postgresql@9.6/bin:$PATH"
+      pg_ctl -D /usr/local/var/postgresql@9.6 start
+      create database single_view with owner bbadmin;
+      psql --username bbadmin single_view
+"""
+settings_file = "relations_settings.json"
 
 def load_postgres_data():
     # read settings and echo back
@@ -73,8 +102,7 @@ def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
     cur_process = multiprocessing.current_process()
     bb.message_box(f"({cur_process.name}) Loading Synth Data in SQL", "title")
-    pgconn = None #pg_connection()
-    conn = None #client_connection()
+    pgconn = pg_connection()
     settings = bb.read_json(settings_file)
     batches = settings["batches"]
     batch_size = settings["batch_size"]
@@ -92,22 +120,16 @@ def worker_load(ipos, args):
     else:
         job_info = settings["data"]
     start_time = datetime.datetime.now()
-    seed_data = mix.init_seed_data(conn, IDGEN, settings)
-    CurInfo = mix.CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
-    pprint.pprint(CurInfo.get_item("none", "A-107"))
-    bb.logit(f'Portfolio: {CurInfo.get_item("portfolio_name")}, len: {len(seed_data["sites"])}')
-    
     # IDGEN = Id_generator({"seed" : base_counter, "size" : details["size"]})
     for domain in job_info:
         details = job_info[domain]
         template_file = details["path"]
-        multiplier = details["multiplier"]
-        count = batches * batch_size * multiplier
-        
+        count = details["size"]
         prefix = details["id_prefix"]
         base_counter = settings["base_counter"] + count * ipos
         bb.message_box(domain, "title")
         table_info = ddl_from_template("none", pgconn, template_file, domain)
+        batches = int(details["size"] / batch_size)
         IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
         for k in range(batches):
             bb.logit(f"Loading batch: {k} - size: {batch_size}")
@@ -121,7 +143,6 @@ def worker_load(ipos, args):
                     "id_prefix": prefix,
                     "base_count": base_counter,
                     "size": count,
-                    "cur_info" : CurInfo
                 },
             )
 
@@ -141,16 +162,10 @@ def build_sql_batch_from_template(tables, details={}):
     base_counter = details["base_count"]
     num_procs = settings["process_count"]
     batch = details["batch"]
-    target = "sql"
     master_table = details["master"]
     master_id = f"{master_table}_id".lower()
     cnt = 0
     tab_types = table_types(tables)
-    cur_info = None
-    if "size" in details and details["size"] < batch_size:
-        batch_size = details["size"]
-    if "cur_info" in details:
-        cur_info = details["cur_info"]
     bb.logit(f"Master: {master_table} - building: {batch_size}")
     master_ids = []
     rec_counts = {}
@@ -257,7 +272,7 @@ def ddl_from_template(action, pgconn, template, domain):
             bb.logit(f"Building table: {table}")
             last_table = table
             fkey = ""
-            flds = []
+            flds = [field]
             if len(table.split("_")) > 1:
                 #  Add a parent_id field
                 new_field = stripProp(f'{row["parent"]}_id')
@@ -267,7 +282,6 @@ def ddl_from_template(action, pgconn, template, domain):
                 new_field = stripProp(f"{table}_id")
                 fkey += f"  {new_field} varchar(20) NOT NULL,"
                 flds.append(new_field)
-                flds.append(field)
             ddl = (
                 f"CREATE TABLE {table} ("
                 "  id SERIAL PRIMARY KEY,"
@@ -347,9 +361,6 @@ def fields_from_template(template):
         sub_size = 1
         # support for parent.child.child.field, parent.children().field
         for row in propreader:
-            path = row[0].split(".")
-            if "CONTROL" in row[0]:
-                continue
             result = {
                 "name": "",
                 "table": "",
@@ -358,6 +369,9 @@ def fields_from_template(template):
                 "generator": generator_values(row[3]),
                 "sub_size" : sub_size
             }
+            path = row[0].split(".")
+            if "CONTROL" in row[0]:
+                continue
             depth = len(path)
             for k in range(depth):
                 if path[k].endswith(')'):
@@ -388,7 +402,6 @@ def fields_from_template(template):
 
 def execute_ddl(ddl_action="info"):
     ddl_action = "info"
-    mycon = None
     if "template" in ARGS:
         template = ARGS["template"]
     elif "data" in settings:
@@ -398,8 +411,7 @@ def execute_ddl(ddl_action="info"):
         sys.exit(1)
     if "task" in ARGS:
         ddl_action = ARGS["task"]
-    if ddl_action != "info":
-        mycon = pg_connection()
+    mycon = pg_connection()
     if "template" in ARGS:
         master_table = master_from_file(template)
         job_info = {
@@ -418,8 +430,7 @@ def execute_ddl(ddl_action="info"):
         bb.logit(details["path"])
         template_file = details["path"]
         table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
-    if mycon != None:
-        mycon.close
+    mycon.close
 
 def create_foreign_keys():
     #  Reads settings file and finds values
@@ -473,6 +484,181 @@ def foreign_key_sql(table):
         f" NOT VALID"
     )
     return sql
+
+def fix_provider_ids():
+    num_provs = 50
+    base_val = 1000000
+    query_sql = "select id from claim_claimline"
+    rsql = "SELECT floor(random()*(1000050-1000000+1))+1000000"
+    mycon = pg_connection()
+    cur = mycon.cursor()
+    cur2 = mycon.cursor()
+    try:
+        cur.execute(query_sql)
+        for item in cur:
+            print(f"item: {item}")
+            pid = f"P-{random.randint(base_val, base_val + num_provs)}"
+            rpid = f"P-{random.randint(base_val, base_val + num_provs)}"
+            sql = f"update claim_claimline set attendingprovider_id = '{pid}', operatingprovider_id = '{pid}', "
+            sql += f" orderingprovider_id = '{rpid}',  referringprovider_id = '{rpid}' "
+            sql += f"where id = {item[0]}"
+            # print(sql)
+            cur2.execute(sql)
+            mycon.commit()
+    except psycopg2.DatabaseError as err:
+        bb.logit(f"{err}")
+    cur.close()
+    mycon.close
+
+def add_primary_provider_ids():
+    num_provs = 200
+    base_val = 1000000
+    query_sql = "select m.id, m.member_id from member m;"
+    mycon = pg_connection()
+    cur = mycon.cursor()
+    update_cur = mycon.cursor()
+    try:
+        cur.execute(query_sql)
+        for item in cur:
+            # print(f'item: {item}')
+            pid = f"P-{random.randint(base_val, base_val + num_provs)}"
+            sql = f"update member set primaryprovider_id = '{pid}' "
+            sql += f"where id = {item[0]}"
+            # print(sql)
+            bb.logit(f"Update: {item[1]}")
+            update_cur.execute(sql)
+            mycon.commit()
+    except psycopg2.DatabaseError as err:
+        bb.logit(f"{err}")
+    cur.close()
+    mycon.close
+
+def fix_member_guardian_ids():
+    num_provs = 200
+    base_val = 1000000
+    # query_sql = "select id, m.member_guardian_id from member_guardian m;"
+    query_sql = "select id, m.claim_claimline_id from claim_claimline m;"
+    mycon = pg_connection()
+    cur = mycon.cursor()
+    update_cur = mycon.cursor()
+    cnt = 1
+    try:
+        cur.execute(query_sql)
+        for item in cur:
+            # print(f'item: {item}')
+            pid = f"ME-{base_val + cnt}"
+            # sql = f'update member_guardian set member_guardian_id = \'{pid}\' '
+            sql = f"update claim_claimline set claim_claimline_id = '{pid}' "
+            sql += f"where id = {item[0]}"
+            # print(sql)
+            bb.logit(f"Update: {item[1]}")
+            update_cur.execute(sql)
+            mycon.commit()
+            cnt += 1
+    except psycopg2.DatabaseError as err:
+        bb.logit(f"{err}")
+    cur.close()
+    mycon.close
+
+# ----------------------------------------------------------------------#
+#   Queries
+# ----------------------------------------------------------------------#
+def member_claims_api():
+    sql = {}
+    csql = "select c.*, m.firstname, m.last_name, m.dateofbirth, m.gender, clv.* "
+    csql += "from vw_claim_claimline clv INNER JOIN claim c where c.patient_id = '__MEMBER_ID__'"
+    csql += "INNER JOIN member m on m.member_id = c.patient_id "
+    csql += "INNER JOIN"
+    sql["member_claims"] = csql
+
+def claimline_vw():
+    vwsql = "create or replace view vw_claim_claimline AS \n"
+    sql = "select cl.*, ap.firstname as ap_first, ap.lastname as ap_last, ap.gender as ap_gender, ap.dateofbirth as ap_birthdate, "
+    sql += "op.firstname as op_first, op.lastname as op_last, op.gender as op_gender, op.dateofbirth as op_birthdate, "
+    sql += "rp.firstname as rp_first, rp.lastname as rp_last, rp.gender as rp_gender, rp.dateofbirth as rp_birthdate, "
+    sql += "opp.firstname as opp_first, opp.lastname as opp_last, opp.gender as opp_gender, opp.dateofbirth as opp_birthdate "
+    sql += "from claim_claimline cl INNER JOIN provider ap on cl.attendingprovider_id = ap.provider_id "
+    sql += "INNER JOIN provider op on cl.orderingprovider_id = op.provider_id "
+    sql += "INNER JOIN provider rp on cl.referringprovider_id = rp.provider_id "
+    sql += "INNER JOIN provider opp on cl.operatingprovider_id = opp.provider_id "
+
+def member_api():
+    # show a single member and recent claims
+    # include the primary provider
+    d_member = {}
+    sql = "select m.*, p.nationalprovideridentifier, p.firstname, p.lastname, p.dateofbirth, p.gender from member m INNER JOIN provider p on p.provider_id = m.primaryprovider_id;"  # INNER JOIN providers p on m.primaryProvider_id = p.provider_id"
+    result = sql_query("healthcare", sql)
+    k = 0
+    for item in result:
+        if k < 20:
+            pprint.pprint(item)
+        k += 1
+
+def get_claims(conn=""):
+    conn = pg_connection()
+    sql = "select * from claim"
+    query_result = newsql_query(sql, conn)
+    num_results = query_result["num_records"]
+    print(f"Claims: {num_results}")
+    ids = []
+    for row in query_result["data"]:
+        ids.append(row[1])
+    result = get_claimlines(conn, ids)
+    data = result["data"]
+    inc = 0
+    for k in data:
+        print(f"#-------------------- {k} --------------------------")
+        pprint.pprint(data[k])
+        inc += 1
+        if inc > 10:
+            break
+    conn.close()
+
+def get_claimlines(conn, claim_ids):
+    # payment_fields = sql_helper.column_names("claim_claimline_payment", conn)
+    payment_fields = column_names("claim_claimline_payment", conn)
+    pfields = ", p.".join(payment_fields)
+    ids_list = "','".join(claim_ids)
+    sql = f"select c.*, p.{pfields} from claim_claimline c "
+    sql += "INNER JOIN claim_claimline_payment p on c.claim_claimline_id = p.claim_claimline_id "
+    sql += f"WHERE c.claim_id IN ('{ids_list}') "
+    sql += "order by c.claim_id"
+    # query_result = sql_helper.sql_query(sql, conn)
+    query_result = newsql_query(sql, conn)
+    num_results = query_result["num_records"]
+    # claimline_fields = sql_helper.column_names("claim_claimline", conn)
+    claimline_fields = column_names("claim_claimline", conn)
+    num_cfields = len(claimline_fields)
+    # Check if the records are found
+    result = {"num_records": num_results, "data": []}
+    data = {}
+    if num_results > 0:
+        last_id = "zzzzzz"
+        firsttime = True
+        for row in query_result["data"]:
+            cur_id = row[1]
+            doc = {}
+            if cur_id != last_id:
+                if not firsttime:
+                    data[last_id] = docs
+                    docs = []
+                else:
+                    docs = []
+                    firsttime = False
+                last_id = cur_id
+            # print(row)
+            for k in range(num_cfields):
+                # print(claimline_fields[k])
+                doc[claimline_fields[k]] = row[k]
+            sub_doc = {}
+            for k in range(len(payment_fields)):
+                # print(payment_fields[k])
+                sub_doc[payment_fields[k]] = row[k + num_cfields]
+            doc["payment"] = sub_doc
+            docs.append(doc)
+
+    result["data"] = data
+    return result
 
 # ----------------------------------------------------------------------#
 #   CSV Loader Routines
@@ -672,23 +858,6 @@ def pg_connection(type="postgres", sdb="none"):
     conn = psycopg2.connect(host=shost, database=sdb, user=susername, password=spwd)
     return conn
 
-def client_connection(type = "uri", details = {}):
-    mdb_conn = settings[type]
-    username = settings["username"]
-    password = settings["password"]
-    if "secret" in password:
-        password = os.environ.get("_PWD_")
-    if "username" in details:
-        username = details["username"]
-        password = details["password"]
-    mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
-    bb.logit(f'Connecting: {mdb_conn}')
-    if "readPreference" in details:
-        client = MongoClient(mdb_conn, readPreference=details["readPreference"]) #&w=majority
-    else:
-        client = MongoClient(mdb_conn)
-    return client
-
 # ------------------------------------------------------------------#
 #     MAIN
 # ------------------------------------------------------------------#
@@ -738,6 +907,8 @@ if __name__ == "__main__":
         get_claims()
     elif ARGS["action"] == "foreign_keys":
         create_foreign_keys()
+    elif ARGS["action"] == "microservice":
+        microservice_one()
     else:
         print(f'{ARGS["action"]} not found')
     # conn.close()

@@ -29,7 +29,7 @@
     "host": "34.172.34.239",
     "username": "postgres",
     "password": "<secret>",
-    "database": "healthcare",
+    "database": "healthcare_test",
     "notes": "GCP CloudSQL Database"
   },
   "postgres_rds": {

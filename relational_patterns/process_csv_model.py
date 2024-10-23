@@ -38,7 +38,7 @@ Product.coverage(10).deductibleConditions().conditionName,String,"fake.bs()"
     
 '''
 
-def ddl_from_template(action, template, domain):
+def ddl_from_template(template, domain):
     bb.message_box("Generating DDL")
     database = "default"
     # Read the csv file and digest
@@ -66,7 +66,7 @@ def ddl_from_template(action, template, domain):
                 flds.append(new_field)
             flds.append(field)
             ddl = (
-                f"CREATE TABLE {table} ("
+                f"CREATE TABLE IF NOT EXISTS {table} ("
                 "  id SERIAL PRIMARY KEY,"
                 f"{fkey}"
                 f"  {field} {ftype},"
@@ -201,7 +201,7 @@ def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
 
 def doc_from_template(template, domain):
-    design = ddl_from_template("none", template, domain)
+    design = ddl_from_template(template, domain)
     doc = doc_from_csv(design)
     return doc
 

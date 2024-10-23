@@ -1,7 +1,7 @@
 Full Name,Property Type,Generator
 Provider.provider_id,String,"IDGEN.get(""P-"")"
 Provider.federalTaxID,String,fake.ssn()
-Provider.nationalProviderIdentifier,String,"ID(""NPI-"")","""NPI-"" + Incremental 1 - 1 million"
+Provider.nationalProviderIdentifier,String,"IDGEN.get(""NPI-"")"
 Provider.NPIType,String,"fake.random_element(('Individual', 'Institution'))"
 Provider.lastName,String,fake.last_name()
 Provider.firstName,String,fake.first_name()

@@ -1,8 +1,6 @@
 import sys
 import os
 import csv
-
-# import vcf
 from collections import OrderedDict
 from collections import defaultdict
 import json
@@ -13,10 +11,11 @@ import time
 import re
 import multiprocessing
 import pprint
-import getopt
-import bson
 from bson.objectid import ObjectId
 from bson.json_util import dumps
+base_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(base_dir))
+import process_csv_model as csvmod
 from bbutil import Util
 from id_generator import Id_generator
 from pymongo import MongoClient
@@ -28,7 +27,6 @@ import uuid
 
 fake = Faker()
 #letters = string.ascii_uppercase
-providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
 
 """
  #  Relations Demo
@@ -63,7 +61,7 @@ providers = ["cigna", "aetna", "anthem", "bscbsma", "kaiser"]
 """
 settings_file = "relations_settings.json"
 
-def load_postgres_data():
+def load_sql_data():
     # read settings and echo back
     bb.message_box("Loading Data", "title")
     bb.logit(f"# Settings from: {settings_file}")
@@ -108,7 +106,7 @@ def worker_load(ipos, args):
     batch_size = settings["batch_size"]
     if "template" in args:
         template = args["template"]
-        master_table = master_from_file(template)
+        master_table = csvmod.master_from_file(template)
         job_info = {
             master_table: {
                 "path": template,
@@ -120,7 +118,6 @@ def worker_load(ipos, args):
     else:
         job_info = settings["data"]
     start_time = datetime.datetime.now()
-    # IDGEN = Id_generator({"seed" : base_counter, "size" : details["size"]})
     for domain in job_info:
         details = job_info[domain]
         template_file = details["path"]
@@ -128,7 +125,7 @@ def worker_load(ipos, args):
         prefix = details["id_prefix"]
         base_counter = settings["base_counter"] + count * ipos
         bb.message_box(domain, "title")
-        table_info = ddl_from_template("none", pgconn, template_file, domain)
+        table_info = csvmod.ddl_from_template(template_file, domain)
         batches = int(details["size"] / batch_size)
         IDGEN.set({"seed": base_counter, "size": count, "prefix": prefix})
         for k in range(batches):
@@ -166,6 +163,8 @@ def build_sql_batch_from_template(tables, details={}):
     master_id = f"{master_table}_id".lower()
     cnt = 0
     tab_types = table_types(tables)
+    if "size" in details and details["size"] < batch_size:
+        batch_size = details["size"]
     bb.logit(f"Master: {master_table} - building: {batch_size}")
     master_ids = []
     rec_counts = {}
@@ -256,150 +255,6 @@ def table_types(table_info):
             res[tab] = "submaster"
     return res
 
-def ddl_from_template(action, pgconn, template, domain):
-    database = settings["postgres"]["database"]
-    bb.message_box("Generating DDL")
-    # Read the csv file and digest
-    fields = fields_from_template(template)
-    # pprint.pprint(fields)
-    tables = {}
-    last_table = "zzzzz"
-    ddl = ""
-    for row in fields:
-        table, field, ftype = clean_field_data(row)
-        if table not in tables:
-            # bb.logit("#--------------------------------------#")
-            bb.logit(f"Building table: {table}")
-            last_table = table
-            fkey = ""
-            flds = [field]
-            if len(table.split("_")) > 1:
-                #  Add a parent_id field
-                new_field = stripProp(f'{row["parent"]}_id')
-                fkey = f"  {new_field} varchar(20) NOT NULL,"
-                flds.append(new_field)
-                #  Add a self_id field
-                new_field = stripProp(f"{table}_id")
-                fkey += f"  {new_field} varchar(20) NOT NULL,"
-                flds.append(new_field)
-            ddl = (
-                f"CREATE TABLE {table} ("
-                "  id SERIAL PRIMARY KEY,"
-                f"{fkey}"
-                f"  {field} {ftype},"
-            )
-            tables[table] = {
-                "ddl": ddl,
-                "database": database,
-                "fields": flds,
-                "generator": [row["generator"]],
-                "parent": row["parent"],
-                "sub_size" : row["sub_size"]
-            }
-
-        else:
-            # bb.logit(f'Adding table data: {table}, {field}')
-            if field not in tables[table]["fields"]:
-                tables[table]["ddl"] = tables[table]["ddl"] + f"  {field} {ftype},"
-                tables[table]["fields"].append(field)
-                tables[table]["generator"].append(row["generator"])
-        first = False
-    clean_ddl(tables)
-    bb.logit("Table DDL:")
-    pprint.pprint(tables)
-    sql_action(pgconn, action, tables)
-    return tables
-
-def master_from_file(file_name):
-    return file_name.split("/")[-1].split(".")[0]
-
-def clean_field_data(data):
-    tab = data["table"]
-    if data["name"].lower() == "id":
-        data["name"] = f"{tab}_id"
-    if (
-        len(tab.split("_")) == 2 and tab.split("_")[0] == tab.split("_")[1]
-    ):  # "catch doubled eg member_member"
-        tab = tab.split("_")[0]
-    return tab, data["name"], data["type"]
-
-def clean_ddl(tables_obj):
-    for tab in tables_obj:
-        ddl = tables_obj[tab]["ddl"]
-        l = len(ddl)
-        ddl = ddl[: l - 1] + ")"
-        tables_obj[tab]["ddl"] = ddl
-        fmts = value_codes(tables_obj[tab]["fields"])
-        tables_obj[tab][
-            "insert"
-        ] = f'insert into {tab} ({",".join(tables_obj[tab]["fields"])}) values ({fmts});'
-
-def pg_type(mtype):
-    type_x = {
-        "string": "varchar(100)",
-        "boolean": "varchar(2)",
-        "date": "timestamp",
-        "integer": "integer",
-        "text": "text",
-        "double": "real",
-    }
-    ftype = type_x[mtype.lower().strip()]
-    return ftype
-
-def generator_values(gen):
-    # substitute params for generic generator values
-    return gen
-
-def fields_from_template(template):
-    """
-    {'name': 'EffectiveDate', 'table': 'member_address', 'type': 'date', 'generator' : "fake.date()", 'parent' : 'member'},
-    """
-    ddl = []
-    with open(template) as csvfile:
-        propreader = csv.reader(itertools.islice(csvfile, 1, None))
-        master = ""
-        sub_size = 1
-        # support for parent.child.child.field, parent.children().field
-        for row in propreader:
-            result = {
-                "name": "",
-                "table": "",
-                "parent": "",
-                "type": pg_type(row[1]),
-                "generator": generator_values(row[3]),
-                "sub_size" : sub_size
-            }
-            path = row[0].split(".")
-            if "CONTROL" in row[0]:
-                continue
-            depth = len(path)
-            for k in range(depth):
-                if path[k].endswith(')'):
-                    res = re.findall(r'\(.*\)',path[k])[0]
-                    if res != "()":
-                        sub_size = int(res.replace("(","").replace(")",""))
-                    else:
-                        sub_size = random.randint(1,5)
-                    path[k] = path[k].replace(res,"")
-            result["name"] = path[-1]
-            result["sub_size"] = sub_size
-            master = f"{path[0]}"
-            if depth == 1:
-                bb = ""  # should never see this
-            elif depth == 2:
-                result["table"] = master
-            elif depth == 3:
-                result["table"] = f"{path[0]}_{path[1]}"
-                result["parent"] = master
-            elif depth == 4:
-                result["table"] = f"{path[0]}_{path[1]}_{path[2]}"
-                result["parent"] = f"{path[0]}_{path[1]}"
-            elif depth == 5:
-                result["table"] = f"{path[0]}_{path[1]}_{path[2]}_{path[3]}"
-                result["parent"] = f"{path[0]}_{path[1]}_{path[2]}"
-            ddl.append(result)
-    return ddl
-
 def execute_ddl(ddl_action="info"):
     ddl_action = "info"
     if "template" in ARGS:
@@ -411,9 +266,9 @@ def execute_ddl(ddl_action="info"):
         sys.exit(1)
     if "task" in ARGS:
         ddl_action = ARGS["task"]
-    mycon = pg_connection()
+    pgconn = pg_connection()
     if "template" in ARGS:
-        master_table = master_from_file(template)
+        master_table = csvmod.master_from_file(template)
         job_info = {
             master_table: {
                 "path": template,
@@ -429,8 +284,9 @@ def execute_ddl(ddl_action="info"):
         bb.message_box(domain, "title")
         bb.logit(details["path"])
         template_file = details["path"]
-        table_info = ddl_from_template(ddl_action, mycon, template_file, domain)
-    mycon.close
+        table_info = csvmod.ddl_from_template(template_file, domain)
+        sql_action(pgconn, ddl_action, table_info)
+    pgconn.close
 
 def create_foreign_keys():
     #  Reads settings file and finds values
@@ -660,46 +516,6 @@ def get_claimlines(conn, claim_ids):
     result["data"] = data
     return result
 
-# ----------------------------------------------------------------------#
-#   CSV Loader Routines
-# ----------------------------------------------------------------------#
-#stripProp = lambda str: re.sub(r"\s+", "", (str[0].upper() + str[1:].strip("()")))
-def stripProp(str):
-    ans = str
-    if str[0].isupper() and str[1].islower():
-        ans = str[0].lower() + str[1:]
-    ans = re.sub(r'\s+', '', ans.strip('()'))
-    return ans
-
-def ser(o):
-    """Customize serialization of types that are not JSON native"""
-    if isinstance(o, datetime.datetime.date):
-        return str(o)
-
-def procpath(path, counts, generator):
-    """Recursively walk a path, generating a partial tree with just this path's random contents"""
-    stripped = stripProp(path[0])
-    if len(path) == 1:
-        # Base case. Generate a random value by running the Python expression in the text file
-        return {stripped: eval(generator)}
-    elif path[0].endswith("()"):
-        # Lists are slightly more complex. We generate a list of the length specified in the
-        # counts map. Note that what we pass recursively is _the exact same path_, but we strip
-        # off the ()s, which will cause us to hit the `else` block below on recursion.
-        return {
-            stripped: [
-                procpath([path[0].strip("()")] + path[1:], counts, generator)[stripped]
-                for X in range(0, counts[stripped])
-            ]
-        }
-    else:
-        # Return a nested page, of the specified type, populated recursively.
-        return {stripped: procpath(path[1:], counts, generator)}
-
-def zipmerge(the_merger, path, base, nxt):
-    """Strategy for deepmerge that will zip merge two lists. Assumes lists of equal length."""
-    return [the_merger.merge(base[i], nxt[i]) for i in range(0, len(base))]
-
 def ID(key):
     id_map[key] += 1
     return key + str(id_map[key] + base_counter)
@@ -867,7 +683,7 @@ if __name__ == "__main__":
     settings = bb.read_json(settings_file)
     base_counter = settings["base_counter"]
     IDGEN = Id_generator({"seed": base_counter})
-    id_map = defaultdict(int)
+    #id_map = defaultdict(int)
     MASTER_CUSTOMERS = []
     if "wait" in ARGS:
         interval = int(ARGS["wait"])
@@ -878,8 +694,8 @@ if __name__ == "__main__":
     if "action" not in ARGS:
         print("Send action= argument")
         sys.exit(1)
-    elif ARGS["action"] == "load_pg_data":
-        load_postgres_data()
+    elif ARGS["action"] == "load_sql_data":
+        load_sql_data()
     elif ARGS["action"] == "test_csv":
         result = build_batch_from_template(
             {
@@ -892,11 +708,9 @@ if __name__ == "__main__":
     elif ARGS["action"] == "execute_ddl":
         execute_ddl()
     elif ARGS["action"] == "show_ddl":
-        action = "none"
-        pgconn = None
         template = ARGS["template"]
         domain = "bugsy"
-        ddl_from_template(action, pgconn, template, domain)
+        csvmod.ddl_from_template(template, domain)
     elif ARGS["action"] == "fix_providers":
         add_primary_provider_ids()
     elif ARGS["action"] == "fix_guardians":
@@ -907,8 +721,6 @@ if __name__ == "__main__":
         get_claims()
     elif ARGS["action"] == "foreign_keys":
         create_foreign_keys()
-    elif ARGS["action"] == "microservice":
-        microservice_one()
     else:
         print(f'{ARGS["action"]} not found')
     # conn.close()
