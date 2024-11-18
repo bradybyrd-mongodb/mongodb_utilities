@@ -116,15 +116,26 @@ def clean_ddl(tables_obj):
             "insert"
         ] = f'insert into {tab} ({",".join(tables_obj[tab]["fields"])}) values ({fmts});'
 
-def pg_type(mtype):
-    type_x = {
-        "string": "varchar(100)",
-        "boolean": "varchar(2)",
-        "date": "timestamp",
-        "integer": "integer",
-        "text": "text",
-        "double": "real",
-    }
+def field_type(mtype, db = "postgres"):
+    if db == "postgres":
+        type_x = {
+            "string": "varchar(100)",
+            "boolean": "varchar(2)",
+            "date": "timestamp",
+            "integer": "integer",
+            "text": "text",
+            "double": "real",
+        }
+    elif db == "mysql":
+        type_x = {
+            "string": "varchar(100)",
+            "boolean": "varchar(2)",
+            "date": "datetime",
+            "timestamp" : "timestamp",
+            "integer": "int(11)",
+            "text": "text",
+            "double": "real",
+        }    
     ftype = type_x[mtype.lower().strip()]
     return ftype
 
@@ -162,7 +173,7 @@ def fields_from_template(template):
                 "name": "",
                 "table": "",
                 "parent": "",
-                "type": pg_type(row[1]),
+                "type": field_type(row[1]),
                 "generator": row[2],
                 "sub_size" : sub_size
             }

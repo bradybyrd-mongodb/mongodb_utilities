@@ -32,12 +32,13 @@
     "database": "healthcare_test",
     "notes": "GCP CloudSQL Database"
   },
-  "postgres_rds": {
-    "host": "ist-insurance.c4ecdwgyv8ky.us-east-1.rds.amazonaws.com",
-    "username": "istadmin",
-    "password": "pizzacrust",
-    "database": "healthcare",
-    "notes": "AWS Jeff Needham postgres Database"
+  "mysql": {
+    "host": "hackathon-sa-ne.cymtbjk7fwn8.us-east-1.rds.amazonaws.com",
+    "username": "admin",
+    "password": "<secret>",
+    "port": "3306",
+    "database": "social_db",
+    "notes": "AWS haackathon Database"
   },
   "redis_local": {
     "host": "localhost"
@@ -63,6 +64,28 @@
         "find_query": "{\"patient_id\" : doc[\"member_id\"]}",
         "fields": ["claim_id", "claimType", "claimStatus", "serviceEndDate", "attendingProvider_id", "placeOfService"]
       }]
+    }
+  },
+  "mydata": {
+    "message": {
+      "path": "model-tables/message.csv",
+      "size": 5000,
+      "id_prefix": "P-"
+    },
+    "post": {
+      "path": "model-tables/post.csv",
+      "size": 5000,
+      "id_prefix": "P-"
+    },
+    "topic": {
+      "path": "model-tables/topic.csv",
+      "size": 100,
+      "id_prefix": "T-"
+    },
+    "user": {
+      "path": "model-tables/user.csv",
+      "size": 500,
+      "id_prefix": "U-"
     }
   },
   "data": {

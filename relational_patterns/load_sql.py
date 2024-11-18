@@ -58,6 +58,10 @@ fake = Faker()
       pg_ctl -D /usr/local/var/postgresql@9.6 start
       create database single_view with owner bbadmin;
       psql --username bbadmin single_view
+      psql -h 4.172.34.239 --username bbadmin northwind
+      psql "sslmode=require \
+      hostaddr=4.172.34.239 \
+      user=postgres dbname=northwind"
 """
 settings_file = "relations_settings.json"
 
