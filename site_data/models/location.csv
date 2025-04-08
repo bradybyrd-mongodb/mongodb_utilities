@@ -1,0 +1,21 @@
+Resource.Property,Property Type,Generator
+Location.location_id,String,"IDGEN.get(""L-"")"
+Location.name,String,"fake.company()"
+Location.customer_id,String,"IDGEN.random_value(""C-"")"
+Location.location_type,String,"fake.random_element(('Building'))"
+Location.details.floor_cnt,double,"fake.random_int(min=1, max=44)"
+Location.details.constructed_on,Date,"fake.past_datetime()"
+Location.details.size_sqft,double,"fake.random_int(min=10000, max=200000)"
+Location.modified_at,Date,"datetime.datetime.now()"
+Location.modified_by,String,"""Brady"""
+Location.parents,String,"Locale.get_items()"
+Location.address.name,String,"fake.random_element(('Main', 'HQ', 'Satellite'))"
+Location.address.addressLine1,String,fake.street_address()
+Location.address.addressLine2,String,fake.secondary_address()
+Location.address.city,String,fake.city()
+Location.address.state,String,fake.state_abbr()
+Location.address.postalCode,String,fake.postcode()
+Location.address.country,String,"""US"""
+Location.address.effectiveDate,date,fake.past_datetime()
+Location.address.location.type,string,"""Point"""
+Location.address.location.coordinates,String,"local_geo()"

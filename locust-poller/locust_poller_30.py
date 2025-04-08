@@ -26,6 +26,9 @@
 #
 ########################################################################
 
+# Docs: https://docs.google.com/document/d/1rxxjxZgfol7Pq0wpkMiotaCeNnyMUpZkJSmndcBPM2s/edit?tab=t.0
+# MLocust: https://mlocust.mside.app/project-config
+
 # Allows us to make many pymongo requests in parallel to overcome the single threaded problem
 import gevent
 from gevent import monkey

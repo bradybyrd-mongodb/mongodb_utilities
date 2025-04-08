@@ -1,0 +1,17 @@
+Resource.Property,Property Type,Generator
+Customer.customer_id,String,"IDGEN.get(""C-"")"
+Customer.name,String,"fake.company()"
+Customer.modified_at,Date,"datetime.datetime.now()"
+Customer.modified_by,String,"""Brady"""
+Customer.address.name,String,"fake.random_element(('HQ', 'Main'))"
+Customer.address.addressLine1,String,fake.street_address()
+Customer.address.addressLine2,String,fake.secondary_address()
+Customer.address.city,String,fake.city()
+Customer.address.state,String,fake.state_abbr()
+Customer.address.postalCode,String,fake.postcode()
+Customer.address.country,String,"""US"""
+Customer.address.effectiveDate,date,fake.past_datetime()
+Customer.address.location.type,string,"""Point"""
+Customer.address.location.coordinates,String,"local_geo()"
+Customer.sites().site_id,String,"IDGEN.get(""S-"")"
+Customer.sites().site_name,String,"fake.company()"

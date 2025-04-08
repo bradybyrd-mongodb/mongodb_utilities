@@ -9,7 +9,7 @@ import sys
 if __name__ == "__main__":
     bb = Util()
     ARGS = bb.process_args(sys.argv)
-    from locust_poller_30 import MetricsLocust
+    from locust_loader import MetricsLocust
     widget = MetricsLocust("BradyByrd")
     if "update" in ARGS:
         bb.message_box("Performing Update")

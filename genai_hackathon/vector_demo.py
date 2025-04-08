@@ -63,7 +63,7 @@ def vector_query():
     bb.message_box("Search Results","title")
     bb.logit(f'Searching: {prompt}')
     for doc in result:
-        pprint.pprint(doc)
+        #pprint.pprint(doc)
         print(f'# --------- Score: {doc["score"]} --------- #')
         print(f'Sentence: {doc["sentence"]}')
         print(f'Source: {doc["url"]}')
@@ -90,7 +90,7 @@ def hybrid_query():
         num_results = int(ARGS["num"])
     prompt_vector = get_vector(prompt)
     filter = ""
-    num_results = 4
+    #num_results = 4
     dedup = False
     #  Vector Search
     vector_stage = {
@@ -101,7 +101,6 @@ def hybrid_query():
               "limit": num_results,
               "numCandidates": num_results}
           }
-    #  Text-based search    
     search_pipe = [
         {'$search': {
             'index': text_index, 
@@ -185,10 +184,62 @@ def extra_args(pipe):
             "plan" : {"$first" : "$plan"},
             "score" : {"$first" : "$score"}
         }})
+        pipe.append({"$project" : {"_id" : 0}})
     if "len" in ARGS:
         pipe.append({"$match": {"$expr": {"$gte": [{"$strLenCP": "$sentence"},25]}}})
     pprint.pprint(pipe)
-  
+
+def text_query():
+    #  Text-based search  
+    # num_results = 5
+    start_time = datetime.datetime.now()
+    if "prompt" in ARGS:
+        prompt = ARGS["prompt"]
+    else:
+        bb.logit("ERROR: enter a prompt= parameter")
+        sys.exit(1)
+    conn = mongodb_connection()
+    database = settings["database"]
+    collection = settings["collection"]
+    db = conn[database]
+    num_results = 5
+    text_index = "full_text"
+    if "num" in ARGS:
+        num_results = int(ARGS["num"])
+
+    search_pipe = [
+        {'$search': {
+            'index': text_index, 
+            'text': {
+              'query': prompt, 
+              'path': 'sentence'
+            },
+
+          }
+        },
+        {
+            "$limit" : num_results
+        },
+        {
+          "$unset":['sentence_vec']
+        },
+        {
+          '$addFields':{
+            'metascore': {
+              '$meta': 'searchScore'
+            }
+          }
+        }
+    ]
+    result = db[collection].aggregate(search_pipe)
+    bb.message_box("Lexical Search Results","title")
+    bb.logit(f'Searching: {prompt}')
+    for doc in result:
+        print(f'# --------- Score: {doc["metascore"]} --------- #')
+        print(f'Sentence: {doc["sentence"]}')
+        print(f'Source: Text-search')
+    return search_pipe
+
 # --------------------------------------------------------- #
 #       UTILITY METHODS
 # --------------------------------------------------------- #
@@ -255,6 +306,8 @@ if __name__ == "__main__":
         sys.exit(1)
     elif ARGS["action"] == "vector_search":
         vector_query()
+    elif ARGS["action"] == "text_search":
+        text_query()
     elif ARGS["action"] == "hybrid_search":
         hybrid_query()
     else:

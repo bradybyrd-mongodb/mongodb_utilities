@@ -1,9 +1,16 @@
 {
     "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
     "database": "buildings",
-    "collection": "building",
+    "collection": "building_new",
     "username": "main_admin",
     "password": "<secret>",
+    "mongodb": {
+      "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+      "database": "buildings",
+      "collection": "building_new",
+      "username": "main_admin",
+      "password": "<secret>" 
+    },
     "postgres": {
       "host": "34.172.34.239",
       "username": "postgres",
@@ -12,13 +19,30 @@
       "notes": "GCP CloudSQL Database"
     },
     "version": "2.0",
-    "process_count": 2,
+    "process_count": 1,
     "batch_size": 100,
-    "batches": 5,
-    "base_counter": 2000000,
+    "batches": 2,
+    "base_counter": 1000000,
     "portfolios" : 0.01,
     "sites" : 0.1,
     "data": {
+      "customer": {
+        "path": "models/customer.csv",
+        "multiplier": 0.1,
+        "id_prefix": "L-"
+      },
+      "location": {
+        "path": "models/location.csv",
+        "multiplier": 1,
+        "id_prefix": "L-"
+      },
+      "asset": {
+        "path": "models/asset.csv",
+        "multiplier": 100,
+        "id_prefix": "A-"
+      }
+    },
+    "olddata": {
       "building": {
         "path": "models/building.csv",
         "multiplier": 1,

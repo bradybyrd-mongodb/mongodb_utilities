@@ -221,6 +221,7 @@ import time
 import re
 import multiprocessing
 import pprint
+import copy
 #import uuid
 #import bson
 from bson.objectid import ObjectId
@@ -233,7 +234,7 @@ from pymongo import UpdateMany
 from faker import Faker
 base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(base_dir))
-
+import process_csv_model as csvmod
 from bbutil import Util
 from id_generator import Id_generator
 import bldg_mix as mix
@@ -246,7 +247,7 @@ def synth_data_load():
     multiprocessing.set_start_method("fork", force=True)
     bb.message_box("Loading Data", "title")
     bb.logit(f'# Settings from: {settings_file}')
-    passed_args = {"ddl_action" : "info"}
+    passed_args = {"ddl_action" : "info", "idgen": IDGEN}
     if "template" in ARGS:
         template = ARGS["template"]
         passed_args["template"] = template
@@ -277,19 +278,23 @@ def worker_load(ipos, args):
     #  Reads EMR sample file and finds values
     cur_process = multiprocessing.current_process()
     pid = cur_process.pid
-    conn = None #client_connection()
+    conn = client_connection()
     bb.message_box(f"[{pid}] Worker Data", "title")
+    IDGEN = args["idgen"]
     settings = bb.read_json(settings_file)
     batch_size = settings["batch_size"]
     batches = settings["batches"]
     bb.logit('Current process is %s %s' % (cur_process.name, pid))
     start_time = datetime.datetime.now()
     collection = settings["collection"]
-    db = None #conn[settings["database"]]
-    seed_data = mix.init_seed_data(conn, IDGEN, settings)
-    CurInfo = mix.CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
-    pprint.pprint(CurInfo.get_item("none", "A-107"))
-    bb.logit(f'Portfolio: {CurInfo.get_item("portfolio_name")}, len: {len(seed_data["sites"])}')
+    db = conn[settings["database"]]
+    #seed_data = mix.init_seed_data(conn, IDGEN, settings)
+    #CurInfo = mix.CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
+    Signal = mix.Signal({"idgen" : IDGEN})
+    Asset = mix.AssetDetails({"idgen" : IDGEN})
+    Locale = mix.Locale({"idgen" : IDGEN})
+    #pprint.pprint(CurInfo.get_item("none", "A-107"))
+    #bb.logit(f'Portfolio: {CurInfo.get_item("portfolio_name")}, len: {len(seed_data["sites"])}')
     bulk_docs = []
     ts_start = datetime.datetime.now()
     job_size = batches * batch_size
@@ -305,12 +310,14 @@ def worker_load(ipos, args):
     else:
         job_info = settings["data"]
     # Loop through collection files
+    pprint.pprint(job_info)
     for domain in job_info:
         details = job_info[domain]
         prefix = details["id_prefix"]
         multiplier = details["multiplier"]
-        count = batches * batch_size * multiplier
+        count = int(batches * batch_size * multiplier)
         template_file = details["path"]
+        design = csvmod.doc_from_template(template_file, domain)
         base_counter = settings["base_counter"] + count * ipos
         IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
         bb.message_box(f'[{pid}] {domain} - base: {base_counter}', "title")
@@ -319,8 +326,8 @@ def worker_load(ipos, args):
         if batches == 0:
             batches = 1
         for k in range(batches):
-            #bb.logit(f"[{pid}] - {domain} Loading batch: {k} - size: {batch_size}")
-            bulk_docs = build_batch_from_template(domain, {"connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter, "size" : count, "cur_info": CurInfo})
+            bb.logit(f"[{pid}] - {domain} Loading batch: {k} - size: {batch_size}")
+            bulk_docs = build_batch_from_template(domain, {"connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter, "size" : count, "design" : design, "signal": Signal, "asset": Asset, "locale": Locale})
             #print(bulk_docs)
             db[domain].insert_many(bulk_docs)
             tot += len(bulk_docs)
@@ -334,6 +341,48 @@ def worker_load(ipos, args):
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
 def build_batch_from_template(cur_coll, details = {}):
+    batch_size = settings["batch_size"]
+    if "size" in details and details["size"] < batch_size:
+        batch_size = details["size"]
+    design = details["design"]
+    sub_size = 5
+    cnt = 0
+    records = []
+    #print("# --------------------------- Initial Doc -------------------------------- #")
+    #pprint.pprint(design)
+    #print("# --------------------------- End -------------------------------- #")
+    for J in range(batch_size): # iterate through the bulk insert count
+        # A dictionary that will provide consistent, random list lengths
+        counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
+        data = {}
+        cdesign = copy.deepcopy(design)
+        data = render_design(cdesign, counts, details)
+        data["doc_version"] = settings["version"]
+        cnt += 1
+        records.append(data)
+    bb.logit(f'{batch_size} {cur_coll} batch complete')
+    return(records)
+
+def render_design(design, count, details = {}):
+    # Takes template and evals the gnerators
+    #pprint.pprint(design)
+    Asset = details["asset"]
+    Signal = details["signal"]
+    Locale = details["locale"]
+    for key, val in design.items():
+        if isinstance(val, dict):
+            render_design(val,count, details)
+        elif isinstance(val, list):
+            render_design(val[0],count, details)
+        else:
+            try:
+                design[key] = eval(val)
+            except Exception as e:
+                print(f'ERROR: eval: {val}')
+                print(str(e))
+    return design
+
+def old_build_batch_from_template(cur_coll, details = {}):
     template_file = details["template"]
     batch_size = settings["batch_size"]
     target = "mongo"
@@ -451,7 +500,7 @@ def zipmerge(the_merger, path, base, nxt):
 
 def local_geo():
     coords = fake.local_latlng('US', True)
-    return coords
+    return [coords[1], coords[0]]
 
 #----------------------------------------------------------------------#
 #   Utility Routines
