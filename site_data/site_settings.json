@@ -1,6 +1,6 @@
 {
     "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
-    "database": "buildings",
+    "database": "site_inventory",
     "collection": "building_new",
     "username": "main_admin",
     "password": "<secret>",

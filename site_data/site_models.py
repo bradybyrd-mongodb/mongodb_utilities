@@ -275,21 +275,17 @@ def synth_data_load():
         i.join()
 
 def worker_load(ipos, args):
-    #  Reads EMR sample file and finds values
+    #  Called for each separate process
     cur_process = multiprocessing.current_process()
     pid = cur_process.pid
     conn = client_connection()
     bb.message_box(f"[{pid}] Worker Data", "title")
     IDGEN = args["idgen"]
-    #settings = bb.read_json(settings_file)
     batch_size = settings["batch_size"]
     batches = settings["batches"]
     bb.logit('Current process is %s %s' % (cur_process.name, pid))
     start_time = datetime.datetime.now()
     db = conn[settings["database"]]
-    #Signal = mix.Signal({"idgen" : IDGEN})
-    #Asset = mix.AssetDetails({"idgen" : IDGEN})
-    #Locale = mix.Locale({"idgen" : IDGEN})
     bulk_docs = []
     tot = 0
     if "template" in args:
@@ -304,13 +300,15 @@ def worker_load(ipos, args):
         _details_["domain"] = domain
         _details_["job"] = job_info[domain]
         _details_["idgen"] = IDGEN
+        _details_["last_root"] = ""
+        _details_["batching"] =  False
+        _details_["mixin"] = {}
+        _details_["batches"] = {}
         prefix = _details_["job"]["id_prefix"]
         if "size" in _details_["job"] and _details_["job"]["size"] < batch_size:
             batch_size = _details_["job"]["size"]
         multiplier = _details_["job"]["multiplier"]
         count = int(batches * batch_size * multiplier)
-        template_file = _details_["job"]["path"]
-        #design = csvmod.doc_from_template(template_file, domain)
         base_counter = settings["base_counter"] + count * ipos
         IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
         bb.logit(f'[{pid}] - {domain} | IDGEN - ValueHist: {IDGEN.value_history}')
@@ -345,10 +343,9 @@ def worker_load(ipos, args):
     conn.close()
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
-def build_batch_from_template(cur_coll, details = {}):
+def build_batch_from_template(domain, details = {}):
     template_file = _details_["job"]["path"]
     batch_size = settings["batch_size"]
-    cur_info = {}
     if "size" in details and details["size"] < batch_size:
         batch_size = details["size"]
     if "cur_info" in details:
@@ -383,28 +380,136 @@ def build_batch_from_template(cur_coll, details = {}):
                 else:
                     islist = False
                     counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
-                #print(f"# -- Procpath {path}")
-                partial = docpath(path, counts, row[2], cur_info) # Note, later version of files may not include required field
-                #print(f'{row[0]}-{islist}: {partial}')
-                # Merge partial trees.
-                try:
-                    data = merger.merge(data, partial)
-                except Exception as e:
-                    print("---- ERROR --------")
-                    pprint.pprint(data)
-                    print("---- partial --------")
-                    pprint.pprint(partial)
-                    print("---- error --------")
-                    print(e)
-                    exit(1)
+                # Digest the csv into segments of field for assembly
+                batch_accounting(path, row[2])
                 icnt += 1
-                
-        data = list(data.values())[0]
+        if J == 0:
+            print("# ---------------------- Document Map ------------------------ #")
+            pprint.pprint(_details_["batches"])       
+        data = batch_build_doc(domain)
         data["doc_version"] = settings["version"]
         cnt += 1
         records.append(data)
     #bb.logit(f'{batch_size} {cur_coll} batch complete')
     return(records)
+
+def batch_accounting(path, generator):
+    cur_root = ",".join(path[0:-1])
+    action = "append"
+    cdoc = {"field" : path[-1], "gen": generator}
+    if _details_["last_root"] != cur_root:
+        if cur_root not in _details_["batches"].keys():
+            _details_["batches"][cur_root] = [cdoc]
+            action = "new"
+    if action == "append":
+        _details_["batches"][cur_root].append(cdoc)
+    _details_["last_root"] = cur_root
+
+def batch_build_doc(collection):
+    # Start with base fields, go next level n-times
+    doc = {}
+    last_key = ""
+    sub_size = 5
+    counts = random.randint(1, sub_size)
+    is_list = False
+    #print(f'C: {collection}')
+    for key, value in _details_["batches"].items():
+        parts = key.split(",")
+        cur_base = key.replace(last_key, "")
+        res = ""
+        #print("# ------------------------------------------ #")
+        #print(f'Key: {key}, cur: {cur_base}')
+        if key.lower() == collection:
+            for item in value:
+                doc[item["field"]] = batch_generator_value(item["gen"])
+        else:
+            if parts[-1].endswith(')'):
+                is_list = True
+                res = re.findall(r'\(.*\)',cur_base)[0]
+                if res == "()":
+                    lcnt = counts
+                else:
+                    lcnt = int(res.replace("(","").replace(")",""))
+            else:
+                is_list = False
+                lcnt = 1
+            
+            inc = len(parts[1:])
+            #print(f"doing parts {inc}")
+            #print(parts)
+            if inc == 1:
+                #print(f'Adding sub_arr to doc[{cleaned(parts[1])}]')
+                doc[cleaned(parts[1])] = batch_sub(item, value, lcnt, is_list)
+            elif inc == 2:
+                #print(f'Adding sub_arr to doc[{cleaned(parts[1])}][{cleaned(parts[2])}]')
+                if is_list:
+                    for k in range(len(doc[cleaned(parts[1])])):
+                        doc[cleaned(parts[1])][k][cleaned(parts[2])] = batch_sub(item, value, lcnt, is_list)
+                else:
+                    doc[cleaned(parts[1])][cleaned(parts[2])] = batch_sub(item, value, lcnt, is_list)
+            elif inc == 3:
+                # Ex: Asset.parents().location.type
+                if part_is_list[parts[1]]:
+                    for k in range(len(doc[cleaned(parts[1])])):
+                        if part_is_list[parts[2]]:
+                            for j in range(len(doc[cleaned(parts[2])])):
+                                doc[cleaned(parts[1])][k][cleaned(parts[2])][j][cleaned(parts[3])] = batch_sub(item, value, lcnt, is_list)
+                        else:
+                            doc[cleaned(parts[1])][k][cleaned(parts[2])][cleaned(parts[3])] = batch_sub(item, value, lcnt, is_list)
+                else:
+                    if part_is_list[parts[2]]:
+                        for j in range(len(doc[cleaned(parts[2])])):
+                            doc[cleaned(parts[1])][cleaned(parts[2])][j][cleaned(parts[3])] = batch_sub(item, value, lcnt, is_list)
+                        else:
+                            doc[cleaned(parts[1])][cleaned(parts[2])][cleaned(parts[3])] = batch_sub(item, value, lcnt, is_list)
+        last_key = key
+    return(doc)
+
+def batch_sub(item, fields, cnt, isarr):
+    sub_arr = []
+    for k in range(cnt):
+        sub_doc = {}
+        for item in fields:
+            sub_doc[item["field"]] = batch_generator_value(item["gen"])
+        sub_arr.append(sub_doc)
+    if not isarr:
+        sub_arr = sub_arr[0]
+    return(sub_arr)
+
+def cleaned(str):
+    str = re.sub(r'\(.*\)','', str)
+    return str.strip()
+
+def part_is_list(part):
+    return part.endswith(')')
+
+def batch_generator_value(generator):
+    mixin = {}
+    if "mixin" in _details_:
+        mixin = _details_["mixin"]
+    try:
+        if "_SAVE_" in generator:
+            gen2 = generator.replace("_SAVE_","")
+            newgen = gen2[:gen2.find(")") + 1]
+            leftover = gen2.replace(newgen,"")
+            cache = eval(newgen)
+            _details_["cache"] = cache
+            #bb.logit(f'Save: {str(cache) + leftover}')
+            result = eval(str(cache) + leftover) 
+        elif "_CACHE_" in generator:
+            cache = _details_["cache"]
+            #bb.logit(f'Cache: {generator.replace("_CACHE_", str(cache))}')
+            result = eval(generator.replace("_CACHE_", str(cache)))
+        else:
+            #bb.logit(f'Eval: {generator}')
+            result = eval(generator) 
+    except Exception as e:
+        print("---- ERROR --------")
+        pprint.pprint(generator)
+        print("---- error --------")
+        print(e)
+        exit(1)
+    return(result)
 
 def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
