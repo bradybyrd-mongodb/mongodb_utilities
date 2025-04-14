@@ -322,12 +322,16 @@ def worker_load(ipos, args):
         bb.message_box(f'[{pid}] {domain} - base: {base_counter}', "title")
         tot = 0
         batches = int(count/batch_size)
+        batch_map = batch_digest_csv(domain)
+        print("# ---------------------- Document Map ------------------------ #")
+        pprint.pprint(batch_map) 
+    
         if batches == 0:
             batches = 1
         for cur_batch in range(batches):
-            #bb.logit(f"[{pid}] - {domain} Loading batch: {cur_batch}")
+            bb.logit(f"[{pid}] - {domain} Loading batch: {cur_batch}, {batch_size} records")
             cnt = 0
-            bulk_docs = build_batch_from_template(domain, {"batch" : cur_batch, "base_count" : base_counter, "size" : count})
+            bulk_docs = build_batch_from_template(domain, batch_map, {"batch" : cur_batch, "base_count" : base_counter, "size" : count})
             cnt += 1
             #print(bulk_docs)
             db[domain].insert_many(bulk_docs)
@@ -343,69 +347,63 @@ def worker_load(ipos, args):
     conn.close()
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
-def build_batch_from_template(domain, details = {}):
-    template_file = _details_["job"]["path"]
+def build_batch_from_template(domain, batch_map, details = {}):
     batch_size = settings["batch_size"]
     if "size" in details and details["size"] < batch_size:
         batch_size = details["size"]
-    if "cur_info" in details:
-        cur_info = details["cur_info"]
-    sub_size = 5
     cnt = 0
     records = []
-    islist = False
-    merger = Merger([
-        (dict, "merge"),
-        (list, zipmerge)
-    ], [ "override" ], [ "override" ])
     for J in range(batch_size): # iterate through the bulk insert count
         # A dictionary that will provide consistent, random list lengths
-        counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
-        data = {}
-        with open(template_file) as csvfile:
-            propreader = csv.reader(csvfile)
-            icnt = 0
-            for row in propreader:
-                if icnt == 0:
-                    icnt += 1
-                    continue
-                #print(row)
-                path = row[0].split('.')
-                if ")" in row[0]: #path[-2].endswith('()'):  
-                    islist = True
-                    if "CONTROL" in row[0]:
-                        counts = random.randint(1, int(row[1])) 
-                        icnt += 1
-                        continue
-                else:
-                    islist = False
-                    counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
-                # Digest the csv into segments of field for assembly
-                batch_accounting(path, row[2])
-                icnt += 1
-        if J == 0:
-            print("# ---------------------- Document Map ------------------------ #")
-            pprint.pprint(_details_["batches"])       
-        data = batch_build_doc(domain)
+        data = batch_build_doc(domain, batch_map)
         data["doc_version"] = settings["version"]
         cnt += 1
         records.append(data)
     #bb.logit(f'{batch_size} {cur_coll} batch complete')
     return(records)
 
-def batch_accounting(path, generator):
+def batch_digest_csv(domain):
+    template_file = _details_["job"]["path"]
+    sub_size = 5
+    islist = False
+    last_root = ""
+    batch_list = {}
+    with open(template_file) as csvfile:
+        propreader = csv.reader(csvfile)
+        icnt = 0
+        for row in propreader:
+            if icnt == 0:
+                icnt += 1
+                continue
+            #print(row)
+            path = row[0].split('.')
+            if ")" in row[0]: #path[-2].endswith('()'):  
+                islist = True
+                if "CONTROL" in row[0]:
+                    counts = random.randint(1, int(row[1]))
+                    icnt += 1
+                    continue
+            else:
+                islist = False
+            # Digest the csv into segments of field for assembly
+            batch_accounting(batch_list, path, row[2], last_root)
+            icnt += 1
+        _details_["batches"] = batch_list
+    return(batch_list)
+
+def batch_accounting(batch_doc, path, generator, last_root):
     cur_root = ",".join(path[0:-1])
     action = "append"
     cdoc = {"field" : path[-1], "gen": generator}
-    if _details_["last_root"] != cur_root:
-        if cur_root not in _details_["batches"].keys():
-            _details_["batches"][cur_root] = [cdoc]
+    if last_root != cur_root:
+        if cur_root not in batch_doc.keys():
+            batch_doc[cur_root] = [cdoc]
             action = "new"
     if action == "append":
-        _details_["batches"][cur_root].append(cdoc)
-    _details_["last_root"] = cur_root
+        batch_doc[cur_root].append(cdoc)
+    batch_doc["last_root"] = cur_root
 
-def batch_build_doc(collection):
+def batch_build_doc(collection, batch_map):
     # Start with base fields, go next level n-times
     doc = {}
     last_key = ""
@@ -413,7 +411,7 @@ def batch_build_doc(collection):
     counts = random.randint(1, sub_size)
     is_list = False
     #print(f'C: {collection}')
-    for key, value in _details_["batches"].items():
+    for key, value in batch_map.items():
         parts = key.split(",")
         cur_base = key.replace(last_key, "")
         res = ""
