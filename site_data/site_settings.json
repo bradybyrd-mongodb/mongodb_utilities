@@ -18,27 +18,30 @@
       "database": "buildings",
       "notes": "GCP CloudSQL Database"
     },
-    "version": "2.0",
-    "process_count": 1,
+    "version": "2.1",
+    "process_count": 2,
     "batch_size": 100,
-    "batches": 2,
+    "batches": 3,
     "base_counter": 1000000,
     "portfolios" : 0.01,
     "sites" : 0.1,
     "data": {
       "customer": {
+        "mix_objects" : [],
         "path": "models/customer.csv",
         "multiplier": 0.1,
-        "id_prefix": "L-"
+        "id_prefix": "C-"
       },
       "location": {
+        "mix_objects" : [{"name" : "locale", "val" : "mix.Locale({\"idgen\" : IDGEN})"}],
         "path": "models/location.csv",
         "multiplier": 1,
         "id_prefix": "L-"
       },
       "asset": {
+        "mix_objects" : [{"name" : "asset", "val" : "mix.AssetDetails({\"idgen\" : IDGEN})"}, {"name" : "signal", "val" : "mix.Signal({\"idgen\" : IDGEN})"}],
         "path": "models/asset.csv",
-        "multiplier": 100,
+        "multiplier": 10,
         "id_prefix": "A-"
       }
     },

@@ -281,27 +281,16 @@ def worker_load(ipos, args):
     conn = client_connection()
     bb.message_box(f"[{pid}] Worker Data", "title")
     IDGEN = args["idgen"]
-    settings = bb.read_json(settings_file)
+    #settings = bb.read_json(settings_file)
     batch_size = settings["batch_size"]
     batches = settings["batches"]
     bb.logit('Current process is %s %s' % (cur_process.name, pid))
     start_time = datetime.datetime.now()
-    collection = settings["collection"]
     db = conn[settings["database"]]
-    #seed_data = mix.init_seed_data(conn, IDGEN, settings)
-    #CurInfo = mix.CurItem({"version" : settings["version"], "addr_info" : seed_data["addr_info"], "sites" : seed_data["sites"]})
-    Signal = mix.Signal({"idgen" : IDGEN})
-    Asset = mix.AssetDetails({"idgen" : IDGEN})
-    Locale = mix.Locale({"idgen" : IDGEN})
-    #pprint.pprint(CurInfo.get_item("none", "A-107"))
-    #bb.logit(f'Portfolio: {CurInfo.get_item("portfolio_name")}, len: {len(seed_data["sites"])}')
+    #Signal = mix.Signal({"idgen" : IDGEN})
+    #Asset = mix.AssetDetails({"idgen" : IDGEN})
+    #Locale = mix.Locale({"idgen" : IDGEN})
     bulk_docs = []
-    ts_start = datetime.datetime.now()
-    job_size = batches * batch_size
-    if "size" in ARGS:
-        job_size = int(ARGS["size"])
-    cur_time = ts_start
-    cnt = 0
     tot = 0
     if "template" in args:
         template = args["template"]
@@ -310,30 +299,46 @@ def worker_load(ipos, args):
     else:
         job_info = settings["data"]
     # Loop through collection files
-    pprint.pprint(job_info)
+    #pprint.pprint(job_info)
     for domain in job_info:
-        details = job_info[domain]
-        prefix = details["id_prefix"]
-        multiplier = details["multiplier"]
+        _details_["domain"] = domain
+        _details_["job"] = job_info[domain]
+        _details_["idgen"] = IDGEN
+        prefix = _details_["job"]["id_prefix"]
+        if "size" in _details_["job"] and _details_["job"]["size"] < batch_size:
+            batch_size = _details_["job"]["size"]
+        multiplier = _details_["job"]["multiplier"]
         count = int(batches * batch_size * multiplier)
-        template_file = details["path"]
-        design = csvmod.doc_from_template(template_file, domain)
+        template_file = _details_["job"]["path"]
+        #design = csvmod.doc_from_template(template_file, domain)
         base_counter = settings["base_counter"] + count * ipos
         IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
+        bb.logit(f'[{pid}] - {domain} | IDGEN - ValueHist: {IDGEN.value_history}')
+        _details_["mixin"] = {}
+        for obj in _details_["job"]["mix_objects"]:
+            try:
+                _details_["mixin"][obj["name"]] =  eval(obj["val"])
+            except Exception as e:
+                print(f'ERROR: evalobj: {obj}')
+                print(str(e))
         bb.message_box(f'[{pid}] {domain} - base: {base_counter}', "title")
         tot = 0
         batches = int(count/batch_size)
         if batches == 0:
             batches = 1
-        for k in range(batches):
-            bb.logit(f"[{pid}] - {domain} Loading batch: {k} - size: {batch_size}")
-            bulk_docs = build_batch_from_template(domain, {"connection" : conn, "template" : template_file, "batch" : k, "id_prefix" : prefix, "base_count" : base_counter, "size" : count, "design" : design, "signal": Signal, "asset": Asset, "locale": Locale})
+        for cur_batch in range(batches):
+            #bb.logit(f"[{pid}] - {domain} Loading batch: {cur_batch}")
+            cnt = 0
+            bulk_docs = build_batch_from_template(domain, {"batch" : cur_batch, "base_count" : base_counter, "size" : count})
+            cnt += 1
             #print(bulk_docs)
             db[domain].insert_many(bulk_docs)
-            tot += len(bulk_docs)
+            siz = len(bulk_docs)
+            tot += siz
             bulk_docs = []
             cnt = 0
-            bb.logit(f"[{pid}] - {domain} Loading batch: {k} - size: {batch_size}, Total:{tot}\nIDGEN - ValueHist: {IDGEN.value_history}")
+            #bb.logit(f"[{pid}] - {domain} Batch Complete: {cur_batch} - size: {siz}, Total:{tot}\nIDGEN - ValueHist: {IDGEN.value_history}")
+            bb.logit(f"[{pid}] - {domain} Batch Complete: {cur_batch} - size: {siz}, Total:{tot}")
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
@@ -341,52 +346,9 @@ def worker_load(ipos, args):
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
 
 def build_batch_from_template(cur_coll, details = {}):
+    template_file = _details_["job"]["path"]
     batch_size = settings["batch_size"]
-    if "size" in details and details["size"] < batch_size:
-        batch_size = details["size"]
-    design = details["design"]
-    sub_size = 5
-    cnt = 0
-    records = []
-    #print("# --------------------------- Initial Doc -------------------------------- #")
-    #pprint.pprint(design)
-    #print("# --------------------------- End -------------------------------- #")
-    for J in range(batch_size): # iterate through the bulk insert count
-        # A dictionary that will provide consistent, random list lengths
-        counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
-        data = {}
-        cdesign = copy.deepcopy(design)
-        data = render_design(cdesign, counts, details)
-        data["doc_version"] = settings["version"]
-        cnt += 1
-        records.append(data)
-    bb.logit(f'{batch_size} {cur_coll} batch complete')
-    return(records)
-
-def render_design(design, count, details = {}):
-    # Takes template and evals the gnerators
-    #pprint.pprint(design)
-    Asset = details["asset"]
-    Signal = details["signal"]
-    Locale = details["locale"]
-    for key, val in design.items():
-        if isinstance(val, dict):
-            render_design(val,count, details)
-        elif isinstance(val, list):
-            render_design(val[0],count, details)
-        else:
-            try:
-                design[key] = eval(val)
-            except Exception as e:
-                print(f'ERROR: eval: {val}')
-                print(str(e))
-    return design
-
-def old_build_batch_from_template(cur_coll, details = {}):
-    template_file = details["template"]
-    batch_size = settings["batch_size"]
-    target = "mongo"
-    cur_info = None
+    cur_info = {}
     if "size" in details and details["size"] < batch_size:
         batch_size = details["size"]
     if "cur_info" in details:
@@ -399,7 +361,7 @@ def old_build_batch_from_template(cur_coll, details = {}):
         (dict, "merge"),
         (list, zipmerge)
     ], [ "override" ], [ "override" ])
-    for J in range(0, batch_size): # iterate through the bulk insert count
+    for J in range(batch_size): # iterate through the bulk insert count
         # A dictionary that will provide consistent, random list lengths
         counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
         data = {}
@@ -422,7 +384,7 @@ def old_build_batch_from_template(cur_coll, details = {}):
                     islist = False
                     counts = random.randint(1, sub_size) #defaultdict(lambda: random.randint(1, 5))
                 #print(f"# -- Procpath {path}")
-                partial = procpath_new(path, counts, row[3], cur_info) # Note, later version of files may not include required field
+                partial = docpath(path, counts, row[2], cur_info) # Note, later version of files may not include required field
                 #print(f'{row[0]}-{islist}: {partial}')
                 # Merge partial trees.
                 try:
@@ -450,6 +412,45 @@ def master_from_file(file_name):
 #----------------------------------------------------------------------#
 #   CSV Loader Routines
 #----------------------------------------------------------------------#
+
+def docpath(path, counts, generator, cur_info):
+    """Recursively walk a path, generating a partial tree with just this path's random contents"""
+    mixin = {}
+    if "mixin" in _details_:
+        mixin = _details_["mixin"]
+    stripped = stripProp(path[0])
+    if len(path) == 1:
+        # Base case. Generate a random value by running the Python expression in the text file
+        #bb.logit(generator)
+        if "_SAVE_" in generator:
+            newgen = generator[:generator.find(")") + 1]
+            leftover = generator.replace(newgen,"")
+            cache = eval(newgen)
+            result = { stripped: eval(str(cache) + leftover) }
+        #elif "_CACHE_" in generator:
+        #    cache = cur_info["cache"]
+        #    result = eval(generator.replace("_CACHE_", str(newval)))
+        else:
+            #cur_info["cache"] = newgen
+            result = { stripped: eval(generator) }
+        return result
+    elif path[0].endswith(')'):
+        # Lists are slightly more complex. We generate a list of the length specified in the
+        # counts map. Note that what we pass recursively is _the exact same path_, but we strip
+        # off the ()s, which will cause us to hit the `else` block below on recursion.
+        res = re.findall(r'\(.*\)',path[0])[0]
+        if res == "()":
+            lcnt = counts
+        else:
+            lcnt = int(res.replace("(","").replace(")",""))
+        #print(f"lcnt: {lcnt}")
+        return {            
+            stripped: [ docpath([ path[0].replace(res,"") ] + path[1:], counts, generator, cur_info)[stripped] for X in range(0, lcnt) ]
+        }
+    else:
+        # Return a nested page, of the specified type, populated recursively.
+        return {stripped: docpath(path[1:], counts, generator, cur_info)}
+
 #stripProp = lambda str: re.sub(r'\s+', '', (str[0].lower() + str[1:].strip('()')))
 def stripProp(str):
     ans = str
@@ -466,30 +467,6 @@ def ser(o):
     if isinstance(o, datetime.datetime.date):
         return str(o)
 
-def procpath_new(path, counts, generator, cur_info):
-    """Recursively walk a path, generating a partial tree with just this path's random contents"""
-    stripped = stripProp(path[0])
-    if len(path) == 1:
-        # Base case. Generate a random value by running the Python expression in the text file
-        #bb.logit(generator)
-        return { stripped: eval(generator) }
-    elif path[0].endswith(')'):
-        # Lists are slightly more complex. We generate a list of the length specified in the
-        # counts map. Note that what we pass recursively is _the exact same path_, but we strip
-        # off the ()s, which will cause us to hit the `else` block below on recursion.
-        res = re.findall(r'\(.*\)',path[0])[0]
-        if res == "()":
-            lcnt = counts
-        else:
-            lcnt = int(res.replace("(","").replace(")",""))
-        #print(f"lcnt: {lcnt}")
-        return {            
-            stripped: [ procpath_new([ path[0].replace(res,"") ] + path[1:], counts, generator, cur_info)[stripped] for X in range(0, lcnt) ]
-        }
-    else:
-        # Return a nested page, of the specified type, populated recursively.
-        return {stripped: procpath_new(path[1:], counts, generator, cur_info)}
-
 def ID(key):
     id_map[key] += 1
     return key + str(id_map[key]+base_counter)
@@ -500,7 +477,7 @@ def zipmerge(the_merger, path, base, nxt):
 
 def local_geo():
     coords = fake.local_latlng('US', True)
-    return [coords[1], coords[0]]
+    return [float(coords[1]), float(coords[0])]
 
 #----------------------------------------------------------------------#
 #   Utility Routines
@@ -516,6 +493,110 @@ def bulk_writer(collection, bulk_arr, msg = ""):
         print(note)
     except BulkWriteError as bwe:
         print("An exception occurred ::", bwe.details)
+
+def id_nfix():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    bb.message_box(f"Reset IDs", "title")
+    recs = db.location.find({},{"location_id" : 1, "_id" : 0})
+    lowid = 1000001
+    highid = 1000059
+    for item in recs:
+        print(f'Loc: {item["location_id"]}')
+        db.location.update_one({"location_id" : item["location_id"]},{"$set": {"customer_id" : f'C-{random.randint(lowid,highid)}'}})
+
+def id_mfix():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    bb.message_box(f"Reset IDs", "title")
+    coll = "asset"
+    recs = db[coll].find({},{"asset_id" : 1, "_id" : 0})
+    lowid = 1000001
+    highid = 1000199
+    bulk_updates = []
+    for item in recs:
+        #print(f'Loc: {item["asset_id"]}')
+        bulk_updates.append(
+            UpdateOne({"asset_id" : item["asset_id"]},{"$set": {"location_id" : f'L-{random.randint(lowid,highid)}'}})
+        )
+    bulk_writer(db[coll], bulk_updates, "Stuff")
+
+def id_fix3():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    bb.message_box(f"Reset IDs", "title")
+    coll = "asset"
+    recs = db[coll].find({},{"asset_id" : 1, "_id" : 0})
+    lowid = 1000001
+    highid = 1001999
+    bulk_updates = []
+    icnt = 0
+    for item in recs:
+        #print(f'Loc: {item["asset_id"]}')
+
+        sub_doc = [
+            {"rtype" : "floor", "value": random.randint(1,25)},
+            {"rtype" : "room", "value": f'r{random.randint(100,1500) + random.randint(10,80)}'}
+        ]
+        if icnt % 100 == 0:
+            sub_doc.append({"rtype" : "edge_device", "value": f'A-{random.randint(lowid,highid)}'})
+        
+        bulk_updates.append(
+            UpdateOne({"asset_id" : item["asset_id"]},{"$set": {"parents" : sub_doc}})
+        )
+        icnt += 1
+    bulk_writer(db[coll], bulk_updates, "Stuff")
+
+def id_fix4():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    bb.message_box(f"Reset IDs", "title")
+    coll = "asset"
+    recs = db["location"].find({},{"location_id" : 1, "address.location" : 1, "_id" : 0})
+    lowid = 1000001
+    highid = 1001999
+    bulk_updates = []
+    icnt = 0
+    for item in recs:
+        # add location to asset
+        #unset a random selection of assets
+        # loca
+        #sub_doc = []
+        #if icnt % 100 == 0:
+        #    sub_doc.append({"rtype" : "edge_device", "value": f'A-{random.randint(lowid,highid)}'})
+        
+        bulk_updates.append(
+            UpdateMany({"location_id" : item["location_id"]},{"$set": {"location" : item["address"]["location"]}})
+        )
+        icnt += 1
+    bulk_writer(db[coll], bulk_updates, "Stuff")
+
+def id_fix():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    bb.message_box(f"Reset IDs", "title")
+    coll = "asset"
+    recs = db["asset"].aggregate([{"$sample": {"size": 20}},{"$project": {"asset_id": 1, "_id": 0}}])
+    ids = []
+    for k in recs:
+        ids.append(k["asset_id"])
+    highid = 1001999
+    bulk_updates = []
+    icnt = 0
+    print(ids)
+    results = db[coll].update_many({"asset_id": {"$in": ids}},{"$unset" : {"location_id": ""}})
+    print(f'Found: {results.matched_count}, Updated: {results.modified_count}')
+
+def move_assets():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    location_id = "L-1000087"
+    newlocation_id = "L-1000087"
+    bb.message_box(f"Moving assets to {newlocation_id}", "title")
+    rec = db["location"].find_one({"location_id" : newlocation_id},{"location_id" : 1, "address.location" : 1, "_id" : 0})
+    coll = "asset"
+    db[coll].udpate_many({"location_id" : location_id},{"$set": {"location_id" : newlocation_id, "location" : rec["address"]["location"]}})
+
 
 def load_query():
     # read settings and echo back
@@ -579,6 +660,7 @@ if __name__ == "__main__":
     bb = Util()
     ARGS = bb.process_args(sys.argv)
     settings = bb.read_json(settings_file)
+    _details_ = {}
     base_counter = settings["base_counter"]
     IDGEN = Id_generator({"seed" : base_counter})
     id_map = defaultdict(int)
@@ -595,6 +677,8 @@ if __name__ == "__main__":
         load_template()
     elif ARGS["action"] == "load_data":
         synth_data_load()
+    elif ARGS["action"] == "fix_data":
+        id_fix()
     elif ARGS["action"] == "query":
         run_query()
     else:

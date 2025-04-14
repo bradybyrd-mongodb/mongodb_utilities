@@ -33,7 +33,7 @@ Asset:
         make: "Carrier",
         model: "32.1011",
         in_service_date: 2016,
-        parents: [
+        details: [
             {dtype: "Floor", value: "22"},
             {dtype: "Room", value: "B-2011"},
             {dtype: "Edge-device", value: "A-34665"}
@@ -67,7 +67,7 @@ Location:
         }
     }
 find everything in a building:
-    db.assets.find({"location.building" : <building_id>})
+    db.asset.find({"location_id" : <location_id>})
 find everything on a floor in a building:
     db.assets.find({"location.tags" : {$elemMatch: {name: "floor", value: "22"}}})
 new assets:
@@ -91,3 +91,88 @@ change to location of a group of assets:
     db.assets.updateMany({"location.building_id: "B-596876", deviceType: "mini_split", "location.tags": {$elemMatch: {name: "floor", value: "22"}}},{
         $set: {building_id: <new_building>, location: <new_location>}
     })
+
+
+[
+  {
+    $group:
+      /**
+       * _id: The id of the group.
+       * fieldN: The first field name.
+       */
+      {
+        _id: "customer_id",
+        cust: {
+          $first: "$customer_id"
+        },
+        cnt: {
+          $sum: 1
+        }
+      }
+  }
+]
+
+
+find everything in a building:
+    db.asset.find({"location_id" : "L-1000006"})
+find everything on a floor in a building:
+    db.asset.find({"location_id" : "L-1000106", "parents" : {$elemMatch: {rtype: "floor", value: 4}}})
+new assets:
+    db.asset.find({in_service_date: {$gte: now() - 24.hrs}})
+unassigned assets:
+    db.asset.find({"location_id" : {$exists: false}})
+location of an asset:
+    db.asset.aggregate([
+        {$match: {asset_id: "A-1000576"}},
+        {$lookup: {
+            from: "location"
+
+        }}
+    ]
+    )
+within 10 miles of x:
+    db.assets.find({"location.coordinates" : {
+            $near: {
+                $geometry: {
+                    type: "Point" ,
+                    coordinates: [ <longitude> , <latitude> ]
+                },
+                $maxDistance: 16000} (meters)
+            }
+        })
+
+
+[
+  {
+    $match:
+      {
+        asset_id: "A-1000576"
+      }
+  },
+  {
+    $lookup:
+      {
+        from: "location",
+        localField: "location_id",
+        foreignField: "location_id",
+        as: "building"
+      }
+  },
+  {
+    $unwind:
+      {
+        path: "$building"
+      }
+  },
+  {
+    $project:
+     {
+        asset_id: 1,
+        name: 1,
+        in_service_at: 1,
+        customer_id: 1,
+        location_id: 1,
+        address: "$building.address"
+      }
+  }
+]

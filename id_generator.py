@@ -1,4 +1,5 @@
 import random
+import datetime
 
 #  BJB 5/19/22
 #  Simple class to track ids for multiple modules
@@ -28,6 +29,8 @@ class Id_generator:
         return(seed)
 
     def random_value(self, prefix, base = 1000, top = 1000000):
+        cur = datetime.datetime.now()
+        random.seed(int(cur.microsecond * .00001))
         if prefix in self.value_history:
             base = self.value_history[prefix]["base"]
             top = self.value_history[prefix]["base"] + self.value_history[prefix]["size"]

@@ -8,7 +8,8 @@ Location.details.constructed_on,Date,"fake.past_datetime()"
 Location.details.size_sqft,double,"fake.random_int(min=10000, max=200000)"
 Location.modified_at,Date,"datetime.datetime.now()"
 Location.modified_by,String,"""Brady"""
-Location.parents,String,"Locale.get_items()"
+Location.parents().rtype,String,"mixin[""locale""].get_items(""new"")[""rtype""]"
+Location.parents().value,String,"mixin[""locale""].get_items(""x"")[""value""]"
 Location.address.name,String,"fake.random_element(('Main', 'HQ', 'Satellite'))"
 Location.address.addressLine1,String,fake.street_address()
 Location.address.addressLine2,String,fake.secondary_address()
@@ -18,4 +19,4 @@ Location.address.postalCode,String,fake.postcode()
 Location.address.country,String,"""US"""
 Location.address.effectiveDate,date,fake.past_datetime()
 Location.address.location.type,string,"""Point"""
-Location.address.location.coordinates,String,"local_geo()"
+Location.address.location.coordinates,double,"local_geo()"
