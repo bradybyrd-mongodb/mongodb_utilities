@@ -277,10 +277,19 @@ def synth_data_load():
 def worker_load(ipos, args):
     #  Called for each separate process
     cur_process = multiprocessing.current_process()
+    random.seed()
     pid = cur_process.pid
     conn = client_connection()
     bb.message_box(f"[{pid}] Worker Data", "title")
-    IDGEN = args["idgen"]
+    _details_["domain"] = "not-yet"
+    _details_["job"] = {}
+    _details_["id_generator"] = {}
+    _details_["last_root"] = ""
+    _details_["batching"] =  False
+    _details_["mixin"] = {}
+    _details_["batches"] = {}
+        
+    #IDGEN = args["idgen"]
     batch_size = settings["batch_size"]
     batches = settings["batches"]
     bb.logit('Current process is %s %s' % (cur_process.name, pid))
@@ -299,10 +308,6 @@ def worker_load(ipos, args):
     for domain in job_info:
         _details_["domain"] = domain
         _details_["job"] = job_info[domain]
-        _details_["idgen"] = IDGEN
-        _details_["last_root"] = ""
-        _details_["batching"] =  False
-        _details_["mixin"] = {}
         _details_["batches"] = {}
         prefix = _details_["job"]["id_prefix"]
         if "size" in _details_["job"] and _details_["job"]["size"] < batch_size:
@@ -310,9 +315,9 @@ def worker_load(ipos, args):
         multiplier = _details_["job"]["multiplier"]
         count = int(batches * batch_size * multiplier)
         base_counter = settings["base_counter"] + count * ipos
-        IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
-        bb.logit(f'[{pid}] - {domain} | IDGEN - ValueHist: {IDGEN.value_history}')
-        _details_["mixin"] = {}
+        id_generator("init", prefix, {"base": settings["base_counter"], "size": count, "cur_base": base_counter, "next" : base_counter})
+        #IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
+        bb.logit(f'[{pid}] - {domain} | IDGEN - ValueHist: {_details_["id_generator"]}')
         for obj in _details_["job"]["mix_objects"]:
             try:
                 _details_["mixin"][obj["name"]] =  eval(obj["val"])
@@ -362,6 +367,9 @@ def build_batch_from_template(domain, batch_map, details = {}):
     #bb.logit(f'{batch_size} {cur_coll} batch complete')
     return(records)
 
+#----------------------------------------------------------------------#
+#   CSV Loader Routines
+#----------------------------------------------------------------------#
 def batch_digest_csv(domain):
     template_file = _details_["job"]["path"]
     sub_size = 5
@@ -513,100 +521,71 @@ def master_from_file(file_name):
     return file_name.split("/")[-1].split(".")[0]
 
 #----------------------------------------------------------------------#
-#   CSV Loader Routines
+#   Data Helpers
 #----------------------------------------------------------------------#
-
-def docpath(path, counts, generator, cur_info):
-    """Recursively walk a path, generating a partial tree with just this path's random contents"""
-    mixin = {}
-    if "mixin" in _details_:
-        mixin = _details_["mixin"]
-    stripped = stripProp(path[0])
-    if len(path) == 1:
-        # Base case. Generate a random value by running the Python expression in the text file
-        #bb.logit(generator)
-        if "_SAVE_" in generator:
-            newgen = generator[:generator.find(")") + 1]
-            leftover = generator.replace(newgen,"")
-            cache = eval(newgen)
-            result = { stripped: eval(str(cache) + leftover) }
-        #elif "_CACHE_" in generator:
-        #    cache = cur_info["cache"]
-        #    result = eval(generator.replace("_CACHE_", str(newval)))
-        else:
-            #cur_info["cache"] = newgen
-            result = { stripped: eval(generator) }
-        return result
-    elif path[0].endswith(')'):
-        # Lists are slightly more complex. We generate a list of the length specified in the
-        # counts map. Note that what we pass recursively is _the exact same path_, but we strip
-        # off the ()s, which will cause us to hit the `else` block below on recursion.
-        res = re.findall(r'\(.*\)',path[0])[0]
-        if res == "()":
-            lcnt = counts
-        else:
-            lcnt = int(res.replace("(","").replace(")",""))
-        #print(f"lcnt: {lcnt}")
-        return {            
-            stripped: [ docpath([ path[0].replace(res,"") ] + path[1:], counts, generator, cur_info)[stripped] for X in range(0, lcnt) ]
-        }
-    else:
-        # Return a nested page, of the specified type, populated recursively.
-        return {stripped: docpath(path[1:], counts, generator, cur_info)}
-
-#stripProp = lambda str: re.sub(r'\s+', '', (str[0].lower() + str[1:].strip('()')))
-def stripProp(str):
-    ans = str
-    if str[0].isupper() and str[1].islower():
-        ans = str[0].lower() + str[1:]
-    if str.endswith(")"):
-        stg = re.findall(r'\(.*\)',ans)[0]
-        ans = ans.replace(stg,"")
-    ans = re.sub(r'\s+', '', ans)
-    return ans
-
-def ser(o):
-    """Customize serialization of types that are not JSON native"""
-    if isinstance(o, datetime.datetime.date):
-        return str(o)
-
-def ID(key):
-    id_map[key] += 1
-    return key + str(id_map[key]+base_counter)
-
-def zipmerge(the_merger, path, base, nxt):
-    """Strategy for deepmerge that will zip merge two lists. Assumes lists of equal length."""
-    return [ the_merger.merge(base[i], nxt[i]) for i in range(0, len(base)) ]
-
 def local_geo():
     coords = fake.local_latlng('US', True)
     return [float(coords[1]), float(coords[0])]
 
-#----------------------------------------------------------------------#
-#   Utility Routines
-#----------------------------------------------------------------------#
-def bulk_writer(collection, bulk_arr, msg = ""):
-    try:
-        result = collection.bulk_write(bulk_arr, ordered=False)
-        ## result = db.test.bulk_write(bulkArr, ordered=False)
-        # Opt for above if you want to proceed on all dictionaries to be updated, even though an error occured in between for one dict
-        #pprint.pprint(result.bulk_api_result)
-        note = f'BulkWrite - mod: {result.bulk_api_result["nModified"]} {msg}'
-        #file_log(note,locker,hfile)
-        print(note)
-    except BulkWriteError as bwe:
-        print("An exception occurred ::", bwe.details)
+def id_generator(action, prefix, details = {}):
+    result = "none"
+    if action != "init" and prefix not in _details_["id_generator"]:
+        _details_["id_generator"][prefix] = {"base": 1000000, "size": 1000000, "cur_base": 1000000, "next" : 1000000}
+    
+    if action == "init":
+        _details_["id_generator"][prefix] = {"base": details["base"], "size": details["size"], "cur_base": details["cur_base"], "next" : details["cur_base"]}
+    elif action == "next":
+         result =  f'{prefix}{_details_["id_generator"][prefix]["next"]}'
+         _details_["id_generator"][prefix]["next"] += 1
+    elif action == "batch":
+        result =  _details_["id_generator"][prefix]["base"] + details["batch_size"]
+        _details_["id_generator"][prefix]["next"] += details["batch_size"]
+    elif action == "random":
+        low = _details_["id_generator"][prefix]["cur_base"]
+        high = _details_["id_generator"][prefix]["cur_base"] + _details_["id_generator"][prefix]["size"]
+        result = f'{prefix}{fake.random_int(min=low,max=high)}'
+    return result
 
-def id_nfix():
+def data_fixes():
+    cust_ids()
+
+def tester():
+    _details_["id_generator"] = {}
+    id_generator("init", "C-", {"base": 1000, "size": 100, "cur_base": 1000, "next" : 1000})
+    bb.logit(f'IDGEN - ValueHist: {_details_["id_generator"]}')
+    for inc in range(30):
+        print(id_generator("random","C-"))
+        
+def cust_ids():
+    # After loading, location_id, should align with customer_id in Asset and Location
     conn = client_connection()
     db = conn[settings["database"]]
-    bb.message_box(f"Reset IDs", "title")
-    recs = db.location.find({},{"location_id" : 1, "_id" : 0})
+    bb.message_box(f"Reset Location/Customer IDs", "title")
+    recs = db.location.find({},{"location_id" : 1, "customer_id": 1, "address.location.coordinates": 1, "_id" : 0})
     lowid = 1000001
     highid = 1000059
+    highlocid = 1000199
+    bulk_updates = []
+    loc_ids = []
     for item in recs:
+        loc_ids.append([item["location_id"],item["customer_id"], item["address.location.coordinates"]])
         print(f'Loc: {item["location_id"]}')
         db.location.update_one({"location_id" : item["location_id"]},{"$set": {"customer_id" : f'C-{random.randint(lowid,highid)}'}})
+    bb.message_box(f"Reset Asset/Location IDs", "title")
+    icnt = 0
+    while icnt < 2000:
+        psize = random.randint(4,40)
+        pipe = [{"$sample": {"size" : psize}},{"$project":{"asset_id": 1, "_id": 0}}]
+        recs = db.asset.aggregate(pipe)
+        ids = []
+        for k in recs:
+            ids.append(k["asset_id"])
+        print(f'Sample - {psize}')
+        pick = random.randint(lowid,highlocid)
+        for item in recs:
+            db.asset.update_many({"asset_id" : {"$in" : ids}},{"$set": {"location_id" : loc_ids[pick][0], "customer_id" : loc_ids[pick][1], "location.address.coordinates" : loc_ids[pick][2]}})
+        icnt += psize
+    conn.close()
 
 def id_mfix():
     conn = client_connection()
@@ -624,7 +603,7 @@ def id_mfix():
         )
     bulk_writer(db[coll], bulk_updates, "Stuff")
 
-def id_fix3():
+def add_parents_to_asset():
     conn = client_connection()
     db = conn[settings["database"]]
     bb.message_box(f"Reset IDs", "title")
@@ -650,7 +629,7 @@ def id_fix3():
         icnt += 1
     bulk_writer(db[coll], bulk_updates, "Stuff")
 
-def id_fix4():
+def add_geo_to_asset():
     conn = client_connection()
     db = conn[settings["database"]]
     bb.message_box(f"Reset IDs", "title")
@@ -661,20 +640,13 @@ def id_fix4():
     bulk_updates = []
     icnt = 0
     for item in recs:
-        # add location to asset
-        #unset a random selection of assets
-        # loca
-        #sub_doc = []
-        #if icnt % 100 == 0:
-        #    sub_doc.append({"rtype" : "edge_device", "value": f'A-{random.randint(lowid,highid)}'})
-        
         bulk_updates.append(
             UpdateMany({"location_id" : item["location_id"]},{"$set": {"location" : item["address"]["location"]}})
         )
         icnt += 1
     bulk_writer(db[coll], bulk_updates, "Stuff")
 
-def id_fix():
+def unattached_assets():
     conn = client_connection()
     db = conn[settings["database"]]
     bb.message_box(f"Reset IDs", "title")
@@ -689,8 +661,10 @@ def id_fix():
     print(ids)
     results = db[coll].update_many({"asset_id": {"$in": ids}},{"$unset" : {"location_id": ""}})
     print(f'Found: {results.matched_count}, Updated: {results.modified_count}')
+    conn.close()
 
 def move_assets():
+    # Example to move assets to a new location
     conn = client_connection()
     db = conn[settings["database"]]
     location_id = "L-1000087"
@@ -699,7 +673,22 @@ def move_assets():
     rec = db["location"].find_one({"location_id" : newlocation_id},{"location_id" : 1, "address.location" : 1, "_id" : 0})
     coll = "asset"
     db[coll].udpate_many({"location_id" : location_id},{"$set": {"location_id" : newlocation_id, "location" : rec["address"]["location"]}})
+    conn.close()
 
+#----------------------------------------------------------------------#
+#   Utility Routines
+#----------------------------------------------------------------------#
+def bulk_writer(collection, bulk_arr, msg = ""):
+    try:
+        result = collection.bulk_write(bulk_arr, ordered=False)
+        ## result = db.test.bulk_write(bulkArr, ordered=False)
+        # Opt for above if you want to proceed on all dictionaries to be updated, even though an error occured in between for one dict
+        #pprint.pprint(result.bulk_api_result)
+        note = f'BulkWrite - mod: {result.bulk_api_result["nModified"]} {msg}'
+        #file_log(note,locker,hfile)
+        print(note)
+    except BulkWriteError as bwe:
+        print("An exception occurred ::", bwe.details)
 
 def load_query():
     # read settings and echo back
@@ -781,7 +770,9 @@ if __name__ == "__main__":
     elif ARGS["action"] == "load_data":
         synth_data_load()
     elif ARGS["action"] == "fix_data":
-        id_fix()
+        data_fixes()
+    elif ARGS["action"] == "tester":
+        tester()
     elif ARGS["action"] == "query":
         run_query()
     else:

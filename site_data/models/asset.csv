@@ -1,8 +1,8 @@
 Resource.Property,Property Type,Generator
-Asset.asset_id,String,"IDGEN.get(""A-"")"
+Asset.asset_id,String,"id_generator(""next"",""A-"")"
 Asset.name,String,"fake.bs()"
-Asset.customer_id,String,"IDGEN.random_value(""C-"")"
-Asset.location_id,String,"IDGEN.random_value(""L-"")"
+Asset.customer_id,String,"id_generator(""random"",""C-"")"
+Asset.location_id,String,"id_generator(""random"",""L-"")"
 Asset.make,String,"""Carrier"""
 Asset.model,String,"""30.3021"""
 Asset.in_service_at,Date,"fake.past_datetime()"

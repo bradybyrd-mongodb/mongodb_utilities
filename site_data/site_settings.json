@@ -18,7 +18,7 @@
       "database": "buildings",
       "notes": "GCP CloudSQL Database"
     },
-    "version": "2.1",
+    "version": "2.4",
     "process_count": 2,
     "batch_size": 100,
     "batches": 3,

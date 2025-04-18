@@ -1,7 +1,7 @@
 Resource.Property,Property Type,Generator
-Location.location_id,String,"IDGEN.get(""L-"")"
+Location.location_id,String,"id_generator(""next"",""L-"")"
 Location.name,String,"fake.company()"
-Location.customer_id,String,"IDGEN.random_value(""C-"")"
+Location.customer_id,String,"id_generator(""random"",""C-"")"
 Location.location_type,String,"fake.random_element(('Building'))"
 Location.details.floor_cnt,double,"fake.random_int(min=1, max=44)"
 Location.details.constructed_on,Date,"fake.past_datetime()"

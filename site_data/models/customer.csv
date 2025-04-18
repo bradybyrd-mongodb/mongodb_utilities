@@ -1,5 +1,5 @@
 Resource.Property,Property Type,Generator
-Customer.customer_id,String,"IDGEN.get(""C-"")"
+Customer.customer_id,String,"id_generator(""next"",""C-"")"
 Customer.name,String,"fake.company()"
 Customer.modified_at,Date,"datetime.datetime.now()"
 Customer.modified_by,String,"""Brady"""
@@ -13,5 +13,5 @@ Customer.address.country,String,"""US"""
 Customer.address.effectiveDate,date,fake.past_datetime()
 Customer.address.location.type,string,"""Point"""
 Customer.address.location.coordinates,String,"local_geo()"
-Customer.sites().site_id,String,"IDGEN.get(""S-"")"
+Customer.sites().site_id,String,"id_generator(""next"",""S-"")"
 Customer.sites().site_name,String,"fake.company()"

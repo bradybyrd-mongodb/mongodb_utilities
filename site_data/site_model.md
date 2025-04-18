@@ -3,8 +3,8 @@
 # -------------------------------------------------------- #
 # 4/2/25
 
-New assumption:
-    Buildings have 1000's assets
+Assumptions:
+    Customers have locations which may be part of sites
     Assets may have multiple owners
 
 Test Cases:
@@ -17,8 +17,10 @@ Test Cases:
 Scale:
     Assets - 10M
     Sites - 1 per building, 5% have more buildings
+    Customers have <1000 locations (usually < 100)
+    Buildings have 1000's assets
     Locations 1000s, floors x1-, rooms x100
-    Customers - 1000s
+    Customers - 100s
 
 
 Asset:
@@ -119,6 +121,8 @@ find everything on a floor in a building:
     db.asset.find({"location_id" : "L-1000106", "parents" : {$elemMatch: {rtype: "floor", value: 4}}})
 new assets:
     db.asset.find({in_service_date: {$gte: now() - 24.hrs}})
+move assset to another building:
+    db.asset.updateMany({"location_id" : location_id},{"$set": {"location_id" : newlocation_id, "location" : rec["address"]["location"]}}))
 unassigned assets:
     db.asset.find({"location_id" : {$exists: false}})
 location of an asset:
@@ -130,18 +134,31 @@ location of an asset:
         }}
     ]
     )
-within 10 miles of x:
-    db.assets.find({"location.coordinates" : {
+
+39.00622, -76.72803
+within 100 miles of x:
+    db.asset.find({"location.coordinates" : {
             $near: {
                 $geometry: {
                     type: "Point" ,
-                    coordinates: [ <longitude> , <latitude> ]
+                    coordinates: [ -76.72803 , 39.00622 ]
                 },
-                $maxDistance: 16000} (meters)
+                $maxDistance: 160000} (meters)
             }
         })
 
+geopipe = [
+    {$geoNear : {
+        near: { type: 'Point', coordinates: [ -76.72803, 39.00622 ] },
+        distanceField: 'distance',
+        maxDistance: 160000
+    }},
+    {$project: {
+        asset_id: 1, name: 1, distance: 1, _id: 0
+    }}
+]
 
+location of an asset:
 [
   {
     $match:
@@ -176,3 +193,19 @@ within 10 miles of x:
       }
   }
 ]
+
+
+proc1
+proc_num = 0
+base = base + (batch_size * batch_count * procnum)
+top =  base + (batch_size * batch_count * procnum + 1)
+
+proc2
+proc_num = 1
+base = base + (batch_size * batch_count * procnum)
+top =  base + (batch_size * batch_count * procnum + 1)
+
+proc3
+proc_num = 2
+base = base + (batch_size * batch_count * procnum)
+top =  base + (batch_size * batch_count * procnum + 1)
