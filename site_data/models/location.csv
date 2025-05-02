@@ -1,5 +1,5 @@
 Resource.Property,Property Type,Generator
-Location.location_id,String,"id_generator(""next"",""L-"")"
+Location._id,String,"id_generator(""next"",""L-"")"
 Location.name,String,"fake.company()"
 Location.customer_id,String,"id_generator(""random"",""C-"")"
 Location.location_type,String,"fake.random_element(('Building'))"

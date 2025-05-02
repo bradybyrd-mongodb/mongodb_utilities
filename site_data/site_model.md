@@ -116,18 +116,18 @@ change to location of a group of assets:
 
 
 find everything in a building:
-    db.asset.find({"location_id" : "L-1000006"})
+    db.asset.find({"location_id" : "L-2000006"})
 find everything on a floor in a building:
-    db.asset.find({"location_id" : "L-1000106", "parents" : {$elemMatch: {rtype: "floor", value: 4}}})
+    db.asset.find({"location_id" : "L-2000123", "parents" : {$elemMatch: {rtype: "floor", value: 4}}},{name: 1,asset_id: 1,"parents.rtype":1,"parents.value":1 })
 new assets:
-    db.asset.find({in_service_date: {$gte: now() - 24.hrs}})
+    db.asset.find({in_service_at: {$gt:new Date(Date.now() - 24*60*60 * 1000)}})
 move assset to another building:
     db.asset.updateMany({"location_id" : location_id},{"$set": {"location_id" : newlocation_id, "location" : rec["address"]["location"]}}))
 unassigned assets:
     db.asset.find({"location_id" : {$exists: false}})
 location of an asset:
     db.asset.aggregate([
-        {$match: {asset_id: "A-1000576"}},
+        {$match: {_id: "A-2000576"}},
         {$lookup: {
             from: "location"
 
@@ -149,7 +149,7 @@ within 100 miles of x:
 
 geopipe = [
     {$geoNear : {
-        near: { type: 'Point', coordinates: [ -76.72803, 39.00622 ] },
+        near: { type: 'Point', coordinates: [ -32.9156, -117.14392 ] },
         distanceField: 'distance',
         maxDistance: 160000
     }},
@@ -157,6 +157,7 @@ geopipe = [
         asset_id: 1, name: 1, distance: 1, _id: 0
     }}
 ]
+db.asset.aggregate(geopipe)
 
 location of an asset:
 [

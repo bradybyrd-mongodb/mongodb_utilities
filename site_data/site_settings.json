@@ -18,13 +18,11 @@
       "database": "buildings",
       "notes": "GCP CloudSQL Database"
     },
-    "version": "2.4",
+    "version": "2.5",
     "process_count": 2,
-    "batch_size": 100,
+    "batch_size": 1000,
     "batches": 3,
-    "base_counter": 1000000,
-    "portfolios" : 0.01,
-    "sites" : 0.1,
+    "base_counter": 2000000,
     "data": {
       "customer": {
         "mix_objects" : [],
@@ -41,7 +39,7 @@
       "asset": {
         "mix_objects" : [{"name" : "asset", "val" : "mix.AssetDetails({\"idgen\" : IDGEN})"}, {"name" : "signal", "val" : "mix.Signal({\"idgen\" : IDGEN})"}],
         "path": "models/asset.csv",
-        "multiplier": 10,
+        "multiplier": 100,
         "id_prefix": "A-"
       }
     },
@@ -58,6 +56,7 @@
         "id_prefix": "M-"
       }
     },
+    "vendors": ["AAON", "Addison HVAC", "Allied Commercial", "Amana", "American Standard", "Bosch Thermotechnology", "Bryant", "CaptiveAire", "Carrier", "Coleman", "Daikin", "Edpac", "EMI", "Frigidaire", "Lennox", "LG ", "Lux", "Mitsubishi", "Nortek", "Rheem", "Seeley", "Siemens", "SPX", "Vulcan", "VALCO", "Control Web", "Whitman", "VELP", "Zeitler", "Mettler", "Tokin", "Xytronics", "Viega", "TempCo", "Veris"],
     "device_types" : {
         "chiller" : { "avg" : 55, "unit" : "degrees"},
         "air_handler" : {"avg" : 230, "unit" : "cfm"},

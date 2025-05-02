@@ -1,5 +1,5 @@
 Resource.Property,Property Type,Generator
-Customer.customer_id,String,"id_generator(""next"",""C-"")"
+Customer._id,String,"id_generator(""next"",""C-"")"
 Customer.name,String,"fake.company()"
 Customer.modified_at,Date,"datetime.datetime.now()"
 Customer.modified_by,String,"""Brady"""

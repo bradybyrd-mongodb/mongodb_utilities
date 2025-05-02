@@ -309,12 +309,13 @@ def worker_load(ipos, args):
         _details_["domain"] = domain
         _details_["job"] = job_info[domain]
         _details_["batches"] = {}
+        batch_size = settings["batch_size"]
         prefix = _details_["job"]["id_prefix"]
         if "size" in _details_["job"] and _details_["job"]["size"] < batch_size:
             batch_size = _details_["job"]["size"]
         multiplier = _details_["job"]["multiplier"]
         count = int(batches * batch_size * multiplier)
-        base_counter = settings["base_counter"] + count * ipos
+        base_counter = settings["base_counter"] + count * ipos + 1
         id_generator("init", prefix, {"base": settings["base_counter"], "size": count, "cur_base": base_counter, "next" : base_counter})
         #IDGEN.set({"seed" : base_counter, "size" : count, "prefix" : prefix})
         bb.logit(f'[{pid}] - {domain} | IDGEN - ValueHist: {_details_["id_generator"]}')
@@ -327,6 +328,8 @@ def worker_load(ipos, args):
         bb.message_box(f'[{pid}] {domain} - base: {base_counter}', "title")
         tot = 0
         batches = int(count/batch_size)
+        if count < batch_size:
+            batch_size = count
         batch_map = batch_digest_csv(domain)
         print("# ---------------------- Document Map ------------------------ #")
         pprint.pprint(batch_map) 
@@ -336,10 +339,12 @@ def worker_load(ipos, args):
         for cur_batch in range(batches):
             bb.logit(f"[{pid}] - {domain} Loading batch: {cur_batch}, {batch_size} records")
             cnt = 0
-            bulk_docs = build_batch_from_template(domain, batch_map, {"batch" : cur_batch, "base_count" : base_counter, "size" : count})
+            bulk_docs = build_batch_from_template(domain, batch_map, {"batch" : cur_batch, "base_count" : base_counter, "size" : batch_size})
             cnt += 1
             #print(bulk_docs)
             db[domain].insert_many(bulk_docs)
+            #cur_ids = list(map(get_id, bulk_docs))
+            #print(f'[{pid}] - CurIDs: {pprint.pformat(cur_ids)}')
             siz = len(bulk_docs)
             tot += siz
             bulk_docs = []
@@ -351,6 +356,9 @@ def worker_load(ipos, args):
     execution_time = time_diff.total_seconds()
     conn.close()
     bb.logit(f"{cur_process.name} - Bulk Load took {execution_time} seconds")
+
+def get_id(doc):
+    return doc["_id"]
 
 def build_batch_from_template(domain, batch_map, details = {}):
     batch_size = settings["batch_size"]
@@ -547,7 +555,8 @@ def id_generator(action, prefix, details = {}):
     return result
 
 def data_fixes():
-    cust_ids()
+    #cust_ids()
+    unattached_assets()
 
 def tester():
     _details_["id_generator"] = {}
@@ -651,15 +660,15 @@ def unattached_assets():
     db = conn[settings["database"]]
     bb.message_box(f"Reset IDs", "title")
     coll = "asset"
-    recs = db["asset"].aggregate([{"$sample": {"size": 20}},{"$project": {"asset_id": 1, "_id": 0}}])
+    recs = db["asset"].aggregate([{"$sample": {"size": 100}},{"$project": {"_id": 1}}])
     ids = []
     for k in recs:
-        ids.append(k["asset_id"])
+        ids.append(k["_id"])
     highid = 1001999
     bulk_updates = []
     icnt = 0
     print(ids)
-    results = db[coll].update_many({"asset_id": {"$in": ids}},{"$unset" : {"location_id": ""}})
+    results = db[coll].update_many({"_id": {"$in": ids}},{"$unset" : {"location_id": ""}})
     print(f'Found: {results.matched_count}, Updated: {results.modified_count}')
     conn.close()
 
