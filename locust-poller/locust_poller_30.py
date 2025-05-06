@@ -70,8 +70,8 @@ _VERSION = None
 
 # docs to insert per batch insert
 _SETTINGS = {
-    "uri": "mongodb+srv://main_admin:bugsyBoo%21@iot-ingest.p3wh3.mongodb.net",
-    "uri_check": "mongodb+srv://main_admin:bugsyBoo%21@claims-demo.vmwqj.mongodb.net",
+    "uri": "mongodb+srv://main_admin:<secret>@iot-ingest.p3wh3.mongodb.net",
+    "uri_check": "mongodb+srv://main_admin:<secret>@claims-demo.vmwqj.mongodb.net",
     "database": "building_monitor",
     "collection": "sh_readings",
     "base_id" : 1000000,
