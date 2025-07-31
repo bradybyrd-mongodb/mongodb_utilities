@@ -169,3 +169,20 @@ class Util:
         message = base64_bytes.decode('utf-8')
         #return(f'{message[::-1]}{self.cypher}')
         return(message)
+    
+    def timer(self, starttime,cnt = 1, ttype = "sub"):
+        elapsed = datetime.datetime.now() - starttime
+        secs = elapsed.seconds
+        msecs = elapsed.microseconds
+        #print(f'Elapsed: {secs} seconds, {msecs} microseconds')
+        if secs == 0:
+            elapsed = msecs * .001
+            unit = "ms"
+        else:
+            elapsed = secs + (msecs * .000001)
+            unit = "s"
+        if ttype == "sub":
+            self.logit(f"query ({cnt} recs) took: {'{:.3f}'.format(elapsed)} {unit}")
+        else:
+            print(f"# --- Complete: query took: {'{:.3f}'.format(elapsed)} {unit} ---- #")
+            print(f"#   {cnt} items {'{:.3f}'.format((elapsed)/cnt)} {unit} avg")

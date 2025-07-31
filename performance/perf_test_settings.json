@@ -3,28 +3,43 @@
     "batch_size" : 10,
     "batches" : 100,
     "base_counter" : 100000,
-    "sample_time" : 60,
+    "sample_time" : 2,
+    "queries" : {
+        "simple_find" : {"coll" : "member", "type" : "find", "query": {"member_id" : "M-2002407"}},
+        "agg_w_sort" : {"coll" : "member", "type" : "agg", "query": [
+            {"$match": {"lastName" : "Ho.*"}},
+            {"$group": {
+                "_id" : "lastName",
+                "avg" : {"$avg" : "$age"},
+                "cnt" : {"$sum" : 1}
+            }}
+        ]},
+        "increment_find" : {"coll" : "member", "type" : "find_increment", "query": {"member_id" : "XXXXX"}, "value_field": "member_id", "values" : [
+            "M-2000007","M-2000027","M-2000017","M-2000011","M-2000077","M-2000088","M-2001007","M-2002407","M-2000503","M-2001905"
+        ]}
+    },
     "logger" : {
-        "noturi" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
-        "uri" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
+        "ouri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+        "oouri" : "mongodb+srv://8-native.vmwqj.mongodb.net",
+        "uri" : "mongodb://localhost:27017",
+        "collection": "query",
         "username" : "main_admin",
         "password" : "<secret>",
-        "key" : "bWFpbl9hZG1pbjpidWdzeUJvbw==",
         "database" :  "monitorstats"
     },
     "source" : {
-        "host" : "mongodb+srv://core-uat.z0a5n.mongodb.net",
-        "shuri" : "mongodb+srv://commsharded.mhsdb.mongodb.net",
-        "uri" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
-        "username" : "main_admin",
-        "password" : "<secret>",
-        "odatabase" : "foodie",
-        "database" :  "commtracker"
-    },
-    "noturi" : "mongodb+srv://migratedemo2.vmwqj.mongodb.net",
-    "uri" : "mongodb+srv://m10basicagain.vmwqj.mongodb.net",
+        "ouri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+        "oouri" : "mongodb+srv://8-native.vmwqj.mongodb.net",
+        "uri" : "mongodb://localhost:27017",
         "database" : "healthcare",
-    "collection" : "updater_temp",
-    "username" : "main_admin",
-    "password" : "<secret>"
+        "collection": "member",
+        "username" : "main_admin",
+        "password" : "<secret>"
+    },
+    "ouri" : "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+    "zuri" : "mongodb+srv://8-native.vmwqj.mongodb.net",
+    "zdatabase" : "healthcare",
+    "zcollection" : "updater_temp",
+    "zusername" : "main_admin",
+    "zpassword" : "<secret>"
 }

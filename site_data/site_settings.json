@@ -1,13 +1,11 @@
 {
-    "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
-    "database": "site_inventory",
-    "collection": "building_new",
-    "username": "main_admin",
-    "password": "<secret>",
+    "ouri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
+    "odatabase": "site_inventory",
+    "ocollection": "building_new",
     "mongodb": {
-      "uri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
-      "database": "buildings",
-      "collection": "building_new",
+      "uri": "mongodb+srv://8-native.vmwqj.mongodb.net",
+      "database": "site_data",
+      "collection": "assets",
       "username": "main_admin",
       "password": "<secret>" 
     },
@@ -18,12 +16,26 @@
       "database": "buildings",
       "notes": "GCP CloudSQL Database"
     },
-    "version": "2.5",
+    "version": "1.0",
     "process_count": 2,
-    "batch_size": 1000,
+    "batch_size": 100,
     "batches": 3,
     "base_counter": 2000000,
+    "max_time": "2024-05-19T00:12:32.164+00:00",
+    "variation": 0.1,
     "data": {
+      "tenant": {
+        "path": "model-tables/tenant.csv",
+        "multiplier": 0.01,
+        "id_prefix": "T-"
+      },
+      "asset": {
+        "path": "model-tables/asset_fleet.csv",
+        "multiplier": 1,
+        "id_prefix": "A-"
+      }
+    },
+    "old_data": {
       "customer": {
         "mix_objects" : [],
         "path": "models/customer.csv",

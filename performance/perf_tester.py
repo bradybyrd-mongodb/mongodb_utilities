@@ -7,7 +7,9 @@ import json
 import logging
 import datetime
 import random
+import requests
 import uuid
+import urllib
 import os
 import io
 import subprocess
@@ -161,29 +163,132 @@ def fix_vals(curdoc):
 def clean_key(key):
     return key.replace(":","-").replace(".","_").replace("@","").replace(",","")
 
+# BJB - 6/23/25
+'''
+Docs: https://www.mongodb.com/docs/manual/reference/operator/aggregation/queryStats/
+db.adminCommand( {
+   aggregate: 1,
+   pipeline: [
+      {
+         $queryStats: {
+            transformIdentifiers: {
+               algorithm: <string>,
+               hmacKey: <binData> /* subtype 8 - used for sensitive data */
+            }
+         }
+      }
+   ],
+   cursor: { }
+ } )
+
+ db.getSiblingDB("admin").aggregate( [
+   {
+      $queryStats: { }
+   }] )
+
+db.adminCommand(
+   {
+     getParameter: 1,
+    internalQueryStatsRateLimit: 1
+   }
+)
+
+db.adminCommand(
+   {
+    setParameter: 1,
+    internalQueryStatsRateLimit: 100
+   }
+)
+'''
+def query_stats(counter, client):
+    #  get colls stats on list of collections
+    iters = settings["batch_size"]
+    sample_time = settings["sample_time"]
+    doc = {}
+    batch = []
+    for inc in range(iters):
+        #if re.sub(filter,"",coll) == coll:
+        db = client.get_database("admin")
+        pipe = [{"$queryStats": {}}]
+        cur = db.cursor_command({"aggregate": 1, "pipeline" : pipe, "cursor": {}})
+        for doc in cur:
+            #pprint.pprint(doc)
+            doc["timestamp"] = datetime.datetime.now()
+            doc["counter"] = counter
+            counter += 1
+            batch.append(doc)
+        #bb.logit("--- Status Output ---")
+        #bb.logit(res)
+        print(".", end="", flush=True)   
+        last_doc = doc
+        time.sleep(sample_time)
+    return batch
+
+def log_query_stats(p_num = 0):
+    cur_process = multiprocessing.current_process()
+    logging = True
+    counter = 0
+    if logging:
+        client = client_connection("logger.uri")
+        database = settings["logger"]["database"]
+        batches = settings["batches"]
+        batch_size = settings["batch_size"]
+        mdb = client[database]
+    testname = settings["testname"]
+    interval = settings["sample_time"]
+    sdatabase = settings["source"]["database"]
+    bb.message_box(f"[{cur_process.name}] Collection Stats", "title")
+    sdbclient = client_connection("source.uri")
+    sdb = sdbclient[sdatabase]
+    collections = sdb.list_collection_names()
+    bb.logit(f'Source: {settings["source"]["uri"]}')
+    bb.logit(f'Logger: {settings["logger"]["uri"]}')
+    bb.logit(f'Performing {batches} batches of {batch_size} items')
+    bb.logit(f'Collections: {collections}')
+    for iter in range(batches):
+        bb.logit(f'Gathering stats {settings["batch_size"]} times using {interval} second interval')
+        result = query_stats(counter, sdbclient)
+        bb.logit(f'Batch {len(result)} items to do (collstats)')
+        mdb[testname].insert_many(result)
+        bb.logit(f'Add {batch_size} stats (tot: {counter})')
+        counter += len(result)
+
+    client.close()
+
 def benchmark_queries():
     bb.message_box("Benchmark Queries", "title")
-    uri = settings["source"]["uri"]
-    username = settings["source"]["username"]
-    password = settings["source"]["password"]
-    database = settings["source"]["database"]
-    batches = settings["batches"]
-    batch_size = settings["batch_size"]
-    bb.logit(f'Opening {uri}')
-    bb.logit(f'Performing {batches} batches')
-    uri = uri.replace("//", f'//{username}:{password}@')
-    client = MongoClient(uri) #&w=majority
-    mdb = client[database]
+    batches = 10 #settings["batches"]
+    batch_size = 100 #settings["batch_size"]
+    #bb.logit(f'Opening {uri}')
+    bb.logit(f'Performing {batches} batches of {batch_size}')
+    client = client_connection("source.uri")
+    mdb = client[settings["source"]["database"]]
     tot = 0
     for batch in range(batches):
         bb.logit("Performing batch {batch}")
         for cnt in range(batch_size):
-            for item,agg in settings["queries"].items():
+            for item,details in settings["queries"].items():
+                coll = details["coll"]
+                query = details["query"]
+                print(f'Query: {item}')
                 start = datetime.datetime.now()
                 coll = item.split("_")[0]
-                ans = mdb[coll].aggregate(agg)
-                elapsed = datetime.datetime.now() - start
-                bb.logit(f'{item} - result: {ans.first["numFound"]}, elapsed: {elapsed.seconds}')
+                if details["type"] == "find_increment":
+                    for k in details["values"]:
+                        query[details["value_field"]] = k
+                        ans = mdb[coll].find(query)
+                elif details["type"] == "agg":
+                    ans = mdb[coll].aggregate(query)
+                else:
+                    ans = mdb[coll].find(query)
+                bb.timer(start)
+
+def test_timer():
+    for k in range(20):
+        start = datetime.datetime.now()
+        time.sleep(0.1)
+        bb.timer(start)
+    bb.logit("Done")
 
 #------ Demo Failover with Atlas Command --------------#
 def failover():
@@ -600,6 +705,10 @@ def client_connection(type = "uri", details = {}):
         if "username" in details:
             username = details["username"]
             password = details["password"]
+    if "secret" in password:
+        password = os.environ.get("_PWD_")
+    if "%" not in password:
+        password = urllib.parse.quote_plus(password)
     mdb_conn = mdb_conn.replace("//", f'//{username}:{password}@')
     bb.logit(f'Connecting: {mdb_conn}')
     if "readPreference" in details:
@@ -713,8 +822,11 @@ if __name__ == "__main__":
         else:
             bb.logit("Enter arg secret=user:password")
     elif ARGS["action"] == "perf":
-        bb.logger("runnning performance test")
+        bb.logit("runnning performance test")
         benchmark_queries()
+    elif ARGS["action"] == "query_stats":
+        bb.logit("runnning query stats")
+        log_query_stats()
     elif ARGS["action"] == "fail":
         # > python3 perf_stats.py action=fail retry=true
         failover()
@@ -722,6 +834,8 @@ if __name__ == "__main__":
         trigger_datagen()
     elif ARGS["action"] == "trigger_perf":
         trigger_performance()
+    elif ARGS["action"] == "test":
+        test_timer()
     elif ARGS["action"] == "xaction_load":
         xaction_datagen()
     elif ARGS["action"] == "xaction_test":

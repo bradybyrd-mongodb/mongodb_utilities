@@ -1,212 +1,6 @@
 # ---------------------------------------------------------- #
 #  Site Data
 # ---------------------------------------------------------- #
-'''
-Tishman-Speyer
-    Wang Plaza
-        Building 1
-            Chiller
-                RPM
-                input temp
-                output temp
-                flow
-                rpm
-                pump head pressure
-            VAV
-            AirHandler - main
-            Calling-heat: 71
-            Calling-cool: 36
-
-        Building 2
-        Building 3
-        Conference Center
-
-Portfolio Details
-Sites:
-Buildings:
-    building_id:
-    name:
-    location:
-        address
-        geo
-    size
-    floors
-    age
-    portfolio:
-        portfolio_id: 
-        portfolio_name: Tishman,Simon,Cushman-Wakefield,Greystar,Jordans
-        site_id: 
-        site_name:
-    assets:
-        asset_id:
-        type:
-        name:
-        make:
-        model:
-        age:
-        location:
-            desc:
-            geo:
-        coverage:
-        condition:
-        health_score:
-
-Monitoring:
-    building_id
-    asset_id:
-    asset_name:
-    type:
-    measurements:
-        temp
-        rotor_rpm
-        input_temp
-        output_temp
-        output_pressure
-        etc
-        etc2
-        
-
-Strategy:
-    generate portfolios and sites - keep in array
-    generate buildings:
-        x per portfolio/site
-    generate measurements
-        every x-mins
-
-DevOps:
-db.building.createIndex({
-  "portfolio.portfolio_id": 1,
-  "building_id": 1
-})
-db.building.createIndex({
-  "location.coordinates": "2dsphere"
-})
-db.monitoring.createIndex({
-  "building_id": 1,
-  "asset_id": 1,
-  "measurement_ts": 1
-})
-db.monitoring.updateMany({},
-   [
-    {
-     "$set": {measurement_ts: {
-        $dateAdd: {
-            startDate: "$$NOW",
-            unit: "day",
-            amount: -1
-            }
-    }}}
-  ])
-
-  db.building.updateMany({},
-   [
-    {
-     "$set": {"address.location.coordinates": "$address.location.coordinates.type"}
-    }
-  ])
-
-# -------------------------------------------------- #
-#   Aggregations
-['B-2000026','B-2000203','B-2000486','B-2000884','B-2000542','B-2000926','B-2000426','B-2000491','B-2000375','B-2000757','B-2000254','B-2000989','B-2000459','B-2000309','B-2000226','B-2000545','B-2000093','B-2000706','B-2000631','B-2000414','B-2000015','B-2000674','B-2000256','B-2000554','B-2000760','B-2000094','B-2000967','B-2000774','B-2000580','B-2000307','B-2000911','B-2000415','B-2000319','B-2000906','B-2000585','B-2000403','B-2000145','B-2000054','B-2000950','B-2000698','B-2000740','B-2000456','B-2000328','B-2000523','B-2000869','B-2000711','B-2000896','B-2000257','B-2000151','B-2000434','B-2000215','B-2000725','B-2000828','B-2000918','B-2000372','B-2000506','B-2000250','B-2000079','B-2000941','B-2000190']
-
-pipe = [
-    {$sample: {size: 100}},
-    {$project: { _id:0, building_id: 1}}
-]
-db.building.aggregate(pipe)
-
-db.building.find({building_id: {$in: ['B-2000026','B-2000203','B-2000486','B-2000884','B-2000542','B-2000926']}})
-db.monitoring.find({building_id: {$in: ['B-2000026','B-2000203','B-2000486','B-2000884','B-2000542','B-2000926']}})
-
-db.building.find( {
-   "address.location.coordinates": {
-      $geoWithin: {
-         $centerSphere: [
-            [ -73.935242, 40.730610 ],
-            3 / 6378.1
-         ]
-      }
-   }
-},{building_id: 1, "coords" : "$address.location.coordinates", "city": "$address.city",_id: 0 } )
-
--------
-# Find all the buildings in a 3 mile radius of NYC with temp > 78degrees
-[
-  {
-    $match: {
-      "address.location.coordinates": {
-        $geoWithin: {
-          $centerSphere: [
-            [-73.935242, 40.73061],
-            3 / 6378.1
-          ]
-        }
-      }
-    }
-  },
-  {
-    $project: {
-      building_id: 1,
-      coords: "$address.location.coordinates",
-      _id: 0
-    }
-  },
-  {
-    $lookup: {
-      from: "monitoring",
-      let: {
-        bldg_id: "$building_id"
-      },
-      pipeline: [
-        {
-          $match: {
-            $expr: {
-              $eq: ["$building_id", "$$bldg_id"]
-            }
-          }
-        },
-        {
-          $project: {
-            asset_id: 1,
-            measurements: 1
-          }
-        },
-        {
-          $unwind: {
-            path: "$measurements"
-          }
-        },
-        {
-          $project: {
-            asset_id: 1,
-            ts: "$measurements.timestamp",
-            rotor_rpm: "$measurements.rotor_rpm",
-            input_temp:
-              "$measurements.input_temp",
-            temp: "$measurements.temperature",
-            alarm: "$measurements.alarm"
-          }
-        }
-      ],
-      as: "measurements"
-    }
-  },
-  {
-    $unwind:
-      {
-        path: "$measurements"
-      }
-  },
-  {
-    $match:
-      {
-        "measurements.temp": {
-          $gt: 78
-        }
-      }
-  }
-]
-'''
 import sys
 import os
 import csv
@@ -597,6 +391,22 @@ def cust_ids():
     conn.close()
 
 def id_mfix():
+    conn = client_connection()
+    db = conn[settings["database"]]
+    bb.message_box(f"Reset IDs", "title")
+    coll = "asset"
+    recs = db[coll].find({},{"asset_id" : 1, "_id" : 0})
+    lowid = 1000001
+    highid = 1000199
+    bulk_updates = []
+    for item in recs:
+        #print(f'Loc: {item["asset_id"]}')
+        bulk_updates.append(
+            UpdateOne({"asset_id" : item["asset_id"]},{"$set": {"location_id" : f'L-{random.randint(lowid,highid)}'}})
+        )
+    bulk_writer(db[coll], bulk_updates, "Stuff")
+
+def date_fixer():
     conn = client_connection()
     db = conn[settings["database"]]
     bb.message_box(f"Reset IDs", "title")

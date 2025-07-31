@@ -210,3 +210,201 @@ proc3
 proc_num = 2
 base = base + (batch_size * batch_count * procnum)
 top =  base + (batch_size * batch_count * procnum + 1)
+
+
+# ------------------------------------------------------------ #
+#  Merging with timeseries lynx data
+#  5/21/25
+
+Goal - provide a data set that has full metadata and ownership context on devices with telemetry
+
+# Issue 1- Solve server timestamp
+
+Check
+[
+    {$sample: { size : 100}},
+    {$project: {timestamp: 1, server_timestamp: 1, _id: 0, 
+        "diff" : {$dateDiff: {startDate: "$timestamp", endDate: "$server_timestamp", unit: "second"}}
+    }}
+]
+
+[
+    {$sample: { size : 100000}},
+    {$addFields: {"time_diff" : {$dateDiff: {startDate: "$timestamp", endDate: "$server_timestamp", unit: "second"}}
+    }},
+    {$project: {timestamp: 1, server_timestamp: 1, _id: 0, time_diff: 1}},
+    {$out: "timediff"}
+]
+- Strategy:
+db.flespi.update({$dateDiff: {startDate: "$timestamp", endDate: "$server_timestamp", unit: "second"}: {$gt: 10000}})
+loop through records
+    if data diff > 10000 - delete
+    set: {"metadata.device_id": a correct id, }
+
+
+#  6/6/25
+asset
+asset-location: vehicle, container, mobile-dwelling, kiosk
+parents: fleet, customer, ship, storage-facility
+
+Big customer = 3000 units
+unit on a truck part of a fleet for a customer
+location important
+
+# 7/29/25
+
+Null timestamp
+1970-01-01T00:00:00.000+00:00
+1989-10-28T12:20:34.000+00:00
+MaxTimestamp: 2024-05-19T00:12:32.164+00:00
+
+[{$match: {server_timestamp: {$lt: ISODate("2024-04-27T05:40:33.000+00:00")}}},
+{$count: "numrecords"}]
+-> 440000
+
+[{$match: {timestamp: {$lt: ISODate("2024-04-27T05:40:33.000+00:00")}}},
+{$count: "numrecords"}]
+-> 4441
+
+[{$match: {timestamp: {$lt: ISODate("2024-04-27T05:40:33.000+00:00")}, server_timestamp: {$lt: ISODate("2024-04-27T05:40:33.000+00:00")}}},
+{$count: "numrecords"}]
+
+# -- Time Series 
+    db.createCollection(
+       "my_timeseries_collection",
+       {
+          timeseries: {
+             timeField: "timestamp",
+             metaField: "sensorId", // Optional, if you have a field identifying unique series
+             granularity: "hours" // Optional, e.g., "seconds", "minutes", "hours"
+          }
+       }
+    )
+
+
+# -- dump data:
+mongodump --uri "mongodb+srv://claims-demo.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin --db telemetry --collection flespi_base
+mongorestore --uri "mongodb+srv://8-native.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin dump --db site_data
+
+Data Cleanup:
+- db.flespi_base.deleteMany({timestamp: {$lt: ISODate("2024-04-27T05:40:33.000+00:00")}})
+ acknowledged: true,
+  deletedCount: 4441
+- db.flespi_base.updateMany({server_timestamp: {$lt: ISODate("2024-04-27T05:40:33.000+00:00")}},{$set: {server_timestamp: "$timestamp", est_timestamp: "yes"}})
+matchedCount: 447827,
+  modifiedCount: 447827,
+- db.flespi_base.aggregate([
+    {$group: {_id: "$metadata.ident",
+    count: {$sum: 1}}},
+    {$out: "temp_idents"}
+])
+dum cleaned up data:
+mdb/bin/mongodump --uri "mongodb+srv://8-native.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin --db site_data --collection flespi_base
+
+- Incorporate metadata.ident into assets
+
+- Ingestion scenario:
+
+- Lookup:
+pipe = [
+    {$match: {_id: "A-1000068"}},
+    {$lookup: {
+        from: "flespi_base",
+        localField: "identifier",
+        foreignField: "metadata.ident",
+        pipeline: [{$limit: 100}],
+        as: "measurements"
+    }}
+]
+db.asset.aggregate(pipe)
+
+
+{"metadata.ident": 'EVGU0000372', timestamp: {$gt: ISODate("2024-06-11T20:56:32.244+00:00")}}
+
+
+[
+  {$match:{"metadata.ident": "EVGU0000372","timestamp": { $gt: ISODate("2024-06-11T20:56:32.244+00:00")}}},
+  {$sort:{"timestamp": -1}},
+  {$limit: 1}
+]
+
+- pure agg:
+[
+  {
+    $match:
+      /**
+       * query: The query in MQL.
+       */
+      {
+        "metadata.ident": "EVGU0000372",
+        timestamp: {
+          $gt: ISODate(
+            "2024-06-11T20:56:32.244+00:00"
+          ),
+        },
+      },
+  },
+  {
+    $sort:
+      /**
+       * Provide the field name for the count.
+       */
+      {
+        timestamp: -1,
+      },
+  },
+  {
+    $limit:
+      /**
+       * Provide the number of documents to limit.
+       */
+      1,
+  },
+  {
+    $addFields: {
+      "measures.timestamp": {
+        $dateAdd: {
+          startDate: "$timestamp",
+          unit: "second",
+          amount: 0,
+        },
+      },
+    },
+  },
+  {
+    $project:
+      /**
+       * specifications: The fields to
+       *   include or exclude.
+       */
+      {
+        measures: 1,
+      },
+  },
+  {
+    $unwind:
+      /**
+       * path: Path to the array field.
+       * includeArrayIndex: Optional name for index.
+       * preserveNullAndEmptyArrays: Optional
+       *   toggle to unwind null and empty values.
+       */
+      {
+        path: "$measures",
+      },
+  },
+]
+
+Filter null:
+$project: {
+new_measures: {
+        $filter: {
+          input: "$measures",
+          as: "subDoc",
+          cond: { $ne: ["$$subDoc.fieldToCheck", null] }
+        }
+
+"2024-06-11T20:56:32.244+00:00"
+utc_string = "2024-06-11T20:56:32.244+00:00"
+format_str_offset = "%Y-%m-%d %H:%M:%S%z"
+cur_date = datetime.strptime(utc_string, format_str_offset)

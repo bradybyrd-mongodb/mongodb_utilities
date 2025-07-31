@@ -1,0 +1,30 @@
+Resource.Property,Property Type,Generator
+Tenant.tenant_id,String,"id_generator(""next"", ""T-"")"
+Tenant.lastName,String,fake.last_name()
+Tenant.firstName,String,fake.first_name()
+Tenant.middleName,String,fake.first_name()
+Tenant.suffix,String,fake.suffix()
+Tenant.SitusState,String,"fake.state_abbr()"
+Tenant.TotalPayments,double,"fake.random_int(min=20, max=1200)"
+Tenant.Address().name,String,"fake.random_element(('Main', 'Summer', 'Old'))"
+Tenant.Address().addressLine1,String,fake.street_address()
+Tenant.Address().addressLine2,String,fake.secondary_address()
+Tenant.Address().city,String,fake.city()
+Tenant.Address().state,String,fake.state_abbr()
+Tenant.Address().postalCode,String,fake.postcode()
+Tenant.Address().country,String,fake.country()
+Tenant.Address().type,String,"fake.random_element(('Main', 'Summer', 'Old'))"
+Tenant.Address().effectiveDate,date,fake.past_datetime()
+Tenant.Address().endDate,date,"fake.future_datetime(end_date=""+3y"")"
+Tenant.Address().wheelchairAccess,boolean,fake.boolean(chance_of_getting_true=10)
+Tenant.Communication().phoneNumber,String,fake.phone_number()
+Tenant.Communication().phonetype,String,"fake.random_element(('Home', 'Work', 'Cell', 'Fax', 'Pager'))"
+Tenant.Communication().emailAddress,String,fake.email()
+Tenant.Communication().emailtype,String,"fake.random_element(('Home', 'Work'))"
+Tenant.Communication().SocialMediaID,String,fake.user_name()
+Tenant.Communication().SocialMediaType,String,"fake.random_element(('Facebook', 'Academia.edu', 'Bebo', 'CaringBridge', 'GoodReads', 'DailyStrength', 'Google+'))"
+Tenant.PaymentMethod.BankName,String ,"fake.company()"
+Tenant.PaymentMethod.BankAccountHolderName,String ,fake.name()
+Tenant.PaymentMethod.BankAccountNumber,String ,fake.iban()
+Tenant.PaymentMethod.BankAccountType,String ,"fake.random_element(('Checking', 'Savings'))"
+Tenant.PaymentMethod.BankRoutingNumber,String ,"fake.iban()"
