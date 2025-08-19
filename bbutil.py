@@ -186,3 +186,4 @@ class Util:
         else:
             print(f"# --- Complete: query took: {'{:.3f}'.format(elapsed)} {unit} ---- #")
             print(f"#   {cnt} items {'{:.3f}'.format((elapsed)/cnt)} {unit} avg")
+        return secs + (msecs * .000001)

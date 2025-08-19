@@ -251,12 +251,120 @@ Big customer = 3000 units
 unit on a truck part of a fleet for a customer
 location important
 
+# -------------------------------------------------------- #
+#   Building IOT Loader Model
+# -------------------------------------------------------- #
 # 7/29/25
 
-Null timestamp
+# -- On 8-native cluster
+
+# --------------- Scenario ---------------- #
+Demonstrate flexible queries:
+- Find all assets in a tenant
+- Find all assets from a tenant of a certain model
+- Find all assets within a radius of a point
+- Find all assets that have been active in the last 24 hours
+- Find all assets with out of tolerance values
+- Find all assets with alarms
+- Find all assets with alarms in the last 24 hours
+- Find all assets from a tenant that are inactive
+- Find all assets from a tenant that are active
+- Find all assets from a tenant that are in a certain state
+
+- Create a trend graph of different telemetry values on a group of assets
+  - by geography
+  - by asset type
+
+- Put the system under load
+  - queries against the asset collection
+  - ingestion of telemetry values
+  
+
+# -------- Queries ------------- #
+Demonstrate flexible queries:
+- Find all assets in a tenant
+db.asset.find({"tenant.tenant_id": "T-1000001"})
+- Find all assets from a tenant of a certain model
+db.asset.find({"tenant.tenant_id": "T-1000001", "vendor" : "Chilly Billy"})
+- Find all assets within a radius of a point
+db.asset.find({"tenant.tenant_id": "T-1000001", "location.coordinates": { $near: { $geometry: { type: "Point", coordinates: [-76.72803, 43.0718] }, $maxDistance: 16000 } } })
+- Find all assets that have been active in the last 24 hours
+db.asset.find({"tenant.tenant_id": "T-1000001", "last_active_at": { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } })
+- Find all assets with out of tolerance values
+db.asset.find({"tenant.tenant_id": "T-1000001", "telemetry": { $elemMatch: { "value": { $gt: 100 } } } })
+- Find all assets with alarms
+db.asset.find({"tenant.tenant_id": "T-1000001", "alarms": { $elemMatch: { "active": true } } })
+- Find all assets with alarms in the last 24 hours
+db.asset.find({"tenant.tenant_id": "T-1000001", "alarms": { $elemMatch: { "active": true, "last_active_at": { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } } } })
+- Find all assets from a tenant that are inactive
+db.asset.find({"tenant.tenant_id": "T-1000001", "active": false })
+- Find all assets from a tenant that are active
+db.asset.find({"tenant.tenant_id": "T-1000001", "active": true })
+- Find all assets from a tenant that are in a certain state
+db.asset.find({"tenant.tenant_id": "tenant_id", "state": "state" })
+
+- Create a trend graph of different telemetry values on a group of assets
+  - by geography
+  - by asset type
+
+- Put the system under load
+  - queries against the asset collection
+  - ingestion of telemetry values
+
+ - Indexes:
+ [
+  { v: 2, key: { _id: 1 }, name: '_id_' },
+  {
+    v: 2,
+    key: { 'tenant.tenant_id': 1, vendor: 1 },
+    name: 'tenant.tenant_id_1_vendor_1'
+  },
+  {
+    v: 2,
+    key: { 'location.coordinates': '2dsphere' },
+    name: 'location.coordinates_2dsphere',
+    '2dsphereIndexVersion': 3
+  }
+]
+
+- Window function
+[
+  {
+    $match:
+      {
+        timestamp: {
+          $gt: ISODate(
+            "2024-06-13T15:23:24.437+00:00"
+          )
+        },
+        "measures.device_type_id": 645
+      }
+  },
+  {
+    $setWindowFields:
+      {
+        partitionBy: "$metadata.ident",
+        sortBy: {
+          timestamp: 1
+        },
+        output: {
+          avgTemp: {
+            $avg: "$measures.freezer_air_temperature",
+            window: {
+              range: [-99, 0],
+              unit: "minute"
+            }
+          }
+        }
+      }
+  }
+]
+
+# -- Data Cleanup:
+- Null timestamp
 1970-01-01T00:00:00.000+00:00
 1989-10-28T12:20:34.000+00:00
-MaxTimestamp: 2024-05-19T00:12:32.164+00:00
+- MaxTimestamp: 2024-05-19T00:12:32.164+00:00 <- not really!>
 
 [{$match: {server_timestamp: {$lt: ISODate("2024-04-27T05:40:33.000+00:00")}}},
 {$count: "numrecords"}]
@@ -271,16 +379,35 @@ MaxTimestamp: 2024-05-19T00:12:32.164+00:00
 
 # -- Time Series 
     db.createCollection(
-       "my_timeseries_collection",
+       "telemetry",
        {
           timeseries: {
              timeField: "timestamp",
-             metaField: "sensorId", // Optional, if you have a field identifying unique series
-             granularity: "hours" // Optional, e.g., "seconds", "minutes", "hours"
+             metaField: "metadata", // Optional, if you have a field identifying unique series
+             granularity: "minutes" // Optional, e.g., "seconds", "minutes", "hours"
           }
        }
     )
 
+- Import from gzip dump:
+mongorestore --uri "mongodb+srv://8-native.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin dump --db site_data --collection telemetry --gzip --archive=~/Documents/mongodb/customers/Carrier/Lynx/flespi.gz
+
+mdb/bin/mongorestore --uri "mongodb+srv://8-native.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin dump --nsInclude="site_data.flespi_base" --nsTo "site_data.telemetry" --gzip --archive=flespi.gz
+
+
+# -- Find Max Timestamp:
+db.flespi_base.aggregate(pipe)
+- New Max: 2024-06-13T20:23:24.437+00:00
+- New Max: 2024-06-13T20:23:16.355Z - $gt = 1 document
+pipe = [
+    {$match: {timestamp: {$gt: ISODate("2024-06-13T20:23:24.437+00:00")}}},
+    {$project: {timestamp: 1, _id: 0}},
+    {$sort: {timestamp: -1}},
+    {$limit: 20}
+]
+
+db.flespi_base.countDocuments({timestamp: {$gt: ISODate("2024-06-05T00:12:32.164+00:00")}})
+> 2989027
 
 # -- dump data:
 mongodump --uri "mongodb+srv://claims-demo.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin --db telemetry --collection flespi_base
@@ -300,6 +427,70 @@ matchedCount: 447827,
 ])
 dum cleaned up data:
 mdb/bin/mongodump --uri "mongodb+srv://8-native.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin --db site_data --collection flespi_base
+
+# get remaining data for Lynx
+export _PWD_=LNiPSx51yoW45t1M
+mdb/bin/mongodump --archive=flespi.gz --gzip --uri "mongodb+srv://cluster-dev.q1gws.mongodb.net" --ssl --username bradybyrd --password $_PWD_ --authenticationDatabase admin --gzip --db telemetry --collection flespi
+
+- Expand disk:
+[ec2-user@ip-172-31-5-88 tools]$ sudo lsblk
+NAME      MAJ:MIN RM SIZE RO TYPE MOUNTPOINTS
+xvda      202:0    0  50G  0 disk 
+├─xvda1   202:1    0  20G  0 part /
+├─xvda127 259:0    0   1M  0 part 
+└─xvda128 259:1    0  10M  0 part /boot/efi
+[ec2-user@ip-172-31-5-88 tools]$ sudo growpart /dev/xvda 1
+CHANGED: partition=1 start=24576 old: size=41918431 end=41943007 new: size=104832991 end=104857567
+
+# -- Time Series 
+    db.createCollection(
+       "signals",
+       {
+          timeseries: {
+             timeField: "timestamp",
+             metaField: "metadata",
+             granularity: "minutes"
+          }
+       }
+    )
+
+mdb/bin/mongorestore --uri "mongodb+srv://8-native.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin --gzip --archive=flespi.gz --nsFrom telemetry.flespi --nsTo site_data.signals
+ newIP: 3.136.234.190
+
+- New Data
+pipe = [
+    {$match: {$and: [{timestamp: {$gt: ISODate("2024-06-13T20:23:24.437+00:00")}},{timestamp: {$lt: ISODate("2024-06-14T20:23:24.437+00:00")}}]}},
+    {$project: {timestamp: 1, _id: 0}},
+    {$sort: {timestamp: -1}},
+    {$limit: 100}
+]
+
+pipe = [
+    {$match: {$and: [{timestamp: {$gt: ISODate("2024-06-13T20:23:24.437+00:00")}},{timestamp: {$lt: ISODate("2024-06-14T08:23:24.437+00:00")}}]}},
+    {$project: {timestamp: 1, _id: 0}},
+    {$count: "numrecs"}
+]
+> 157,000 for 12hr period => 4/sec
+
+- Check for new idents
+pipe = [
+    {$match: {$and: [{timestamp: {$gt: ISODate("2024-06-13T20:23:24.437+00:00")}},{timestamp: {$lt: ISODate("2024-07-14T20:23:24.437+00:00")}}]}},
+    {$group: {_id: "$metadata.ident",
+      count: {$sum: 1}}},
+    {$out: "temp_idents"}
+]
+db.flespi.aggregate(pipe)
+33700 - idents
+
+check:
+{$and: [{timestamp: {$gt: ISODate("2024-06-13T20:23:24.437+00:00")}},{timestamp: {$lt: ISODate("2024-07-14T20:23:24.437+00:00")}}], "metadata.ident: "LOPU5391999"}
+
+Order #A382373419
+# -- dump cleaned up data:
+mdb/bin/mongodump --archive=flespi.gz --gzip --uri "mongodb+srv://8-native.vmwqj.mongodb.net" --ssl --username main_admin --password $_PWD_ --authenticationDatabase admin --gzip --db site_data --collection flespi_base
+
+ssh -i ../servers/bb_mdb_aws.pem ec2-user@3.12.71.125
+scp -i ../servers/bb_mdb_aws.pem ec2-user@3.12.71.125:~/tools/flespi.gz .
 
 - Incorporate metadata.ident into assets
 
@@ -408,3 +599,479 @@ new_measures: {
 utc_string = "2024-06-11T20:56:32.244+00:00"
 format_str_offset = "%Y-%m-%d %H:%M:%S%z"
 cur_date = datetime.strptime(utc_string, format_str_offset)
+
+
+pipeline = [
+  {
+    $match:
+      {
+        timestamp: {
+          $gt: {
+            $dateSubtract: {
+              startDate: ISODate("2024-06-14T20:23:24.437+00:00"),
+              unit: "day",
+              amount: 2
+            }
+          }
+      },
+      "measures.device_type_id": 645
+    }
+  },
+  {
+    $addFields:
+      /**
+       * newField: The new field name.
+       * expression: The new field expression.
+       */
+      {
+        thresdate: {
+          $dateSubtract: {
+            startDate: ISODate(
+              "2024-06-15T20:23:24.437+00:00"
+            ),
+            unit: "day",
+            amount: 2
+          }
+        }
+      }
+  }
+]
+
+pipeline = [
+  {
+    $match:
+      {
+        timestamp: {
+          $gt: {
+            $dateSubtract: {
+              startDate: ISODate("2024-06-14T20:23:24.437+00:00"),
+              unit: "day",
+              amount: 2
+            }
+          }
+      }
+      }
+  }
+]
+
+pipeline = [
+  {
+    $match:
+      {
+        $expr: { $gt: ["$timestamp", {$dateSubtract: {
+              startDate: ISODate("2024-06-14T20:23:24.437+00:00"),
+              unit: "day",
+              amount: 2}}]
+              } 
+      }
+  }
+]
+
+pipeline = [
+  {
+    $match:
+      {
+        $expr: { timestamp: {
+          $gt: {
+            $dateSubtract: {
+              startDate: ISODate("2024-06-14T20:23:24.437+00:00"),
+              unit: "day",
+              amount: 2
+            }
+          }
+      }
+      }
+  }
+]
+
+pipeline2 = [
+  {
+    $match:
+      {
+        timestamp: {
+          $gt: ISODate("2024-06-14T20:23:24.437+00:00")
+          }
+      }
+  }
+]
+
+# ------ Accumulated Fields -------------- #
+db.telemetry.aggregate([
+  {
+    $match:
+      {
+        timestamp: {$gt: ISODate("2024-06-12T20:23:24.437+00:00")},
+        "measures.device_name": "SIMDEVI000107"
+      }
+  },
+  
+  {
+    $project: {
+      fieldNames: { $objectToArray: "$measures" }
+    }
+  },
+  
+  {
+    $unwind: "$fieldNames"
+  },
+  
+  {
+    $group: {
+      _id: "$fieldNames.k",
+      dataTypes: { $addToSet: { $type: "$fieldNames.v" } },
+      sampleValues: { $addToSet: "$fieldNames.v" },
+      count: { $sum: 1 }
+    }
+  },
+  
+  {
+    $project: {
+      fieldName: "$_id",
+      dataTypes: 1,
+      sampleValues: { $slice: ["$sampleValues", 3] }, // First 3 sample values
+      occurrenceCount: "$count",
+      occurrencePercentage: { 
+        $round: [{ $multiply: [{ $divide: ["$count", 1000] }, 100] }, 2] 
+      },
+      _id: 0
+    }
+  },
+  
+  {
+    $sort: { occurrenceCount: -1 }
+  }
+])
+
+- Failes many device_types are NULL
+db.telemetry.aggregate([
+  {
+    $match:
+      {
+        timestamp: {$gt: ISODate("2024-06-13T20:23:24.437+00:00")},
+        "measures.device_type_id": 645
+      }
+  },
+  {
+    $group: {
+      _id: "measures.device_type_id",
+      count: { $sum: 1 }
+    }
+  }
+])
+
+- 12hrs later
+db.telemetry.aggregate([
+  {
+    $match:
+      {
+        timestamp: {$gt: ISODate("2024-06-13T12:23:24.437+00:00")}
+      }
+  },
+  {
+    $group: {
+      _id: "$metadata.ident",
+      count: { $sum: 1 }
+    }
+  },
+  {$sort: {count: -1}}
+])
+- Metadata.ident:
+[
+  { _id: 'SIM00000836', count: 14 },
+  { _id: 'EVGU0000112', count: 3 },
+  { _id: 'SIM00000414', count: 17 },
+  { _id: 'SIM00000811', count: 14 },
+  { _id: 'SIM00000154', count: 18 },
+  { _id: 'SIM00000022', count: 18 },
+  { _id: '36753084', count: 75 },
+  { _id: 'CARU0000096', count: 5 },
+  { _id: 'SIM00000863', count: 14 },
+  { _id: 'CARU0000074', count: 2 },
+  { _id: 'EVGU0000487', count: 2 },
+  { _id: 'SIM00000951', count: 14 },
+  { _id: 'EVGU0000862', count: 3 },
+  { _id: 'DHIU9893460', count: 2 },
+  { _id: 'DHIU5949719', count: 31 },
+  { _id: '4639401', count: 183 },
+  { _id: 'EVGU0000053', count: 2 },
+  { _id: 'SIM00000346', count: 17 },
+  { _id: 'EVGU0000235', count: 3 },
+  { _id: 'EVGU0000870', count: 6 }
+]
+
+- DeviceNames:
+[
+  { _id: 'EVGN000000569', count: 2 },
+  { _id: '1111908878', count: 142 },
+  { _id: 'EVGN000000758', count: 3 },
+  { _id: 'D-DHIU5950833', count: 2 },
+  { _id: 'SIMDEVI000700', count: 16 },
+  { _id: 'EVGN000000017', count: 4 },
+  { _id: 'SIMDEVI000981', count: 14 },
+  { _id: 'D-DHIU9895570', count: 1 },
+  { _id: 'SIMDEVI000542', count: 17 },
+  { _id: 'SIMDEVI000107', count: 18 },
+  { _id: 'D-DHIU5946643', count: 155 },
+  { _id: 'SIMDEVI000855', count: 14 },
+  { _id: 'SIMDEVI000653', count: 16 },
+  { _id: 'SIMDEVI000245', count: 17 },
+  { _id: 'SIMDEVI000356', count: 17 },
+  { _id: 'D-DHIU9894872', count: 1 },
+  { _id: 'D-DHIU5946509', count: 2 },
+  { _id: 'D-DHIU5951974', count: 8 },
+  { _id: 'CARD000000010', count: 5 },
+  { _id: 'D-DHIU5953848', count: 31 }
+]
+
+DeviceType_ids:
+[
+  { _id: null, count: 36961 },
+  { _id: 4, count: 651 },
+  { _id: 730, count: 13313 },
+  { _id: 645, count: 12660 }
+]
+
+
+# --------------------- As Update ------------------------- #
+# - TODO: add primary field - updated_at
+
+# -- Goal
+
+{
+  {
+    measures.container_O2Setpoint: {value: null, updated: "2024-06-13T20:26:03.437+00:00"},
+    measures.container_Power: {value: '81.78', updated: "2024-06-13T20:26:03.437+00:00"},
+    measures.container_PowerStatus: {value: 1, updated: "2024-06-13T20:26:03.437+00:00"},
+    measures.container_QuestState:{value: 0, updated: "2024-06-13T20:26:03.437+00:00"},
+    measures.container_RTS:{value: -14.42, updated: "2024-06-13T20:26:03.437+00:00"}
+  }
+}
+
+
+db.getCollection('telemetry').aggregate(
+  [
+    {
+      $match: {
+        timestamp: {
+          $gt: ISODate('2024-06-12T20:23:24.437Z')
+        },
+        'metadata.ident': 'SIM00000107'
+      }
+    },
+    {
+      $addFields: { 'measures.ts': '$timestamp' }
+    },
+    {
+      $project: {
+        fieldNames: {
+          $objectToArray: '$measures'
+        },
+        ts: '$timestamp'
+      }
+    },
+    { $unwind: { path: '$fieldNames' } },
+    {
+      $project: {
+        key: '$fieldNames.k',
+        value: '$fieldNames.v',
+        ts: '$ts'
+      }
+    },
+    { $match: { value: { $ne: null } } },
+    {
+      $group: {
+        _id: '$key',
+        ex: { $addToSet: '$value' },
+        dataTypes: {
+          $addToSet: { $type: '$value' }
+        },
+        count: { $sum: 1 },
+        cur: { $last: '$value' },
+        ts: { $last: '$ts' }
+      }
+    }
+  ],
+  { maxTimeMS: 60000, allowDiskUse: true }
+);
+
+
+
+# ------------- From Assets -------------------- #
+[
+  {
+    $match: {
+      identifier: "SIM00000107"
+    }
+  },
+  {
+    $lookup: {
+      from: "telemetry",
+      localField: "identifier",
+      foreignField: "metadata.ident",
+      as: "results",
+      pipeline: [
+        {
+          $match: {
+            timestamp: {
+              $gt: ISODate(
+                "2024-06-12T20:23:24.437Z"
+              )
+            }
+          }
+        },
+        {
+          $addFields: {
+            "measures.ts": "$timestamp"
+          }
+        },
+        {
+          $project: {
+            fieldNames: {
+              $objectToArray: "$measures"
+            },
+            ts: "$timestamp"
+          }
+        },
+        {
+          $unwind: {
+            path: "$fieldNames"
+          }
+        },
+        {
+          $project: {
+            key: "$fieldNames.k",
+            value: "$fieldNames.v",
+            ts: "$ts"
+          }
+        },
+        {
+          $match: {
+            value: {
+              $ne: null
+            }
+          }
+        },
+        {
+          $group: {
+            _id: "$key",
+            ex: {
+              $addToSet: "$value"
+            },
+            dataTypes: {
+              $addToSet: {
+                $type: "$value"
+              }
+            },
+            count: {
+              $sum: 1
+            },
+            cur: {
+              $last: "$value"
+            },
+            ts: {
+              $last: "$ts"
+            }
+          }
+        },
+        {
+          $group: {
+            _id: "",
+            updated_at: {
+              $last: "$ts"
+            },
+            measures: {
+              $addToSet: {
+                k: "$_id",
+                v: {
+                  value: "$cur",
+                  ts: "$ts"
+                }
+              }
+            }
+          }
+        },
+        {
+          $project: {
+            updated_at: 1,
+            measures: {
+              $arrayToObject: "$measures"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    $unwind:
+      {
+        path: "$results"
+      }
+  },
+  {
+    $addFields:
+      {
+        merged: {
+          $mergeObjects: [
+            "$measures",
+            "$results.measures"
+          ]
+        }
+      }
+  }
+]
+
+
+# --------------- Grouping with multiple devices
+db.flespi.aggregate([
+  {
+    $match: {$and: [{timestamp: {$gt: ISODate("2024-06-13T20:23:24.437+00:00")}},
+        {timestamp: {$lt: ISODate("2024-06-14T08:23:24.437+00:00")}}]}
+  },
+  
+  {
+    $project: {
+      fieldNames: { $objectToArray: "$measures" },
+      ident: "$metadata.ident",
+      ts: "$timestamp"
+    }
+  },
+  
+  {
+    $unwind: "$fieldNames"
+  },
+  {
+    $match: { "fieldNames.v": { $ne: null}}
+  },
+  {
+    $group: {
+      _id: {ident: "$ident", key: "$fieldNames.k"},
+      value: {$last: "$fieldNames.v"},
+      ts: {$last: "$ts"}
+    }
+  },
+  {
+      $group: {
+        _id: "$_id.ident",
+        updated_at: {
+          $last: "$ts"
+        },
+        measures: {
+          $addToSet: {
+            k: "$_id.key",
+            v: {
+              value: "$value",
+              ts: "$ts"
+            }
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        updated_at: 1,
+        measures: {
+          $arrayToObject: "$measures"
+        }
+      }
+    }
+])

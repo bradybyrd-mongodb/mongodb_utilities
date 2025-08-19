@@ -41,15 +41,7 @@ def synth_data_load():
     multiprocessing.set_start_method("fork", force=True)
     bb.message_box("Loading Data", "title")
     bb.logit(f'# Settings from: {settings_file}')
-    passed_args = {"ddl_action" : "info"}
-    if "template" in ARGS:
-        template = ARGS["template"]
-        passed_args["template"] = template
-    elif "data" in settings:
-        goodtogo = True
-    else:
-        print("Send template=<pathToTemplate>")
-        sys.exit(1)    # Spawn processes
+    passed_args = {"args" : ARGS}
     num_procs = settings["process_count"]
     batch_size = settings["batch_size"]
     batches = settings["batches"]
@@ -76,6 +68,9 @@ def worker_load(ipos, args):
     bb.message_box(f"[{pid}] Worker Data", "title")
     batch_size = settings["batch_size"]
     batches = settings["batches"]
+    if "demo" in args["args"]:
+        batches = 100
+    
     coll = "flespi_base"
     dest_coll = "asset"
     # Set process-specific random seed
@@ -86,6 +81,7 @@ def worker_load(ipos, args):
     db = conn[settings["mongodb"]["database"]]
     bulk_docs = []
     tot = 0
+    stub = {"$match": {"timestamp": {"$gt": datetime.datetime.fromisoformat("2024-06-05T00:12:32.164+00:00")}}}
     pipe = [
         {"$sample": {"size" : batch_size}}
     ]
@@ -100,6 +96,7 @@ def worker_load(ipos, args):
     if batches == 0:
         batches = 1
     for cur_batch in range(batches):
+        sub_start = datetime.datetime.now()
         bb.logit(f"[{pid}] - Loading batch: {cur_batch}, {batch_size} records")
         cnt = 0
         results = db[coll].aggregate(pipe)
@@ -112,8 +109,9 @@ def worker_load(ipos, args):
             tot += cnt
             db[coll].insert_many(bulk_docs)
             bulk_docs = []
-            bb.logit(f"[{pid}] - Batch Complete: {cur_batch} - size: {cnt}, Total:{tot}")
-            print(f'Modified: {ids}')
+            elapsed = bb.timer(sub_start)
+            bb.logit(f"[{pid}] - Batch Complete: {cur_batch} - size: {cnt}, Total:{tot}, Rate: {cnt/elapsed}")
+            #print(f'Modified: {ids}')
     end_time = datetime.datetime.now()
     time_diff = (end_time - start_time)
     execution_time = time_diff.total_seconds()
@@ -148,6 +146,7 @@ def batch_build_update(rec):
     #pprint.pprint(telemetry_doc)
     measures = rec["measures"]
     ts = rec["timestamp"]
+    items["last_updated_at"] = ts
     for k in measures:
         if measures[k] is not None:
             items[f"current_state.{k}"] = {"value": measures[k], "updated" : ts}
@@ -172,15 +171,21 @@ def batch_build_doc(rec):
     variant["version"] = settings["version"]
     return variant
 
-def update_identifiers(conn, args):
-    ids = conn.temp_idents.find({})
-    id_range = [1000000,1005000]
+def update_identifiers():
+    conn = client_connection()
+    db = conn[settings["mongodb"]["database"]]
+    ids = db.temp_idents.find({})
+    aids = list(db.asset.find({}, {"_id": 1}))
+    ctime = datetime.datetime.fromisoformat("2024-06-13T11:32:00.000+00:00")
     cnt = 0
+    updates = []
     for it in ids:
-        cur = f'A-{random.randint(id_range[0],id_range[1])}'
-        conn.asset.update_one({"_id": cur},{"$set": {"identifier": it["_id"]}})
-        print(f'Updating[{cnt}]: {cur}')
+        #conn.asset.update_one({"_id": aids[cnt]},{"$set": {"identifier": it["_id"], "updated_at" : ctime }})
+        updates.append(UpdateOne({"_id": aids[cnt]["_id"]},{"$set": {"identifier": it["_id"], "updated_at" : ctime }}))
+        print(f'Updating[{cnt}]: {aids[cnt]} -> {it["_id"]}')
         cnt += 1
+    if updates:
+        bulk_writer(db["asset"], updates)
     print("All Done")
 
 def update_current_state(conn, telemetry_doc):
@@ -192,7 +197,7 @@ def update_current_state(conn, telemetry_doc):
     for k in measures:
         if measures[k] is not None:
             items[f"current_state.{k}"] = {"value": measures[k], "updated" : ts}
-    #items.append({"timestamp": ts})
+    items["updated_at"] = ts
     conn["asset"].update_one({"identifier": telemetry_doc["metadata"]["ident"]}, {"$set": items})
 
 def update_states(conn, args):
@@ -213,9 +218,263 @@ def update_states(conn, args):
         for k in rec:
             update_current_state(conn, k)
 
+def update_asset_state(conn, last_updatetime):
+    # Received the latest telemetry doc and updates values in current state
+    items = {}
+    cnt = 0
+    assets = conn["asset"].find({"identifier": {"$exists" : True}},{"identifier": 1, "updated_at": 1}).limit(10)
+    for device in assets:
+        bb.logit(f'Updating[{cnt}]: {device["identifier"]}')
+        pipeline = telemetry_pipeline(device["identifier"], last_updatetime)
+        result = conn["asset"].aggregate(pipeline)
+        recent_doc = {}
+        for k in result:
+            recent_doc = k
+        #bb.logit("Recent doc for device:")
+        #pprint.pprint(pipeline)
+        #bb.logit("# --------------------------- #")
+        if "merged" in recent_doc and recent_doc["merged"] != {}:
+            #bb.logit("# ------------- OLD ------------- #")
+            #pprint.pprint(recent_doc["current_state"])
+            #bb.logit("# ------------- NEW ------------- #")
+            #pprint.pprint(recent_doc["merged"])
+            conn["asset"].update_one({"identifier": device["identifier"]}, {"$set": {"updated_at": recent_doc["results"]["updated_at"], "current_state": recent_doc["merged"]}})
+        cnt += 1
+
+def telemetry_pipeline(ident, start_time):
+    # Find the fields reported for a device through time
+    pipeline = [
+        {"$match": {"identifier": ident}
+        },
+        {
+            "$lookup": {
+                "from": "telemetry",
+                "localField": "identifier",
+                "foreignField": "metadata.ident",
+                "as": "results",
+                "pipeline": [
+                    {
+                        "$match": {
+                            "timestamp": {"$gt": start_time}
+                        }
+                    },
+                    {
+                        "$addFields": {
+                            "measures.ts": "$timestamp"
+                        }
+                    },
+                    {
+                        "$project": {
+                            "fieldNames": {"$objectToArray": "$measures"},
+                            "ts": "$timestamp"
+                        }
+                    },
+                    {
+                        "$unwind": {"path": "$fieldNames"}
+                    },
+                    {
+                        "$project": {
+                            "key": "$fieldNames.k",
+                            "value": "$fieldNames.v",
+                            "ts": "$ts"
+                        }
+                    },
+                    {
+                        "$match": {"value": {"$ne": None}}
+                    },
+                    {
+                        "$group": {
+                            "_id": "$key",
+                            "ex": {"$addToSet": "$value"},
+                            "dataTypes": {"$addToSet": {"$type": "$value"}},
+                            "count": {"$sum": 1},
+                            "cur": {"$last": "$value"},
+                            "ts": {"$last": "$ts"}
+                        }
+                    },
+                    {
+                    "$group": {
+                        "_id": "",
+                        "updated_at": {"$last": "$ts"},
+                        "measures": {
+                            "$addToSet": {
+                                "k": "$_id",
+                                "v": {
+                                    "value": "$cur",
+                                    "ts": "$ts"
+                                }
+                            }
+                        }
+                    }
+                    },
+                    {
+                        "$project": {
+                            "updated_at": 1,
+                            "measures": {"$arrayToObject": "$measures"}
+                        }
+                    }
+                ]
+            }},
+            {
+                "$unwind": {"path": "$results"}
+            },
+            {
+                "$addFields": {
+                    "merged": {
+                        "$mergeObjects": [
+                            "$measures",
+                            "$results.measures"
+                        ]
+                    }
+                }
+            }
+        ]
+    return pipeline
+
+def update_asset_state_controller():
+    # Update the current state of assets based on the latest telemetry data
+    conn = client_connection()
+    db = conn[settings["mongodb"]["database"]]
+    last_updatetime = datetime.datetime.fromisoformat(settings["max_time"])
+    bb.logit(f'Last update time: {last_updatetime}')
+    update_asset_state(db, last_updatetime)
+    conn.close()
+    bb.logit("Asset state update complete.")
+
+'''
+Simulate a feed of IoT data into the telemetry collection
+'''
+def telemetry_feed():
+    conn = client_connection()
+    db = conn[settings["mongodb"]["feed_database"]]
+    aids = list(db.asset.find({}, {"_id": 1}))
+    feed_start = settings["feed_start"]
+    feed_start_time = datetime.datetime.fromisoformat(feed_start)
+    cnt = 0
+    intervals = 10
+    interval = 4  # hours
+    #for k in range(intervals):
+    start_time = datetime.datetime.fromisoformat(feed_start)
+    end_time = start_time + datetime.timedelta(hours=interval)
+    pipe = [
+        {
+            "$match": {
+                "$and": [
+                    {"timestamp": {"$gt": start_time}},
+                    {"timestamp": {"$lt": end_time}}
+                ]
+            }
+        },
+        {"$sort": {"timestamp": 1}}
+    ]
+    feed = db.flespi.aggregate(pipe)
+    cnt = 0
+    for it in feed:
+        print(f'Signal[{cnt}]: {it["timestamp"]} - {it["metadata"]["ident"]}')
+        cnt += 1
+        del(it["_id"])
+        conn[settings["mongodb"]["database"]].telemetry_new.insert_one(it)
+        time.sleep(0.1)
+    conn.close()
+    print("All Done")
+
+def telmetry_update(update_doc):
+    # Update the telemetry collection with the latest data
+    conn = client_connection()
+    db = conn[settings["mongodb"]["database"]]
+    coll = "asset"
+    ident = update_doc["ident"]
+    ts = update_doc["updated_at"]
+    measures = update_doc["measures"]
+    db[coll].update_one(
+        {"identifier": ident},
+        [{"$set": {
+            "current_state": {"$cond" : {
+                "if": {"$gt": [ts, "$updated_at"]},
+                "then": {"$mergeObjects": ["$current_state", measures]},
+                "else": {"$mergeObjects": ["$current_state", {}]}
+            }},
+            "updated_at": {"$cond" : {
+                "if": {"$gt": [ts, "$updated_at"]},
+                "then": ts,
+                "else": "$updated_at"
+            }},
+        }}]
+    )
+    conn.close()
+
+def update_asset():
+    udoc = {
+        "ident": 'EVGU0000652',
+        "updated_at": datetime.datetime.fromisoformat('2024-06-14T08:20:44.000Z'),
+        "measures": {
+            "container_DefrostInterval": { "value": 6, "ts": datetime.datetime.fromisoformat('2024-06-14T08:20:44.000Z') },
+            "container_AmbientTemp": { "value": 26.4, "ts": datetime.datetime.fromisoformat('2024-06-14T08:20:44.000Z') },
+            "container_Power": { "value": 19, "ts": datetime.datetime.fromisoformat('2024-06-14T08:20:44.000Z') },
+        }
+    }
+    telmetry_update(udoc)
+    print("All Done")
+
 #----------------------------------------------------------------------#
 #   Utility Routines
 #----------------------------------------------------------------------#
+def new_england_coordinates():
+    lat_min = 40.477399  # Southernmost point (NYC)
+    lat_max = 45.0152    # Northernmost point (Maine)
+    lon_min = -79.7634   # Westernmost point (NY)
+    lon_max = -66.9730   # Easternmost point (Maine)
+    return [random.uniform(random.uniform(lon_min, lon_max), random.uniform(lat_min, lat_max))]
+
+def update_asset_locations():
+    """
+    Update the location.coordinates field in the asset collection with random coordinates
+    in the New York and New England area using Faker.
+    """
+    conn = client_connection()
+    db = conn[settings["mongodb"]["database"]]
+    assets = db["asset"]
+    
+    # New York and New England area bounds
+    lat_min = 40.477399  # Southernmost point (NYC)
+    lat_max = 45.0152    # Northernmost point (Maine)
+    lon_min = -79.7634   # Westernmost point (NY)
+    lon_max = -66.9730   # Easternmost point (Maine)
+    
+    # Get all assets that need updating
+    assets_to_update = assets.find({}, {"_id": 1})
+    updates = []
+    for asset in assets_to_update:
+        # Generate random coordinates within the specified bounds
+        latitude = random.uniform(lat_min, lat_max)
+        longitude = random.uniform(lon_min, lon_max)
+        
+        updates.append(UpdateOne(
+            {"_id": asset["_id"]},
+            {"$set": {
+                "location": {
+                    "type": "Point",
+                    "coordinates": [longitude, latitude]
+                }
+            }}
+        ))
+    
+        if updates and len(updates) == 1000:
+            try:
+                result = assets.bulk_write(updates)
+                bb.logit(f"Updated {result.modified_count} assets with new coordinates")
+            except BulkWriteError as bwe:
+                bb.logit(f"Error updating assets: {bwe.details}")
+            updates = []
+            bb.logit("Updated 1000 assets")
+    if updates:
+        try:
+            result = assets.bulk_write(updates)
+            bb.logit(f"Updated {result.modified_count} assets with new coordinates")
+        except BulkWriteError as bwe:
+            bb.logit(f"Error updating assets: {bwe.details}")
+    conn.close()    
+
 def bulk_writer(collection, bulk_arr, msg = ""):
     try:
         result = collection.bulk_write(bulk_arr, ordered=False)
@@ -248,6 +507,121 @@ def client_connection(type = "uri", details = {}):
         client = MongoClient(mdb_conn)
     return client
 
+def resolve_device_fields(device="", start="", coll=None):
+    # Find the fields reported for a device through time
+    called = False
+    if device != "":
+        called = True
+    elif "device" in ARGS:
+        device = ARGS["device"]
+    else:
+        print("Device not specified")
+        sys.exit(1)
+    if start != "":
+        ok = "ok"
+    elif "start" in ARGS:
+        start = ARGS["start"]
+        # ISO: "2024-06-12T20:23:24.437+00:00"
+    else:
+        print("Start date not specified")
+        sys.exit(1)
+    if coll == None:
+        conn = client_connection()
+        db = conn[settings["mongodb"]["database"]]
+        coll = db["telemetry"]
+    pipe = [
+        {
+            "$match": {
+                "timestamp": {"$gt": datetime.datetime.fromisoformat(start)},
+                "metadata.ident": device
+            }
+        },
+        {
+            "$project": {
+                "fieldNames": {"$objectToArray": "$measures"}
+            }
+        },
+        {
+            "$unwind": "$fieldNames"
+        },
+        {
+            "$group": {
+                "_id": "$fieldNames.k",
+                "dataTypes": {"$addToSet": {"$type": "$fieldNames.v"}},
+                "sampleValues": {"$addToSet": "$fieldNames.v"},
+                "current": {"$last": {
+                    "$cond": { 
+                        "if" : {"$ne" : ["$fieldNmaes.v", None]},
+                        "then": "$fieldNames.v",
+                        "else": "$$REMOVE"
+                    }
+                }},
+                "count": {"$sum": 1}
+            }
+        },
+        {
+            "$project": {
+                "fieldName": "$_id",
+                "dataTypes": 1,
+                "current": 1,
+                "sampleValues": {"$slice": ["$sampleValues", 10]},
+                "occurrenceCount": "$count",
+                "_id": 0
+            }
+        },
+        {
+            "$sort": {"occurrenceCount": -1}
+        }
+    ]
+    rec = coll.aggregate(pipe)
+    print('# --------------------------- Device: {device} ------------------------------- #')
+    for k in rec:
+        #pprint.pprint(k)
+        print(f'{k["fieldName"]}: {k["current"]} {k["dataTypes"]} cnt: {k["occurrenceCount"]}, ex: {k["sampleValues"]} ')   
+    if not called:
+        conn.close()
+
+def idents_in_sample():
+    # Find the fields reported for a device through time
+    if "start" in ARGS:
+        start = ARGS["start"]
+        # ISO: "2024-06-12T20:23:24.437+00:00"
+    else:
+        print("Start date not specified")
+        sys.exit(1)
+    show_fields=False
+    if "fields" in ARGS:
+        show_fields = True
+    conn = client_connection()
+    db = conn[settings["mongodb"]["database"]]
+    coll = db["telemetry"]
+    pipe = [
+    {
+        "$match":{
+            "timestamp": {"$gt": datetime.datetime.fromisoformat(start)}
+        }
+    },
+    {
+        "$group": {
+        "_id": "$metadata.ident",
+        "count": { "$sum": 1 }
+        }
+    },
+    {"$sort": {"count": -1}}
+    ]
+    tot = 0
+    cnt = 0
+    rec = coll.aggregate(pipe)
+    for k in rec:
+        #pprint.pprint(k)
+        print(f'{k["_id"]}: cnt: {k["count"]} ') 
+        if show_fields and k["count"] > 10:
+            resolve_device_fields(k["_id"], start, coll)
+        tot += k["count"]
+        cnt += 1
+    print(f'Total ids: {cnt} docs: {tot}')
+    conn.close()
+
 #------------------------------------------------------------------#
 #     MAIN
 #------------------------------------------------------------------#
@@ -270,6 +644,22 @@ if __name__ == "__main__":
         sys.exit(1)
     elif ARGS["action"] == "load_iot_data":
         synth_data_load()
+    elif ARGS["action"] == "update_locations":
+        update_asset_locations()
+    elif ARGS["action"] == "update_dates":
+        update_asset_update_date()
+    elif ARGS["action"] == "device_fields":
+        resolve_device_fields()
+    elif ARGS["action"] == "telemetry_feed":
+        telemetry_feed()
+    elif ARGS["action"] == "telemetry_feed":
+        telemetry_feed()
+    elif ARGS["action"] == "update_asset":
+        update_asset()
+    elif ARGS["action"] == "update_state":
+        update_asset_state_controller()
+    elif ARGS["action"] == "unique_ids":
+        idents_in_sample()
     elif ARGS["action"] == "test":
         test_mix()
     else:

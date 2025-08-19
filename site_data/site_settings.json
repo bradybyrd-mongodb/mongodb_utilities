@@ -7,7 +7,8 @@
       "database": "site_data",
       "collection": "assets",
       "username": "main_admin",
-      "password": "<secret>" 
+      "password": "<secret>",
+      "feed_database": "telemetry"
     },
     "postgres": {
       "host": "34.172.34.239",
@@ -21,7 +22,8 @@
     "batch_size": 100,
     "batches": 3,
     "base_counter": 2000000,
-    "max_time": "2024-05-19T00:12:32.164+00:00",
+    "max_time": "2024-06-13T12:23:24.437+00:00",
+    "feed_start": "2024-06-13T20:23:24.437+00:00",
     "variation": 0.1,
     "data": {
       "tenant": {
