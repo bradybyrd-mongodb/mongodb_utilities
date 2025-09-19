@@ -1075,3 +1075,11 @@ db.flespi.aggregate([
       }
     }
 ])
+
+# ----------- Update with Condition -------------------- #
+cur_update = datetime.datetime.fromISODate()
+db.asset.updateOne({identifier: cur_id}, {$set:{
+  updated_at: {$cond: {
+    if: {$gt: ["$updated_at", ]}
+  }}
+} } )

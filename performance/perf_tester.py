@@ -259,7 +259,7 @@ def benchmark_queries():
     bb.message_box("Benchmark Queries", "title")
     batches = 10 #settings["batches"]
     batch_size = 100 #settings["batch_size"]
-    #bb.logit(f'Opening {uri}')
+    #bb.logit(f'Opening {uri}')m
     bb.logit(f'Performing {batches} batches of {batch_size}')
     client = client_connection("source.uri")
     mdb = client[settings["source"]["database"]]
@@ -270,18 +270,36 @@ def benchmark_queries():
             for item,details in settings["queries"].items():
                 coll = details["coll"]
                 query = details["query"]
-                print(f'Query: {item}')
+                print(f'Query: {coll} - {item}')
+                print(query)
                 start = datetime.datetime.now()
-                coll = item.split("_")[0]
+                #qname = item.split("_")[0]
                 if details["type"] == "find_increment":
                     for k in details["values"]:
                         query[details["value_field"]] = k
-                        ans = mdb[coll].find(query)
+                        execute_query(mdb, coll, query, "find")
                 elif details["type"] == "agg":
-                    ans = mdb[coll].aggregate(query)
+                    for k in details["values"]:
+                        query[0]["$match"]["lastName"]["$regex"] = k
+                        execute_query(mdb, coll, query, "agg")
                 else:
-                    ans = mdb[coll].find(query)
+                    execute_query(mdb, coll, query, "find")
                 bb.timer(start)
+
+def execute_query(mdb, coll, query, qtype = "find"):
+    start = datetime.datetime.now()
+    ans = None
+    if qtype == "find":
+        ans = mdb[coll].find(query)
+    elif qtype == "agg":
+        #print(f"coll: {coll} - query: {query}")
+        ans = mdb[coll].aggregate(query)
+    k = 0
+    for doc in ans:
+        #print(".", end="", flush=True)
+        k += 1
+    bb.timer(start, k)
+    return ans
 
 def test_timer():
     for k in range(20):

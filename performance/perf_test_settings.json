@@ -1,21 +1,23 @@
 {
     "testname" : "monitoring",
     "batch_size" : 10,
-    "batches" : 100,
+    "batches" : 1,
     "base_counter" : 100000,
     "sample_time" : 2,
     "queries" : {
-        "simple_find" : {"coll" : "member", "type" : "find", "query": {"member_id" : "M-2002407"}},
-        "agg_w_sort" : {"coll" : "member", "type" : "agg", "query": [
-            {"$match": {"lastName" : "Ho.*"}},
+        "simple_find" : {"coll" : "member", "type" : "find_increment", "query": {"member_id" : "XXXXX"}, "value_field": "member_id", "values" : [
+            "M-2010002","M-2010027","M-2010017","M-2010071","M-2010117","M-2010188","M-2011007","M-2022407","M-2010503","M-2021905"
+        ]},
+        "agg_w_sort" : {"coll" : "member", "type" : "agg", "value_field": "$regex", "query": [
+            {"$match": {"lastName" : {"$regex": "^Ho.*"}}},
             {"$group": {
-                "_id" : "lastName",
+                "_id" : "$lastName",
                 "avg" : {"$avg" : "$age"},
                 "cnt" : {"$sum" : 1}
             }}
-        ]},
+        ], "values": ["^Ho", "^Ma", "^Dr", "^Fl", "^Br", "^La", "^Bl", "^Jo"]},
         "increment_find" : {"coll" : "member", "type" : "find_increment", "query": {"member_id" : "XXXXX"}, "value_field": "member_id", "values" : [
-            "M-2000007","M-2000027","M-2000017","M-2000011","M-2000077","M-2000088","M-2001007","M-2002407","M-2000503","M-2001905"
+            "M-2010002","M-2010027","M-2010017","M-2010071","M-2010117","M-2010188","M-2011007","M-2022407","M-2020503","M-2021905"
         ]}
     },
     "logger" : {
@@ -29,8 +31,8 @@
     },
     "source" : {
         "ouri": "mongodb+srv://claims-demo.vmwqj.mongodb.net",
-        "oouri" : "mongodb+srv://8-native.vmwqj.mongodb.net",
-        "uri" : "mongodb://localhost:27017",
+        "uri" : "mongodb+srv://8-native.vmwqj.mongodb.net",
+        "luri" : "mongodb://localhost:27017",
         "database" : "healthcare",
         "collection": "member",
         "username" : "main_admin",
@@ -41,5 +43,18 @@
     "zdatabase" : "healthcare",
     "zcollection" : "updater_temp",
     "zusername" : "main_admin",
-    "zpassword" : "<secret>"
+    "zpassword" : "<secret>",
+    "old_cars_expire_soon" : {"coll" : "policy", "type" : "agg", "value_field": "$lt", "query": [
+            {
+                "$match": {
+                    "policy_type": "auto",
+                    "expirationDate": {
+                        "$lt": "2025-09-03T18:14:20+00:00",
+                        "$gt": "2025-08-03T18:14:20+00:00"
+                    },
+                    "policy_details.year": {
+                        "$lt": 2010
+                    }
+                }
+            }], "values": [2010, 2012,2014,2016,2018,2020,2022,2024]}
 }
