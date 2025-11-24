@@ -1083,3 +1083,32 @@ db.asset.updateOne({identifier: cur_id}, {$set:{
     if: {$gt: ["$updated_at", ]}
   }}
 } } )
+
+# ---------------------- Duplicates ------------------ #
+[
+  {
+    $match:
+      {$and: [
+          {timestamp: {$gt: ISODate("2024-06-13T20:23:24.437+00:00")}},
+          {timestamp: {$lt: ISODate("2024-06-14T08:23:24.437+00:00" )}}
+        ]
+      }
+  },
+  {
+    $group:
+      {
+        _id: ["$timestamp", "$metadata.ident"],
+        cnt: {$sum: 1},
+        ids: {$addToSet: "$_id" }
+      }
+  },
+  {
+    $match:
+      {cnt: {$gt: 1}}
+  },
+  {
+    $sort:
+      {cnt: -1}
+  },
+  {$count: "count"}
+]

@@ -1,0 +1,28 @@
+{
+  "version": "1.1",
+  "process_count": 1,
+  "batch_size": 1000,
+  "batches": 5,
+  "base_counter": 1000000,
+  "sleep_time": 10,
+  "database": {
+    "main": {
+        "note": "This is the database you are monitoring",
+        "uri": "mongodb+srv://8-native.vmwqj.mongodb.net",
+        "database": "claimxml",
+        "collection": "claim_archives",
+        "username": "main_admin",
+        "info" : "Passwords are masked, use _SOURCEPWD_ environment variable",
+        "password": "<secret>" 
+    },
+    "logger": {
+        "note": "This is the database where you want to store the results",
+        "uri": "mongodb+srv://8-native.vmwqj.mongodb.net",
+        "database": "monitorstats",
+        "collection": "stats_output",
+        "username": "main_admin",
+        "info" : "Passwords are masked, use _PWD_ environment variable",
+        "password": "<secret>" 
+    }   
+  }
+}
