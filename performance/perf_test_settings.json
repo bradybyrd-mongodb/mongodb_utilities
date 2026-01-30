@@ -38,6 +38,19 @@
         "username" : "main_admin",
         "password" : "<secret>"
     },
+    "livesource" : {
+        "uri" : "mongodb+srv://timeseriespoc-scaleup.q1gws.mongodb.net",
+        "database" : "lynx_action_engine",
+        "collection": "tti_events_v3",
+        "username" : "bradybyrd",
+        "password" : "<secret>"
+    },"oasource" : {
+        "uri" : "mongodb://archived-atlas-online-archive-691c89cbbee0ce7c1ad35bd7-q1gws.a.query.mongodb.net/?ssl=true&authSource=admin",
+        "database" : "lynx_action_engine",
+        "collection": "tti_events",
+        "username" : "bradybyrd",
+        "password" : "<secret>"
+    },
     "ouri" : "mongodb+srv://claims-demo.vmwqj.mongodb.net",
     "zuri" : "mongodb+srv://8-native.vmwqj.mongodb.net",
     "zdatabase" : "healthcare",

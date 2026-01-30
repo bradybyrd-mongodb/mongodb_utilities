@@ -170,7 +170,7 @@ class Util:
         #return(f'{message[::-1]}{self.cypher}')
         return(message)
     
-    def timer(self, starttime,cnt = 1, ttype = "sub"):
+    def timer(self, starttime,cnt = 1, ttype = "sub", prompt = "query"):
         elapsed = datetime.datetime.now() - starttime
         secs = elapsed.seconds
         msecs = elapsed.microseconds
@@ -182,8 +182,8 @@ class Util:
             elapsed = secs + (msecs * .000001)
             unit = "s"
         if ttype == "sub":
-            self.logit(f"query ({cnt} recs) took: {'{:.3f}'.format(elapsed)} {unit}")
+            self.logit(f"{prompt} ({cnt} recs) took: {'{:.3f}'.format(elapsed)} {unit}")
         else:
-            print(f"# --- Complete: query took: {'{:.3f}'.format(elapsed)} {unit} ---- #")
+            print(f"# --- Complete: {prompt} took: {'{:.3f}'.format(elapsed)} {unit} ---- #")
             print(f"#   {cnt} items {'{:.3f}'.format((elapsed)/cnt)} {unit} avg")
         return secs + (msecs * .000001)

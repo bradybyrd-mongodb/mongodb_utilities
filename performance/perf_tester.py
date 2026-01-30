@@ -308,6 +308,269 @@ def test_timer():
         bb.timer(start)
     bb.logit("Done")
 
+def test_oa():
+    client = client_connection("oasource.uri")
+    mdb = client[settings["oasource"]["database"]]
+    coll = "tti_events"
+    start = datetime.datetime.now()
+    cnt = 0
+    h_start = 0
+    h_end = 6
+    for k in range(4):
+        tstart = datetime.datetime(2025, 12, 4, h_start, 0, tzinfo=datetime.timezone.utc)
+        tend = datetime.datetime(2025, 12, 4, h_end, 0, tzinfo=datetime.timezone.utc)
+        query = [
+            {"$match": {
+                "metadata.deviceId": {"$in": 
+                ['4649344', '6035322', '5965887', '5710851', '3062597']},
+            "$and": [
+                {"timestamp": { "$gt": tstart}}, 
+                {"timestamp": { "$lte": tend}}]
+            }}, 
+            {"$count": "total"}
+        ]
+        h_start = h_end
+        h_end += 6
+        #pprint.pprint(query)
+        ans = mdb[coll].aggregate(query)
+        for rec in ans:
+            cnt = rec["total"]
+            #print(f'Cnt: {cnt}')
+        bb.timer(start, cnt)
+        start = datetime.datetime.now()
+
+# -----------------------------------------------------------#
+# Deduping tests
+all_deviceIds = [
+    "5841979",
+    "6468930",
+    "3230305",
+    "5160063",
+    "3022457",
+    "5161065",
+    "3224461",
+    "5270769",
+    "5229182",
+    "4731487",
+    "5228498",
+    "5183470",
+    "4761581",
+    "4483805",
+    "5494594",
+    "6265896",
+    "5630082",
+    "6333155",
+    "6369288",
+    "5183017",
+    "5710897",
+    "4701643",
+    "6266190",
+    "6011004",
+    "3065233",
+    "3228109",
+    "5721447",
+    "5749472",
+    "4785555",
+    "5998117",
+    "5710616",
+    "5229869",
+    "3056353",
+    "4650887",
+    "6266198",
+    "5227977",
+    "4701161",
+    "3228973",
+    "5966497",
+    "6146857",
+    "5917556",
+    "3035277",
+    "5595545",
+    "3029813",
+    "6302631",
+    "6554881",
+    "5855527",
+    "6399167",
+    "6146977",
+    "6034742",
+    "4785180",
+    "5619142",
+    "6469056",
+    "3051405",
+    "3034049",
+    "3231893",
+    "5821262",
+    "5564407",
+    "4576135",
+    "4976235",
+    "6265811",
+    "4482825",
+    "5998259",
+    "4559105",
+    "5158990",
+    "6114459",
+    "5229350",
+    "2708873",
+    "3012225",
+    "6147474",
+    "6469951",
+    "5075634",
+    "4976511",
+    "2710813",
+    "4481233",
+    "6543057",
+    "5965496",
+    "4809971",
+    "6091592",
+    "3028489",
+    "5408026",
+    "6035704",
+    "3060917",
+    "3056725",
+    "5227056",
+    "5753587",
+    "5159573",
+    "5966055",
+    "5227264",
+    "3062429",
+    "5855459",
+    "5753390",
+    "5494491",
+    "5916228",
+    "4576331",
+    "6114757",
+    "3022201",
+    "4559411",
+    "6035032",
+    "5022330"
+]
+
+# Python dictionary representation of the aggregation pipeline
+def dedup_pipeline(device_ids, start_date, end_date):
+    dedup_pipeline = [
+    {
+        '$match': {
+            'metadata.deviceId': {
+                '$in': device_ids
+            }, 
+            'timestamp': {
+                '$gt': start_date, 
+                '$lte': end_date
+            }
+        }
+    }, {
+        '$project': {
+            'metadata': 1, 
+            'timestamp': 1, 
+            'server_timestamp': 1, 
+            'lynx_arrival_ts': 1, 
+            'measurements': '$$ROOT'
+        }
+    }, {
+        '$unset': [
+            'measurements.metadata', 'measurements.timestamp', 'measurements.server_timestamp', 'measurements.lynx_arriva_ts'
+        ]
+    }, {
+        '$sort': {
+            'metadata.deviceId': 1, 
+            'timestamp': 1, 
+            'lynx_arrival_ts': -1
+        }
+    }, {
+        '$group': {
+            '_id': {
+                'deviceId': '$metadata.deviceId', 
+                'timestamp': '$timestamp'
+            }, 
+            'doc': {
+                '$first': '$$ROOT'
+            }
+        }
+    }, {
+        '$replaceRoot': {
+            'newRoot': '$doc'
+        }
+    }, {
+        '$sort': {
+            'metadata.deviceId': 1, 
+            'timestamp': -1
+        }
+    }, {
+        '$group': {
+            '_id': '$metadata.deviceId', 
+            'records': {
+                '$firstN': {
+                    'input': '$$ROOT', 
+                    'n': 100
+                }
+            }
+        }
+    }, {
+        '$project': {
+            '_id': 0, 
+            'deviceId': '$_id', 
+            'records': 1
+        }
+    }
+]
+    return dedup_pipeline
+
+def dedup_parallel():
+    # python3 site_models.py action=load_data
+    multiprocessing.set_start_method("fork", force=True)
+    bb.message_box("Loading Data", "title")
+    #bb.logit(f'# Settings from: {settings_file}')
+    num_procs = 4. 
+    batch_size = 25
+    start_date = datetime.datetime(2025, 12, 17, 12, 38, 54)
+    end_date = datetime.datetime(2025, 12, 18, 12, 38, 54)
+    num_ids = len(all_deviceIds)
+    batches = int(num_ids / batch_size)   
+    #bb.logit(f'# Loading: {num_procs * batches * batch_size} docs from {num_procs} threads')
+    jobs = []
+    inc = 0
+    cnt = 0
+    start = datetime.datetime.now()
+    for item in range(num_procs):
+        device_ids = all_deviceIds[cnt:cnt+batch_size]
+        passed_args = {"start_date": start_date, "end_date": end_date, "device_ids": device_ids}
+    
+        p = multiprocessing.Process(target=test_dedup, args = (item, passed_args))
+        jobs.append(p)
+        p.start()
+        #time.sleep(1)
+        inc += 1
+        cnt += batch_size
+
+    main_process = multiprocessing.current_process()
+    for i in jobs:
+        i.join()
+    bb.timer(start, num_ids, "tot")
+    bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
+    
+
+def test_dedup(ipos, args):
+    batch_records = []
+    client = client_connection("livesource.uri")
+    mdb = client[settings["livesource"]["database"]]
+    coll = settings["livesource"]["collection"]
+    start = datetime.datetime.now()
+    cnt = 0
+    substart = datetime.datetime.now()
+    device_ids = args["device_ids"]
+    start_date = args["start_date"]
+    end_date = args["end_date"]
+    query = dedup_pipeline(device_ids, start_date, end_date)        
+    #pprint.pprint(query)  # Uncomment for debugging
+    collection = mdb[coll]
+    ans = collection.aggregate(query)
+    bb.timer(substart)
+    for rec in ans:
+        batch_records.append(rec)
+        print(f'Device: {rec["deviceId"]} - {len(rec["records"])} records')
+    #print("# ----- Sample Record: ")
+    #pprint.pprint(batch_records[0])
+
+
 #------ Demo Failover with Atlas Command --------------#
 def failover():
     retry = False
@@ -850,6 +1113,12 @@ if __name__ == "__main__":
         failover()
     elif ARGS["action"] == "trigger_load":
         trigger_datagen()
+    elif ARGS["action"] == "oa_test":
+        test_oa()
+    elif ARGS["action"] == "dedup":
+        dedup_parallel()
+    elif ARGS["action"] == "test_dedup":
+        test_dedup()
     elif ARGS["action"] == "trigger_perf":
         trigger_performance()
     elif ARGS["action"] == "test":
