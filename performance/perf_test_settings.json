@@ -50,6 +50,12 @@
         "collection": "tti_events",
         "username" : "bradybyrd",
         "password" : "<secret>"
+    },"localsource" : {
+        "uri" : "mongodb+srv://8-native.vmwqj.mongodb.net",
+        "database" : "telemetry",
+        "collection": "flespi",
+        "username" : "main_admin",
+        "password" : "<secret>"
     },
     "ouri" : "mongodb+srv://claims-demo.vmwqj.mongodb.net",
     "zuri" : "mongodb+srv://8-native.vmwqj.mongodb.net",

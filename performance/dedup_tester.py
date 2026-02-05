@@ -534,7 +534,7 @@ def dedup_parallel():
         device_ids = ids[cnt:cnt+batch_size]
         passed_args = {"start_date": start_date, "end_date": end_date, "device_ids": device_ids, "dedup": dedup}
     
-        p = multiprocessing.Process(target=test_dedup, args = (item, passed_args))
+        p = multiprocessing.Process(target=execute_query, args = (item, passed_args))
         jobs.append(p)
         p.start()
         #time.sleep(1)
@@ -548,7 +548,7 @@ def dedup_parallel():
     bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
     
 
-def test_dedup(ipos, args):
+def execute_query(ipos, args):
     # python3 dedup_tester.py action=test_dedup device_ids="4649344,6035322,5965887,5710851,3062597" start_date=2025-12-17T12:38:54 end_date="2025-12-18T12:38:54" end_date="2025-12-18T12:38:54"
     batch_records = []
     verbose = False
@@ -557,12 +557,13 @@ def test_dedup(ipos, args):
     coll = settings["livesource"]["collection"]
     start = datetime.datetime.now()
     cnt = 0
+    reps = 1
+    if "reps" in args:
+        reps = int(args["reps"])
     maxids = 100
     if "maxids" in args:
         maxids = int(args["maxids"])
-    substart = datetime.datetime.now()
     device_ids = args["device_ids"]
-    num_ids = len(device_ids)
     if device_ids[0] == "all":
         device_ids = more_device_ids[0:maxids -1]
     if isinstance(args["start_date"], str):
@@ -574,32 +575,84 @@ def test_dedup(ipos, args):
     dedup = args["dedup"]
     if "verbose" in args:
         verbose = args["verbose"].lower() == 'true'
-    query = dedup_pipeline(device_ids, start_date, end_date, dedup)        
-    if verbose:
-        pprint.pprint(query)  # Uncomment for debugging
-    collection = mdb[coll]
-    ans = collection.aggregate(query, allowDiskUse=True)
-    bb.timer(substart, num_ids)
-    if dedup:
-        for rec in ans:
-            batch_records.append(rec)
-            print(f'Device: {rec["deviceId"]} - {len(rec["records"])} records')
-    else:
-        lastid = "zzzzzzz"
-        icnt = 0
-        for rec in ans:
-            batch_records.append(rec)
-            if rec["metadata"]["deviceId"] != lastid:
-                print(f'Device: {lastid} - {icnt} records')
-            
-                icnt = 0
-                lastid = rec["metadata"]["deviceId"]
-            else:
-                icnt += 1
-        print(f'# Unique Devices: {icnt}')
+    num_ids = len(device_ids)
+    num_ids = int(num_ids / reps)
+    istart = 0
+    for rep in range(reps):
+        substart = datetime.datetime.now()
+        cur_ids = device_ids[istart:istart + num_ids]
+        query = dedup_pipeline(cur_ids, start_date, end_date, dedup)        
+        if verbose:
+            pprint.pprint(query)  # Uncomment for debugging
+        collection = mdb[coll]
+        ans = collection.aggregate(query, allowDiskUse=True)
+        bb.timer(substart, num_ids)
+        if dedup:
+            for rec in ans:
+                batch_records.append(rec)
+                print(f'Device: {rec["deviceId"]} - {len(rec["records"])} records')
+        else:
+            lastid = "zzzzzzz"
+            icnt = 0
+            for rec in ans:
+                batch_records.append(rec)
+                if rec["metadata"]["deviceId"] != lastid:
+                    print(f'Device: {lastid} - {icnt} records')
+                
+                    icnt = 0
+                    lastid = rec["metadata"]["deviceId"]
+                else:
+                    icnt += 1
+            print(f'# Unique Devices: {icnt}')
+        istart += num_ids
     if verbose:
         print("# ----- Sample Record: ")
         pprint.pprint(batch_records[0])
+
+def get_device_ids(start_date, end_date):
+    device_ids = []
+    source = "localsource" # livesource
+    #FIXME - deviceId vs device_id
+    client = client_connection(f"{source}.uri")
+    mdb = client[settings[source]["database"]]
+    coll = settings[source]["collection"]
+    if isinstance(start_date, str):
+        start_date = datetime.datetime.fromisoformat(start_date)
+        end_date = datetime.datetime.fromisoformat(end_date)
+    pipeline2 = [
+        {"$match": {'timestamp': {
+                '$gt': start_date, 
+                '$lte': end_date
+            }}},
+        {"$group": {"_id": "$metadata.deviceId",
+                    "asset": {"$first": "$metadata.asset"},
+                    "tenant": {"$first": "$metadata.tenant"},
+                    "deviceType": {"$first": "$type"}
+        }},
+        {"$project": {"_id": 0, "deviceId": "$_id",
+                      "asset": 1,
+                      "tenant": 1,
+                      "deviceType": 1,
+        }},
+        {"$sort": {"deviceId": 1}},
+        {"$out": "devices"}
+    ]
+    pipeline = [
+        {"$match": {'timestamp': {
+                '$gt': start_date, 
+                '$lte': end_date
+            }}},
+        {"$group": {"_id": "$metadata.device_id"
+        }},
+        {"$project": {"_id": 0, "device_id": "$_id"
+        }}
+    ]
+    pprint.pprint(pipeline)
+    collection = mdb[coll]
+    ans = collection.aggregate(pipeline, allowDiskUse=True)
+    device_ids = [rec["device_id"] for rec in ans]
+    return device_ids
+
 
 #-----------------------------------------------------------#
 #  Utility Code
@@ -642,11 +695,17 @@ if __name__ == "__main__":
         sys.exit(1)
     elif ARGS["action"] == "oa_test":
         test_oa()
+    elif ARGS["action"] == "device_ids":
+        result = get_device_ids(ARGS["start_date"], ARGS["end_date"])
+        print(f'#------ Found: {len(result)} devices ----- #')
+        print(result)
+        with open("device_ids2.txt", "w") as fil:
+            fil.write("\n".join(list(result)))
     elif ARGS["action"] == "dedup":
         dedup_parallel()
     elif ARGS["action"] == "test_dedup":
         if "device_ids" in ARGS:
             ARGS["device_ids"] = ARGS["device_ids"].split(",")
-        test_dedup(0,ARGS)
+        execute_query(0,ARGS)
     else:
         bb.logit(f'ERROR: {ARGS["action"]} not recognized')
