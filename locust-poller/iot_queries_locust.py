@@ -132,7 +132,8 @@ class MetricsLocust(User):
                 'metadata': 1, 
                 'timestamp': 1, 
                 'server_timestamp': 1, 
-                'lynx_arrival_ts': 1
+                'lynx_arrival_ts': 1,
+                'measurements': '$$ROOT'
             }
         }, {
             '$sort': {
@@ -251,7 +252,7 @@ class MetricsLocust(User):
         try:
             # Get the record from the target collection now
             log_items, total_docs = self.multi_device_server_query(max_ids, start_datetime, end_datetime)
-            events.request.fire(request_type="mlocust", name=name', response_time=(self.get_time()-tic)*1000, response_length=0)
+            events.request.fire(request_type="mlocust", name=name, response_time=(self.get_time()-tic)*1000, response_length=0)
             if logit:
                 self.logging_coll.insert_many(log_items)
         except Exception as e:
