@@ -1,0 +1,8 @@
+# -------------------------------------------- #
+deepmerge==2.0
+dnspython==2.7.0
+locust==2.32.5
+markdown-it-py==4.0.0
+pymongo==4.10.1
+urllib3==1.26.16
+
