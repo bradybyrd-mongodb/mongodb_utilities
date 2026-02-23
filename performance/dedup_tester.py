@@ -439,7 +439,11 @@ def dedup_pipeline(cur_device_ids, start_date, end_date, dedup = True):
             'lynx_arrival_ts': 1,
             'measurements': '$$ROOT'
         }
-    }, {
+    }, 
+    {
+        "$unset": ['measurements.metadata','measurements.timestamp','measurements.server_timestamp','measurements.lynx_arrival_ts']
+    },
+    {
         '$sort': {
             'metadata.deviceId': 1, 
             'timestamp': 1, 
@@ -509,41 +513,32 @@ def dedup_parallel():
     multiprocessing.set_start_method("fork", force=True)
     bb.message_box("Loading Data", "title")
     #bb.logit(f'# Settings from: {settings_file}')
-    ids = more_device_ids
+    maxids = 100
+    if "maxids" in ARGS:
+        maxids = int(ARGS["maxids"])
     num_procs = 4
     batch_size = int(len(ids)/num_procs) #25
-    start_date = datetime.datetime(2025, 12, 17, 12, 38, 54)
-    end_date = datetime.datetime(2025, 12, 18, 12, 38, 54)
-    if "device_ids" in ARGS:
-        ids = ARGS["device_ids"].split(",")
-    if "start_date" in ARGS:
-        start_date = datetime.datetime.fromisoformat(ARGS["start_date"])
-    if "end_date" in ARGS:
-        end_date = datetime.datetime.fromisoformat(ARGS["end_date"])
-    dedup = True
-    if "dedup" in ARGS:
-        dedup = ARGS["dedup"].lower() == 'true'
-    num_ids = len(ids)
-    bb.logit(f'# Loading: {num_ids} devices from {num_procs} threads')
+    bb.logit(f'# Loading: {maxids} devices from {num_procs} threads')
     jobs = []
     inc = 0
     cnt = 0
     start = datetime.datetime.now()
     for item in range(num_procs):
-        device_ids = ids[cnt:cnt+batch_size]
-        passed_args = {"start_date": start_date, "end_date": end_date, "device_ids": device_ids, "dedup": dedup}
-    
+        #device_ids = ids[cnt:cnt+batch_size]
+        passed_args = {}
+        for k in ARGS:
+            passed_args[k] = ARGS[k]
         p = multiprocessing.Process(target=execute_query, args = (item, passed_args))
         jobs.append(p)
         p.start()
-        #time.sleep(1)
+        time.sleep(1)
         inc += 1
         cnt += batch_size
 
     main_process = multiprocessing.current_process()
     for i in jobs:
         i.join()
-    bb.timer(start, num_ids, "tot")
+    bb.timer(start, maxids, "tot")
     bb.logit('Main process is %s %s' % (main_process.name, main_process.pid))
     
 
@@ -568,8 +563,6 @@ def execute_query(ipos, args):
     else:
         device_ids = get_device_ids(mdb, maxids*reps)
         #print(device_ids)
-    if device_ids[0] == "all":
-        device_ids = more_device_ids[0:maxids -1]
     if isinstance(args["start_date"], str):
         start_date = datetime.datetime.fromisoformat(args["start_date"])
         end_date = datetime.datetime.fromisoformat(args["end_date"])
