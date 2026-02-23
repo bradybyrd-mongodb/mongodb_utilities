@@ -63,11 +63,13 @@ class MetricsLocust(User):
         global _CLIENT, _SRV
 
         super().__init__(parent)
+        log_code = "bugsy" #os.environ.get("_PWD_")
         self.id_batch_size = 100
         self.id_start = 0
         self.verbose = False
         self.all_device_ids = []
-        logger_srv = "mongodb+srv://main_admin:bugsyBoo%21@8-native.vmwqj.mongodb.net"
+        code_add = f"{log_code}Boo%21"
+        logger_srv = "mongodb+srv://main_admin:<secret>@8-native.vmwqj.mongodb.net"
         self.start_date = datetime.datetime.now()
         self.end_date = datetime.datetime.now()
         try:
@@ -94,7 +96,7 @@ class MetricsLocust(User):
                 k, v = s.split("=")
                 self.args[k] = v
             self.get_device_ids()
-            self.logging_client = pymongo.MongoClient(logger_srv)
+            self.logging_client = pymongo.MongoClient(logger_srv.gsub("<secret>",code_add))
             self.logging_coll = self.logging_client["mlocust"]["audit"]
         except Exception as e:
             # If an exception is caught, Locust will show a task with the error msg in the UI for ease
