@@ -82,8 +82,8 @@ class MetricsLocust(User):
             else:
                 self.client = _CLIENT
 
-            self.db = self.client[vars[1]]
-            self.coll = self.db[vars[2]]
+            db = self.client[vars[1]]
+            self.coll = db[vars[2]]
             self.all_device_ids = self.get_device_ids()
             self.start_date = datetime.datetime.fromisoformat(vars[3])
             self.end_date = datetime.datetime.fromisoformat(vars[4])
@@ -115,13 +115,11 @@ class MetricsLocust(User):
         self.all_device_ids = more_device_ids
         return more_device_ids
     
-    def dedup_pipeline(self, cur_device_ids, start_date, end_date, dedup = True):
+    def single_pipeline(self, cur_device_id, start_date, end_date, dedup = True):
         dedup_pipeline = [
         {
             '$match': {
-                'metadata.deviceId': {
-                    '$in': cur_device_ids
-                }, 
+                'metadata.deviceId': cur_device_id, 
                 'timestamp': {
                     '$gt': start_date, 
                     '$lte': end_date
@@ -144,7 +142,6 @@ class MetricsLocust(User):
         }, {
             '$group': {
                 '_id': {
-                    'deviceId': '$metadata.deviceId', 
                     'timestamp': '$timestamp'
                 }, 
                 'doc': {
@@ -157,7 +154,6 @@ class MetricsLocust(User):
             }
         }, {
             '$sort': {
-                'metadata.deviceId': 1, 
                 'timestamp': -1
             }
         }, {
@@ -183,7 +179,7 @@ class MetricsLocust(User):
             {
                 '$match': {
                     'metadata.deviceId': {
-                        '$in': cur_device_ids
+                        '$in': cur_device_id
                     }, 
                     'timestamp': {
                         '$gt': start_date, 
@@ -212,19 +208,6 @@ class MetricsLocust(User):
         deviceIds = self.all_device_ids[istart:istart + num_ids]
         return deviceIds
 
-    def get_device_ids(self, num_ids = 100):
-        # Deviceids now in collection, pull group of ids that will be divided in the queries
-        # need the extents of ids in the shardd
-        # find a randomized starting point
-        lowid = 1282105
-        highid = 6052658
-        seed = str(random.randint(lowid, highid-num_ids))
-        coll = "device_ids"
-        max_ids = 115000
-        ans = self.db[coll].find({"device_id" : {"$gte" : seed}},{"device_id" : 1, "_id" : 0}).limit(num_ids)
-        ids = [doc["device_id"] for doc in ans]
-        return ids
- 
     ################################################################
     # Start defining tasks and assign a weight to it.
     # All tasks need the @task() notation.
@@ -234,17 +217,17 @@ class MetricsLocust(User):
     # TODO Create any additional task functions here
     ################################################################
     @task(100)
-    def _async_find_multi(self):
+    def _async_find(self):
         # Note that you don't pass in self despite the signature above
         tic = self.get_time();
-        name = "multi_device_timestamp"
+        name = "single_device_timestamp"
         max_ids = int(self.args["max_ids"])
         max_hrs = int(self.args["num_hours"])
         logit = self.args["logit"] == "yes"
         start_datetime, end_datetime = self.get_time_period(max_hrs)
         try:
             # Get the record from the target collection now
-            log_items, total_docs = self.multi_device_query(max_ids, start_datetime, end_datetime)
+            log_items, total_docs = self.single_device_query(max_ids, start_datetime, end_datetime)
             events.request.fire(request_type="mlocust", name=name, response_time=(self.get_time()-tic)*1000, response_length=0)
             if logit:
                 self.logging_coll.insert_many(log_items)
@@ -254,17 +237,17 @@ class MetricsLocust(User):
             time.sleep(5)
 
     @task(20)
-    def _async_find_multi_server(self):
+    def _async_find_server(self):
         # Note that you don't pass in self despite the signature above
         tic = self.get_time();
-        name = "multi_device_server_timestamp"
+        name = "single_device_server_timestamp"
         max_ids = int(self.args["max_ids"])
         max_hrs = int(self.args["num_hours"])
         logit = self.args["logit"] == "yes"
         start_datetime, end_datetime = self.get_time_period(max_hrs)
         try:
             # Get the record from the target collection now
-            log_items, total_docs = self.multi_device_server_query(max_ids, start_datetime, end_datetime)
+            log_items, total_docs = self.single_device_server_query(max_ids, start_datetime, end_datetime)
             events.request.fire(request_type="mlocust", name=name, response_time=(self.get_time()-tic)*1000, response_length=0)
             if logit:
                 self.logging_coll.insert_many(log_items)
@@ -273,17 +256,15 @@ class MetricsLocust(User):
             # Add a sleep so we don't overload the system with exceptions
             time.sleep(5)
 
-    def multi_device_query(self, max_ids, start_datetime, end_datetime):
+    def single_device_query(self, max_ids, start_datetime, end_datetime):
         reps = 10 # 10 FIXME #int(num_ids / max_ids)
         batch_records = []
         log_records = []
         dedup = True
-        #deviceIds = self.get_device_batch(max_ids * reps)
-        device_ids = self.get_device_ids(max_ids * reps)
         istart = 0
         for _ in range(reps):
-            cur_ids = device_ids[istart:istart + max_ids]
-            query = self.dedup_pipeline(cur_ids, start_datetime, end_datetime, dedup)
+            cur_ids = random.choice(self.all_device_ids)
+            query = self.single_pipeline(cur_ids, start_datetime, end_datetime, dedup)
             if self.verbose:
                 pprint.pprint(query)  # Uncomment for debugging
             ans = self.coll.aggregate(query, allowDiskUse=True)
@@ -301,17 +282,15 @@ class MetricsLocust(User):
             log_records.append({"qtype" : "timestamp", "ts" : datetime.datetime.now(), "start_date": start_datetime, "end_date": end_datetime, "rep" : _, "records" : recs})
         return log_records, rec_sum
 
-    def multi_device_server_query(self, max_ids, start_datetime, end_datetime):
-        reps = 1 #10 FIXME#int(num_ids / max_ids)
+    def single_device_server_query(self, max_ids, start_datetime, end_datetime):
+        reps = 10 #10 FIXME#int(num_ids / max_ids)
         batch_records = []
         log_records = []
         dedup = True
-        #device_ids = self.get_device_batch(max_ids * reps)
-        device_ids = self.get_device_ids(max_ids * reps)
         istart = 0
         for _ in range(reps):
-            cur_ids = device_ids[istart:istart + max_ids]
-            query = self.dedup_pipeline(cur_ids, start_datetime, end_datetime, dedup)
+            cur_ids = random.choice(self.all_device_ids)
+            query = self.single_pipeline(cur_ids, start_datetime, end_datetime, dedup)
             query[0]["$match"]["server_timestamp"] =  query[0]["$match"]["timestamp"]
             del query[0]["$match"]["timestamp"]
             if self.verbose:
@@ -330,5 +309,5 @@ class MetricsLocust(User):
             istart += max_ids
             log_records.append({"qtype" : "server_timestamp", "ts" : datetime.datetime.now(), "start_date": start_datetime, "end_date": end_datetime, "rep" : _, "records" : recs})
         return log_records, rec_sum
+
     
-   

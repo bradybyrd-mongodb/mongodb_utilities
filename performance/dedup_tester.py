@@ -8,6 +8,7 @@ import io
 import subprocess
 import time
 import re
+import random
 import multiprocessing
 import pprint
 from pymongo import MongoClient
@@ -418,12 +419,12 @@ more_device_ids = ["5494084",
 "4761110"]
 
 # Python dictionary representation of the aggregation pipeline
-def dedup_pipeline(device_ids, start_date, end_date, dedup = True):
+def dedup_pipeline(cur_device_ids, start_date, end_date, dedup = True):
     dedup_pipeline = [
     {
         '$match': {
             'metadata.deviceId': {
-                '$in': device_ids
+                '$in': cur_device_ids
             }, 
             'timestamp': {
                 '$gt': start_date, 
@@ -435,13 +436,9 @@ def dedup_pipeline(device_ids, start_date, end_date, dedup = True):
             'metadata': 1, 
             'timestamp': 1, 
             'server_timestamp': 1, 
-            'lynx_arrival_ts': 1, 
+            'lynx_arrival_ts': 1,
             'measurements': '$$ROOT'
         }
-    }, {
-        '$unset': [
-            'measurements.metadata', 'measurements.timestamp', 'measurements.server_timestamp', 'measurements.lynx_arriva_ts'
-        ]
     }, {
         '$sort': {
             'metadata.deviceId': 1, 
@@ -484,12 +481,13 @@ def dedup_pipeline(device_ids, start_date, end_date, dedup = True):
             'records': 1
         }
     }
-]
+    ]
+
     pipeline2 = [
         {
             '$match': {
                 'metadata.deviceId': {
-                    '$in': device_ids
+                    '$in': cur_device_ids
                 }, 
                 'timestamp': {
                     '$gt': start_date, 
@@ -504,6 +502,7 @@ def dedup_pipeline(device_ids, start_date, end_date, dedup = True):
         }
     ]
     return dedup_pipeline if dedup else pipeline2
+
 
 def dedup_parallel():
     # python3 site_models.py action=load_data
@@ -549,11 +548,12 @@ def dedup_parallel():
     
 
 def execute_query(ipos, args):
-    # python3 dedup_tester.py action=test_dedup device_ids="4649344,6035322,5965887,5710851,3062597" start_date=2025-12-17T12:38:54 end_date="2025-12-18T12:38:54" end_date="2025-12-18T12:38:54"
+    # python3 dedup_tester.py action=test_dedup device_ids="4649344,6035322,5965887,5710851,3062597" start_date=2025-12-17T12:38:54 end_date="2025-12-18T12:38:54"
     batch_records = []
-    verbose = False
+    verbose = True #False
     client = client_connection("livesource.uri")
     mdb = client[settings["livesource"]["database"]]
+    device_ids = []
     coll = settings["livesource"]["collection"]
     start = datetime.datetime.now()
     cnt = 0
@@ -563,7 +563,11 @@ def execute_query(ipos, args):
     maxids = 100
     if "maxids" in args:
         maxids = int(args["maxids"])
-    device_ids = args["device_ids"]
+    if "device_ids" in args:
+        device_ids = args["device_ids"]
+    else:
+        device_ids = get_device_ids(mdb, maxids*reps)
+        #print(device_ids)
     if device_ids[0] == "all":
         device_ids = more_device_ids[0:maxids -1]
     if isinstance(args["start_date"], str):
@@ -572,20 +576,22 @@ def execute_query(ipos, args):
     else:
         start_date = args["start_date"]
         end_date = args["end_date"]
-    dedup = args["dedup"]
+    dedup = True #args["dedup"]
     if "verbose" in args:
         verbose = args["verbose"].lower() == 'true'
     num_ids = len(device_ids)
     num_ids = int(num_ids / reps)
+    start = datetime.datetime.now()
+    print(f'# Starting: {ipos} with {num_ids} ids')
     istart = 0
     for rep in range(reps):
         substart = datetime.datetime.now()
         cur_ids = device_ids[istart:istart + num_ids]
         query = dedup_pipeline(cur_ids, start_date, end_date, dedup)        
-        if verbose:
+        if False: #verbose:
             pprint.pprint(query)  # Uncomment for debugging
         collection = mdb[coll]
-        ans = collection.aggregate(query, allowDiskUse=True)
+        ans = collection.aggregate(query) #, allowDiskUse=True)
         bb.timer(substart, num_ids)
         if dedup:
             for rec in ans:
@@ -597,19 +603,39 @@ def execute_query(ipos, args):
             for rec in ans:
                 batch_records.append(rec)
                 if rec["metadata"]["deviceId"] != lastid:
-                    print(f'Device: {lastid} - {icnt} records')
+                    if verbose:
+                        print(f'Device: {lastid} - {icnt} records')
                 
                     icnt = 0
                     lastid = rec["metadata"]["deviceId"]
                 else:
                     icnt += 1
-            print(f'# Unique Devices: {icnt}')
+            if verbose:
+                print(f'# Unique Devices: {icnt}')
         istart += num_ids
+    bb.timer(start, num_ids*reps, "sub", "total")
     if verbose:
         print("# ----- Sample Record: ")
-        pprint.pprint(batch_records[0])
+        #pprint.pprint(batch_records[0])
 
-def get_device_ids(start_date, end_date):
+def get_device_ids(db, num_ids = 100):
+    # Deviceids now in collection, pull group of ids that will be divided in the queries
+    # need the extents of ids in the shardd
+    # find a randomized starting point
+    lowid = 1282105
+    highid = 6052658
+    start = datetime.datetime.now()
+    seed = random.randint(lowid+num_ids, highid-num_ids)
+    coll = "device_ids"
+    max_ids = 115000
+    print(f'# Getting {num_ids} device IDs starting at {seed}')
+    #ans = db[coll].find({"device_id" : {"$gte" : "5456926"}},{"device_id" : 1, "_id" : 0}).limit(100)
+    ans = db[coll].find({"device_id" : {"$gte" : f'{seed}'}},{"device_id" : 1, "_id" : 0}).sort({"device_id" : 1}).limit(num_ids)
+    ids = [doc["device_id"] for doc in ans]
+    bb.timer(start, num_ids, "sub", "get_device_ids")
+    return ids
+
+def populate_device_ids(start_date, end_date):
     device_ids = []
     source = "localsource" # livesource
     #FIXME - deviceId vs device_id
