@@ -517,7 +517,9 @@ def dedup_parallel():
     if "maxids" in ARGS:
         maxids = int(ARGS["maxids"])
     num_procs = 4
-    batch_size = int(len(ids)/num_procs) #25
+    if "procs" in ARGS:
+        num_procs = int(ARGS["procs"])
+    #batch_size = int(len(ids)/num_procs) #25
     bb.logit(f'# Loading: {maxids} devices from {num_procs} threads')
     jobs = []
     inc = 0
@@ -533,7 +535,7 @@ def dedup_parallel():
         p.start()
         time.sleep(1)
         inc += 1
-        cnt += batch_size
+        #cnt += batch_size
 
     main_process = multiprocessing.current_process()
     for i in jobs:
@@ -721,6 +723,7 @@ if __name__ == "__main__":
         with open("device_ids2.txt", "w") as fil:
             fil.write("\n".join(list(result)))
     elif ARGS["action"] == "dedup":
+        #python3 dedup_tester.py action=dedup start_date=2026-01-28T12:38:54 end_date="2026-01-29T12:38:54" reps=2 maxids=100 procs=2
         dedup_parallel()
     elif ARGS["action"] == "test_dedup":
         if "device_ids" in ARGS:
